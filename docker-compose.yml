@@ -54,6 +54,7 @@ services:
       - ./.cache/vllm:/root/.cache/vllm
       - /sys/class/infiniband:/sys/class/infiniband:ro
       - ./entrypoint.sh:/entrypoint.sh:ro
+      - ./patches:/patches:ro
     devices:
       - /dev/infiniband:/dev/infiniband
     entrypoint: ["bash", "/entrypoint.sh"]
@@ -104,6 +105,7 @@ services:
       - ./.cache/vllm:/root/.cache/vllm
       - /sys/class/infiniband:/sys/class/infiniband:ro
       - ./entrypoint.sh:/entrypoint.sh:ro
+      - ./patches:/patches:ro
     devices:
       - /dev/infiniband:/dev/infiniband
     entrypoint: ["bash", "/entrypoint.sh"]

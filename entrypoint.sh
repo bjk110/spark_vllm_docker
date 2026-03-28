@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+# Apply Qwen3.5 MoE text-only patches
+if [ -f /patches/patch_qwen35_moe_text.py ]; then
+    python3 /patches/patch_qwen35_moe_text.py || true
+fi
+
 # =============================================================================
 # vLLM Spark Unified Entrypoint
 #
@@ -25,6 +30,9 @@ set -euo pipefail
 
 # ---- Worker: just join Ray and block ----
 if [ "${ROLE}" = "worker" ]; then
+    # Clean any leftover Ray state
+    ray stop --force 2>/dev/null || true
+    rm -rf /tmp/ray 2>/dev/null || true
     echo "[entrypoint] Starting Ray WORKER → ${HEAD_ROCE_IP}:${RAY_PORT}"
     exec ray start \
         --address="${HEAD_ROCE_IP}:${RAY_PORT}" \
