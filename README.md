@@ -53,12 +53,12 @@ Supports multiple Qwen3.5 models with different quantizations via `.env` presets
 
 | Preset | Model | Quantization | TP | Image |
 |---|---|---|---|---|
-| `redhatai-122b-nvfp4.env` | RedHatAI Qwen3.5-122B-A10B | NVFP4 (pre-quantized) | 1 | v018-ngc2603 |
-| `wangzhang-122b-fp8.env` | wangzhang Qwen3.5-122B-A10B-abliterated | FP8 | 2 | v018-fi067 |
-| `qwen3.5-397b-int4.env` | Qwen3.5-397B-A17B | INT4 AutoRound (Marlin) | 2 | v020-fi064 |
-| `qwen3.5-122b-fp8.env` | Qwen3.5-122B-A10B | FP8 | 2 | v020-fi064 |
-| `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 | 1 | v020-fi064-nvfp4 |
-| `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 | 2 | v020-fi064-nvfp4 |
+| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (multimodal) | 2 | v018-ngc2603 |
+| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (pre-quantized) | 1 | v018-ngc2603 |
+| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only) | 2 | v018-ngc2603 |
+| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v018-ngc2603 |
+| `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 1 | v018-ngc2603 |
+| `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 2 | v018-ngc2603 |
 
 ## Quick Start
 
@@ -67,23 +67,16 @@ Supports multiple Qwen3.5 models with different quantizations via `.env` presets
 #### Option A: Pull pre-built image from GHCR
 
 ```bash
-# Base image (FP8 / INT4)
-docker pull ghcr.io/jungkwanban/vllm-spark:v020-fi064
-
-# NVFP4 extension (optional, only for NVFP4 models)
-docker pull ghcr.io/jungkwanban/vllm-spark:v020-fi064-nvfp4
+# NGC 26.03 base image (FP8 / INT4 / NVFP4)
+docker pull ghcr.io/bjk110/vllm-spark:v018-ngc2603
 ```
 
 #### Option B: Build from source
 
 ```bash
-# Base image (FP8 / INT4)
-docker buildx build -t vllm-spark:v020-fi064 --load .
-
-# NVFP4 extension (optional, only for NVFP4 models)
-docker buildx build -f Dockerfile.nvfp4 \
-  --build-arg BASE_IMAGE=vllm-spark:v020-fi064 \
-  -t vllm-spark:v020-fi064-nvfp4 --load .
+# NGC 26.03 source build
+docker buildx build -f Dockerfile.ngc2603-v3 \
+  -t vllm-spark:v018-ngc2603 --load .
 ```
 
 Build arguments:
@@ -91,11 +84,9 @@ Build arguments:
 | Argument | Default | Description |
 |---|---|---|
 | `BUILD_JOBS` | 16 | Parallel build jobs |
-| `FLASHINFER_REF` | v0.6.1 | FlashInfer git ref |
-| `CUTLASS_REF` | main | CUTLASS git ref |
-| `VLLM_VERSION` | 0.17.0rc1.dev212+gc88510083.cu130 | vLLM nightly wheel |
-| `TRANSFORMERS_VER` | 5.2.0 | Transformers version |
-| `TORCH_CUDA_ARCH_LIST` | 12.1a | Target CUDA arch (Blackwell) |
+| `FLASHINFER_REF` | v0.6.7 | FlashInfer git ref |
+| `VLLM_COMMIT` | c494977 | vLLM source commit |
+| `TORCH_CUDA_ARCH` | 12.1a | Target CUDA arch (Blackwell) |
 
 ### 1. Choose a Model Preset
 
@@ -190,7 +181,7 @@ All configuration is via `.env`. See [`.env.example`](.env.example) for full doc
 
 | Variable | Description | Example |
 |---|---|---|
-| `VLLM_IMAGE` | Pre-built Docker image | `vllm-spark:v020-fi064` |
+| `VLLM_IMAGE` | Pre-built Docker image | `vllm-spark:v018-ngc2603` |
 | `MODEL_PATH` | Host path to model weights | `/home/user/Models/Qwen/...` |
 | `MODEL_CONTAINER_PATH` | Container mount point | `/models/Qwen3.5-397B-...` |
 | `SERVED_MODEL_NAME` | API model name | `Qwen/Qwen3.5-397B-...` |
