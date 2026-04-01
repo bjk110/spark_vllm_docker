@@ -16,6 +16,8 @@ Supports multiple Qwen3.5 models with different quantizations via `.env` presets
 
 ### v018-ngc2603 (latest, NGC 26.03)
 
+Full source build on NGC 26.03. Native CUDA 13.2 eliminates the compat layer overhead from 26.01, yielding **+23% KV cache** (37.4 GiB vs 30.4 GiB). PyTorch 2.11 enables `_C_stable_libtorch` compilation — all NVFP4/FP8/CUTLASS ops are built in, so a single image covers every quantization format (FP8, NVFP4, INT4). Two Python patches (`hoist=True` removal, `__fx_repr__` dict fix) are applied at build time for PyTorch 2.11 compatibility.
+
 | Component | Version |
 |---|---|
 | Base Image | NGC PyTorch 26.03 |
@@ -30,6 +32,8 @@ Supports multiple Qwen3.5 models with different quantizations via `.env` presets
 
 ### v018-fi067 (previous, NGC 26.01)
 
+Attempted upgrade path: NGC 26.01 base with vLLM 0.18.1rc1 nightly wheel. CUDA 13.2 ran via compat layer on top of native 13.1, causing ~23% KV cache penalty. `_C_stable_libtorch` could not be compiled — PyTorch 2.10 failed the `stableivalue_conversions.h` static assertion (`const Tensor&` violates `trivially_copyable`). As a result, NVFP4 ops were missing and only FP8/INT4 serving was possible.
+
 | Component | Version |
 |---|---|
 | Base Image | NGC PyTorch 26.01 |
@@ -40,6 +44,8 @@ Supports multiple Qwen3.5 models with different quantizations via `.env` presets
 | `_C_stable_libtorch` | Not included (wheel limitation) |
 
 ### v020-fi064 (legacy, NGC 26.01)
+
+First working image for DGX Spark. Built around vLLM 0.17 nightly wheel with FlashInfer v0.6.1. Required a separate `Dockerfile.nvfp4` layer for NVFP4 support since the base wheel lacked those ops. Served as the production image for initial 397B INT4 and 122B NVFP4 benchmarks. Superseded by v018-ngc2603 which unifies all quantizations into a single image.
 
 | Component | Version |
 |---|---|
