@@ -100,7 +100,13 @@ docker buildx build -f Dockerfile.ngc2603-v3 \
 
 ```bash
 cp models/qwen3.5-397b-int4.env .env
-# MODEL_PATH를 로컬 모델 가중치 경로에 맞게 수정
+```
+
+`.env`의 `MODEL_PATH`를 실제 모델 가중치 경로로 수정합니다:
+
+```bash
+# [model_path]를 실제 경로로 변경
+sed -i 's|\[model_path\]|/home/user/models|' .env
 ```
 
 ### 2. 서비스 시작

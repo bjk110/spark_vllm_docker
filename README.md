@@ -100,7 +100,13 @@ Build arguments:
 
 ```bash
 cp models/qwen3.5-397b-int4.env .env
-# Edit MODEL_PATH to match your local model weights path
+```
+
+Edit `MODEL_PATH` in `.env` to point to your local model weights directory:
+
+```bash
+# Replace [model_path] with your actual path
+sed -i 's|\[model_path\]|/home/user/models|' .env
 ```
 
 ### 2. Start Services
