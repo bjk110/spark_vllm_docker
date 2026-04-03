@@ -166,9 +166,10 @@ spark01 (head)                    spark02 (worker)
 vllm-spark/
 ├── docker-compose.yml          # Unified compose (head + worker profiles)
 ├── entrypoint.sh               # Smart entrypoint (TP1/TP2 auto-routing)
-├── Dockerfile                  # Base image build (FP8/INT4)
-├── Dockerfile.nvfp4            # NVFP4 extension
 ├── .env.example                # Full configuration template
+├── Dockerfile                  # v020-fi064 base (NGC 26.01, legacy)
+├── Dockerfile.nvfp4            # NVFP4 extension (legacy)
+├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, latest)
 ├── models/                     # Validated model presets
 │   ├── redhatai-122b-nvfp4.env # RedHatAI NVFP4 (TP1)
 │   ├── intel-122b-int4.env     # Intel INT4 AutoRound (TP1)
@@ -178,8 +179,10 @@ vllm-spark/
 │   ├── qwen3.5-122b-fp8.env
 │   ├── qwen3.5-122b-nvfp4.env
 │   └── qwen3.5-122b-nvfp4-tp2.env
-├── Dockerfile                  # v020-fi064 base (NGC 26.01, legacy)
-├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, latest)
+├── benchmarks/                 # llama-benchy benchmark results
+│   ├── results_intel-int4-tp1.json
+│   ├── results_wangzhang-fp8-tp2.json
+│   └── results_wangzhang-nvfp4-tp1.json
 ├── patches/                    # SM121 / PyTorch 2.11 compatibility
 │   ├── fix_pytorch211_compat.py  # hoist + __fx_repr__ fix
 │   └── ...

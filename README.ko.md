@@ -166,9 +166,10 @@ spark01 (head)                    spark02 (worker)
 vllm-spark/
 ├── docker-compose.yml          # 통합 compose (head + worker 프로필)
 ├── entrypoint.sh               # 스마트 엔트리포인트 (TP1/TP2 자동 분기)
-├── Dockerfile                  # 베이스 이미지 빌드 (FP8/INT4)
-├── Dockerfile.nvfp4            # NVFP4 확장
 ├── .env.example                # 전체 설정 템플릿
+├── Dockerfile                  # v020-fi064 베이스 (NGC 26.01, 레거시)
+├── Dockerfile.nvfp4            # NVFP4 확장 (레거시)
+├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, 최신)
 ├── models/                     # 검증된 모델 프리셋
 │   ├── redhatai-122b-nvfp4.env # RedHatAI NVFP4 (TP1)
 │   ├── intel-122b-int4.env     # Intel INT4 AutoRound (TP1)
@@ -178,8 +179,10 @@ vllm-spark/
 │   ├── qwen3.5-122b-fp8.env
 │   ├── qwen3.5-122b-nvfp4.env
 │   └── qwen3.5-122b-nvfp4-tp2.env
-├── Dockerfile                  # v020-fi064 베이스 (NGC 26.01, 레거시)
-├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, 최신)
+├── benchmarks/                 # llama-benchy 벤치마크 결과
+│   ├── results_intel-int4-tp1.json
+│   ├── results_wangzhang-fp8-tp2.json
+│   └── results_wangzhang-nvfp4-tp1.json
 ├── patches/                    # SM121 / PyTorch 2.11 호환성 패치
 │   ├── fix_pytorch211_compat.py  # hoist + __fx_repr__ 수정
 │   └── ...
