@@ -61,7 +61,9 @@ First working image for DGX Spark. Built around vLLM 0.17 nightly wheel with Fla
 |---|---|---|---|---|
 | `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (multimodal) | 2 | v018-ngc2603 |
 | `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (pre-quantized) | 1 | v018-ngc2603 |
-| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only) | 2 | v018-ngc2603 |
+| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | 1 | v018-ngc2603 |
+| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only, abliterated) | 2 | v018-ngc2603 |
+| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (text-only, abliterated) | 1 | v018-ngc2603 |
 | `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v018-ngc2603 |
 | `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 1 | v018-ngc2603 |
 | `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 2 | v018-ngc2603 |
@@ -162,9 +164,11 @@ vllm-spark/
 ├── Dockerfile.nvfp4            # NVFP4 extension
 ├── .env.example                # Full configuration template
 ├── models/                     # Validated model presets
-│   ├── redhatai-122b-nvfp4.env # RedHatAI NVFP4 (recommended, TP1)
+│   ├── redhatai-122b-nvfp4.env # RedHatAI NVFP4 (TP1)
+│   ├── intel-122b-int4.env     # Intel INT4 AutoRound (TP1)
 │   ├── wangzhang-122b-fp8.env  # abliterated FP8 (TP2)
-│   ├── qwen3.5-397b-int4.env
+│   ├── wangzhang-122b-nvfp4.env # abliterated NVFP4 (TP1)
+│   ├── qwen3.5-397b-int4.env   # 397B INT4 (TP2)
 │   ├── qwen3.5-122b-fp8.env
 │   ├── qwen3.5-122b-nvfp4.env
 │   └── qwen3.5-122b-nvfp4-tp2.env
@@ -208,11 +212,26 @@ The Dockerfile applies SM121 (Blackwell) compatibility patches:
 | `apply_sm121_patches` | `is_blackwell_class`, NVFP4 split, TRITON_PTXAS |
 | `moe_config_e256/e512` | GB10-tuned MoE kernel configs |
 
-## Benchmark Results (397B INT4 TP2)
+## Benchmark Results
 
-Measured with [llama-benchy](https://github.com/eugr/llama-benchy) v0.3.4.
+All benchmarks measured with [llama-benchy](https://github.com/eugr/llama-benchy) v0.3.4.
 
-### Single Request (concurrency=1)
+### 122B Models — Decode Throughput Comparison (t/s)
+
+| Concurrency | FP8 TP2 (abliterated) | INT4 TP1 (Intel) | NVFP4 TP1 (abliterated) |
+|---|---|---|---|
+| 1 | 31.5 (peak 32.5) | 29.7 (peak 30) | 17.0 (peak 18) |
+| 2 | 42.4 (peak 54) | 57.6 (peak 59) | 33.3 (peak 35) |
+| 4 | 59.7 (peak 91) | 52.1 (peak 97) | 55.2 (peak 65) |
+
+| Metric | FP8 TP2 | INT4 TP1 | NVFP4 TP1 |
+|---|---|---|---|
+| TTFT c=1 | 1,989 ms | 1,098 ms | 984 ms |
+| KV cache | 839K tokens (38.5 GiB/node) | 789K tokens (36.2 GiB) | 155K tokens (14.3 GiB) |
+
+### 397B INT4 TP2
+
+#### Single Request (concurrency=1)
 
 | Test | Throughput (t/s) | TTFT (ms) |
 |---|---|---|
@@ -221,7 +240,7 @@ Measured with [llama-benchy](https://github.com/eugr/llama-benchy) v0.3.4.
 | pp2048 | 1,704 ± 9 | 1,224 ± 7 |
 | tg128 | 27.0 ± 0.1 | — |
 
-### Concurrent Requests — Total Decode Throughput (t/s)
+#### Concurrent Requests — Total Decode Throughput (t/s)
 
 | Concurrency | tg128 total | tg128 peak |
 |---|---|---|
