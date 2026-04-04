@@ -48,6 +48,7 @@ First NGC 26.03 source build. Native CUDA 13.2 eliminated the compat layer overh
 | Preset | Model | Quantization | TP | Image |
 |---|---|---|---|---|
 | `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | 1 | v019-ngc2603 |
+| `gemma4-26b-a4b-tq.env` | google/gemma-4-26B-A4B-it | BF16 + **TurboQuant KV** | 1 | turboquant |
 | `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (multimodal) | 2 | v019-ngc2603 |
 | `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (pre-quantized) | 1 | v019-ngc2603 |
 | `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | 1 | v019-ngc2603 |
@@ -160,25 +161,21 @@ vllm-spark/
 ├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, previous)
 ├── models/                     # Validated model presets
 │   ├── gemma4-26b-a4b.env      # Gemma 4 26B MoE (TP1)
+│   ├── gemma4-26b-a4b-tq.env   # Gemma 4 + TurboQuant KV
 │   ├── redhatai-122b-nvfp4.env # RedHatAI NVFP4 (TP1)
-│   ├── intel-122b-int4.env     # Intel INT4 AutoRound (TP1)
-│   ├── wangzhang-122b-fp8.env  # abliterated FP8 (TP2)
-│   ├── wangzhang-122b-nvfp4.env # abliterated NVFP4 (TP1)
-│   ├── qwen3.5-397b-int4.env   # 397B INT4 (TP2)
-│   ├── qwen3.5-122b-fp8.env
-│   ├── qwen3.5-122b-nvfp4.env
-│   └── qwen3.5-122b-nvfp4-tp2.env
-├── benchmarks/                 # llama-benchy benchmark results
-│   ├── results_intel-int4-tp1.json
-│   ├── results_wangzhang-fp8-tp2.json
-│   └── results_wangzhang-nvfp4-tp1.json
+│   └── ...                     # See models/ for full list
 ├── patches/                    # SM121 / PyTorch 2.11 compatibility
-│   ├── fix_pytorch211_compat.py  # hoist + __fx_repr__ fix
-│   └── ...
+│   ├── apply_turboquant.py     # TurboQuant integration patch
+│   ├── turboquant_src/         # TurboQuant source (PR #38280 + optimizations)
+│   │   └── vllm/v1/attention/  # Triton + CUDA WPH decode kernels
+│   ├── turboquant_ext/         # AOT CUDA WPH extension (SM121)
+│   │   ├── turboquant_wph_kernel.cu
+│   │   └── setup.py
+│   └── ...                     # SM121 patches
 └── scripts/
-    ├── run-cluster-node.sh     # Manual Ray cluster bootstrap
+    ├── test_wph_v2.py          # WPH regression test (6 cases)
     ├── verify_imports.py       # Build/runtime verification
-    └── verify_runtime.sh       # Full GPU verification
+    └── ...
 ```
 
 ## Configuration
@@ -210,6 +207,88 @@ The Dockerfile applies SM121 (Blackwell) compatibility patches:
 | `nogds_force` | Force `nogds=True` (GB10 has no GDS support) |
 | `apply_sm121_patches` | `is_blackwell_class`, NVFP4 split, TRITON_PTXAS |
 | `moe_config_e256/e512` | GB10-tuned MoE kernel configs |
+| `apply_turboquant` | TurboQuant KV cache 4-bit compression (PR #38280) |
+| `turboquant_wph_ext` | AOT CUDA warp-shuffle decode kernel (SM121) |
+
+## TurboQuant KV Cache Compression
+
+Experimental 4-bit KV cache compression based on [TurboQuant (ICLR 2026)](https://arxiv.org/abs/2504.19874) and vLLM [PR #38280](https://github.com/vllm-project/vllm/pull/38280).
+
+Compresses the KV cache from bf16 to 4-bit via Walsh-Hadamard rotation + Lloyd-Max quantization, with outlier-aware channel splitting. Model weights are **unchanged** — only the KV cache storage format changes.
+
+### How to Enable
+
+Add `--kv-cache-dtype turboquant` to `VLLM_EXTRA_ARGS`:
+
+```bash
+VLLM_EXTRA_ARGS=--enable-chunked-prefill --kv-cache-dtype turboquant
+```
+
+Or use the TurboQuant preset:
+
+```bash
+cp models/gemma4-26b-a4b-tq.env .env
+```
+
+### What It Does
+
+| Aspect | bf16 KV (default) | TurboQuant 4-bit KV |
+|---|---|---|
+| KV cache per token | 16 bits | ~4 bits + outlier bf16 |
+| KV cache capacity | baseline | **+2.6x** (155K → 405K tokens) |
+| Decode throughput | baseline | -18% (c=1), -26% (c=4) |
+| Quality | lossless | near-lossless (4-bit quantization noise) |
+
+### Implementation
+
+Built from vLLM PR #38280 with the following additions for Blackwell/GB10:
+
+| Feature | Description |
+|---|---|
+| **Gather-free Triton decode** | Reads directly from paged cache via `cache_ptr + strides` (no `cache[flat_bt]` copy) |
+| **max_seq_len early exit** | Skips Hadamard butterfly for unused slots in oversized blocks |
+| **CUDA WPH decode** | Warp-shuffle butterfly (no shared memory). AOT-compiled for SM121 |
+| **BLOCK_D=128/256** | Template dispatch for different head dimensions |
+| **4-warp CTA** | 128 threads/block for optimal occupancy on SM121 |
+| **`_safe_view_fp16`** | Handles odd byte offsets (e.g. norm_offset=93) safely |
+| **Page-size padding** | `slot_bytes` padded to next power-of-2 for Mamba page-size unification |
+| **Incremental decode** | Reuses previously decoded blocks; only dirty blocks re-decoded |
+
+### Decode Backend Selection
+
+| Env Variable | Default | Description |
+|---|---|---|
+| `TQ_CUDA_WPH` | `0` | `1` = CUDA warp-shuffle decode, `0` = Triton |
+| `TQ_WPH_WARPS` | `4` | Warps per CTA (2/4/8). 4 is optimal for SM121 |
+| `TQ_PROFILE` | `0` | `1` = Log per-layer decode/attention timing |
+| `TQ_NO_INCREMENTAL` | `0` | `1` = Disable incremental decode (debug) |
+
+### Benchmark: TurboQuant (Qwen3.5-122B NVFP4 TP1, pp2048 tg32)
+
+| Concurrency | bf16 KV | TQ Triton | TQ WPH (4-warp) |
+|---|---|---|---|
+| 1 | 17.0 t/s | 14.1 t/s | 14.0 t/s |
+| 2 | 33.3 t/s | 23.5 t/s | **24.5 t/s** |
+| 4 | 55.2 t/s | 39.7 t/s | **40.6 t/s** |
+| KV cache | 155K tokens | 405K tokens | 405K tokens |
+| TTFT c=1 | 984 ms | 1,068 ms | 1,046 ms |
+
+### Supported Models
+
+TurboQuant is independent of weight quantization and works with any model. Tested configurations:
+
+| Model | head_dim | BLOCK_D | Status |
+|---|---|---|---|
+| Qwen3.5-122B-A10B (NVFP4/FP8/INT4) | 256 | 256 | Verified |
+| Gemma 4 26B MoE | 256 | 256 | Compatible (untested) |
+| Models with head_dim=128 | 128 | 128 | Verified (unit tests) |
+
+### Caveats
+
+- **Throughput trade-off**: TurboQuant increases KV cache capacity by 2.6x but reduces decode throughput by 18–26% compared to bf16 KV. Best suited for long-context or high-concurrency workloads where KV cache is the bottleneck.
+- **Hybrid architecture**: Qwen3.5's Mamba/GDN layers force `block_size=4176` for page-size unification, causing decode overhead for short sequences. `max_seq_len` early exit mitigates this partially.
+- **CUDA WPH status**: The CUDA warp-shuffle kernel (`TQ_CUDA_WPH=1`) is functional and slightly faster than Triton at c>=2, but is not the default. Set `TQ_CUDA_WPH=1` to enable.
+- **Quality**: 4-bit quantization introduces small numerical noise. Round-trip MSE ≈ 0.11 (vs 0.0 for bf16). No observable quality degradation in Korean QA benchmarks (12/12 pass).
 
 ## Benchmark Results
 

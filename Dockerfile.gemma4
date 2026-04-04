@@ -233,6 +233,20 @@ RUN python3 /tmp/apply_sm121_patches.py || echo "[patch] SM121 partial"
 
 RUN uv pip uninstall triton-kernels 2>/dev/null || true
 
+# ---- TurboQuant KV cache compression (PR #38280) ----
+COPY patches/turboquant_src/ /tmp/turboquant_src/
+COPY patches/apply_turboquant.py /tmp/
+RUN cd /usr/local/lib/python3.12/dist-packages && \
+    python3 /tmp/apply_turboquant.py && \
+    echo "[patch] TurboQuant OK"
+
+# ---- TurboQuant CUDA WPH decode (AOT build for SM121) ----
+COPY patches/turboquant_ext/ /tmp/turboquant_ext/
+RUN cd /tmp/turboquant_ext && \
+    python3 setup.py install 2>&1 | tail -5 && \
+    python3 -c "import turboquant_wph_ext; print('[TQ-WPH] AOT extension built OK')" || \
+    echo "[TQ-WPH] AOT build failed (Triton fallback will be used)"
+
 # ---- Verification scripts ----
 COPY scripts/verify_imports.py /opt/scripts/verify_imports.py
 COPY scripts/verify_runtime.sh /opt/scripts/verify_runtime.sh
