@@ -158,13 +158,16 @@ Warp-shuffle butterfly — register-only, no shared memory, no barriers.
 | TTFT c=1 | 984 ms | 1,068 ms | 1,046 ms |
 | KV cache | 155K tokens | 405K tokens | 405K tokens |
 
-#### Nemotron-H 120B NVFP4 (TP1, head_dim=128)
+#### Nemotron-H 120B-A12B NVFP4 (TP1, head_dim=128, 88 layers, hybrid Mamba+MoE)
 
-| Metric | TQ Triton | TQ WPH v2 |
-|---|---|---|
-| tg32 c=1 | 15.1 t/s | **15.3 t/s** |
-| KV cache | 1,548K tokens | 1,423K tokens |
-| TTFT c=1 | 1,656 ms | 1,614 ms |
+| Metric | TQ Triton | TQ WPH v2 (4-warp) | WPH vs Triton |
+|---|---|---|---|
+| tg32 c=1 | 14.9 t/s | **15.2 t/s** | **+1.5%** |
+| pp2048 c=1 | 1,387 t/s | **1,396 t/s** | +0.6% |
+| TTFT c=1 | 1,628 ms | 1,631 ms | ~0% |
+| KV cache | 1,548K tokens | 1,423K tokens | — |
+
+Note: c>=2 benchmarks are unstable on this model due to 88-layer decode latency causing llama-benchy timeouts. c=1 results are stable and reproducible.
 
 **Korean QA benchmark** (Qwen3.5): 12/12 pass (censorship, reading comprehension, math, hangul analysis, roleplay, common sense). No quality degradation observed.
 

@@ -243,15 +243,18 @@ class TurboQuantAttentionImpl(AttentionImpl):
         if _tq_profile and torch.cuda.is_current_stream_capturing():
             _tq_profile = False
 
-        # Model-level capability summary (once, after all layers registered)
+        # Model-level capability summary (deferred: print on 2nd forward call
+        # so all layers have registered their capabilities on the 1st call)
         if hasattr(layer, "_tq_k_state") and \
                 hasattr(TurboQuantAttentionImpl, "_model_cap") and \
                 not hasattr(TurboQuantAttentionImpl, "_model_cap_logged"):
             cap = TurboQuantAttentionImpl._model_cap
-            if cap["total"] > 0:
+            if not hasattr(TurboQuantAttentionImpl, "_model_cap_first_seen"):
+                TurboQuantAttentionImpl._model_cap_first_seen = True
+            else:
                 TurboQuantAttentionImpl._model_cap_logged = True
                 logger.info(
-                    "[TQ-MODEL] %d layers: %d WPH + %d Triton | "
+                    "[TQ-MODEL] %d attention layers: %d WPH + %d Triton | "
                     "block_d=%s",
                     cap["total"], cap["wph"], cap["triton"],
                     sorted(cap["block_d_set"]),
