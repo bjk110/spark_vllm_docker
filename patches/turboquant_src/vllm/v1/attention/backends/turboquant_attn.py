@@ -493,11 +493,12 @@ class TurboQuantAttentionImpl(AttentionImpl):
                 self._decoded_blocks_v[bid] = pv[j].clone()
 
         # Assemble from per-block cache
-        out_k = torch.empty(
+        # Zero-init: padding/unwritten positions must be 0 for attention safety
+        out_k = torch.zeros(
             num_entries, block_size, num_kv_heads, head_size,
             dtype=torch.bfloat16, device=key_cache.device,
         )
-        out_v = torch.empty_like(out_k)
+        out_v = torch.zeros_like(out_k)
         for i, bid in enumerate(block_id_list):
             out_k[i] = self._decoded_blocks_k[bid]
             out_v[i] = self._decoded_blocks_v[bid]
@@ -532,9 +533,26 @@ class TurboQuantAttentionImpl(AttentionImpl):
         n_outliers = head_size - normal_size
         packed_bytes = math.ceil(normal_size * 4 / 8)
 
-        use_cuda_wph = os.environ.get("TQ_CUDA_WPH", "0") in ("1", "true")
+        # ── Capability-based backend dispatch ──
+        # WPH is used only when:
+        #   1. TQ_CUDA_WPH=1 (global opt-in)
+        #   2. Both K and V states support WPH (block_d in {128,256})
+        #   3. AOT extension is available
+        wph_requested = os.environ.get("TQ_CUDA_WPH", "0") in ("1", "true")
+        wph_capable = k_state.wph_supported and v_state.wph_supported
 
-        if use_cuda_wph:
+        # Log capability summary once per layer
+        if not hasattr(self, "_cap_logged"):
+            self._cap_logged = True
+            logger.info(
+                "[TQ-CAP] layer k: block_d=%d wph=%s | "
+                "v: block_d=%d wph=%s | dispatch=%s",
+                k_state.block_d, k_state.wph_supported,
+                v_state.block_d, v_state.wph_supported,
+                "WPH" if (wph_requested and wph_capable) else "Triton",
+            )
+
+        if wph_requested and wph_capable:
             try:
                 from vllm.v1.attention.ops.cuda_turboquant_decode import (
                     cuda_wph_paged_decode,
@@ -570,7 +588,7 @@ class TurboQuantAttentionImpl(AttentionImpl):
                     logger.warning("[TQ-WPH] failed (%d): %s", self._wph_fail_count, e)
                 # Fall through to Triton
 
-        # ── Triton gather-free decode (fallback, graph-safe) ──
+        # ── Triton gather-free decode (default / fallback) ──
         from vllm.v1.attention.ops.triton_fused_turboquant import (
             fused_paged_decode,
         )
@@ -735,7 +753,7 @@ class TurboQuantAttentionImpl(AttentionImpl):
                 output_dtype=torch.bfloat16,
             ).reshape(N, normal_size)
 
-            full = torch.empty(N, head_size, dtype=torch.bfloat16, device=cache.device)
+            full = torch.zeros(N, head_size, dtype=torch.bfloat16, device=cache.device)
             if state.normal_idx is not None and outlier_vals is not None:
                 full[:, state.normal_idx] = normal_decoded
                 full[:, state.outlier_idx] = outlier_vals
@@ -819,7 +837,7 @@ class TurboQuantAttentionImpl(AttentionImpl):
             )
 
             # Reassemble outlier + normal channels
-            full = torch.empty(N, head_size, dtype=torch.bfloat16, device=cache.device)
+            full = torch.zeros(N, head_size, dtype=torch.bfloat16, device=cache.device)
             if state.normal_idx is not None and outlier_vals is not None:
                 full[:, state.normal_idx] = normal_decoded
                 full[:, state.outlier_idx] = outlier_vals

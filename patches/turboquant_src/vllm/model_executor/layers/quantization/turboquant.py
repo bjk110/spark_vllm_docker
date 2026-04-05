@@ -372,6 +372,37 @@ class TurboQuantState:
                 self.boundaries = (self.codebook[:-1] + self.codebook[1:]) / 2.0
                 self.hi_bits = None
 
+    # ── Layer capability (computed once at init, used at decode) ──
+
+    @property
+    def block_d(self) -> int:
+        """BLOCK_D for this layer = next_power_of_2(normal_size)."""
+        return self._hadamard_d if hasattr(self, "_hadamard_d") else next_power_of_2(self.normal_size)
+
+    @property
+    def wph_supported(self) -> bool:
+        """Whether CUDA WPH kernel supports this layer's dimensions."""
+        bd = self.block_d
+        return bd in (128, 256) and not self.config.lite_mode
+
+    @property
+    def n_outliers(self) -> int:
+        return self.head_size - self.normal_size
+
+    def capability_summary(self) -> dict:
+        """Return a dict summarizing this layer's TurboQuant capability."""
+        return {
+            "layer_idx": self.layer_idx,
+            "head_size": self.head_size,
+            "normal_size": self.normal_size,
+            "n_outliers": self.n_outliers,
+            "block_d": self.block_d,
+            "wph_supported": self.wph_supported,
+            "use_hadamard": getattr(self, "use_hadamard", False),
+            "lite_mode": self.config.lite_mode,
+            "bit_width": self.config.bit_width,
+        }
+
     def _init_rotation(self, seed: int, device: torch.device) -> None:
         """Initialize rotation: Hadamard (O(d log d)) with padding."""
         d = self.normal_size
