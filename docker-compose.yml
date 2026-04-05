@@ -36,6 +36,8 @@ services:
       - TQ_NO_INCREMENTAL=${TQ_NO_INCREMENTAL:-0}
       - TQ_CUDA_WPH=${TQ_CUDA_WPH:-0}
       - TQ_WPH_WARPS=${TQ_WPH_WARPS:-4}
+      - TQ_BITS=${TQ_BITS:-4}
+      - TQ_OUTLIER_FRAC=${TQ_OUTLIER_FRAC:-0.15}
       - TQ_DEBUG_BOUNDS=${TQ_DEBUG_BOUNDS:-0}
       # ---- Multi-node networking (200Gbps RoCE) ----
       - VLLM_HOST_IP=${HEAD_ROCE_IP}
@@ -104,6 +106,9 @@ services:
       - VLLM_NVFP4_MOE_FORCE_MARLIN=${VLLM_NVFP4_MOE_FORCE_MARLIN:-0}
       # ---- Patches (0 = disabled) ----
       - APPLY_TEXT_ONLY_SHIM=${APPLY_TEXT_ONLY_SHIM:-0}
+      # ---- TurboQuant (must match head for KV cache spec consistency) ----
+      - TQ_BITS=${TQ_BITS:-4}
+      - TQ_OUTLIER_FRAC=${TQ_OUTLIER_FRAC:-0.15}
     deploy:
       resources:
         reservations:

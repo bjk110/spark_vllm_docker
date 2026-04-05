@@ -203,9 +203,10 @@ ATTENTION_EDIT_4_INSERT = '''
 
             tq_lite = os.environ.get("TQ_LITE", "0") in ("1", "true", "True")
             tq_bits = int(os.environ.get("TQ_BITS", "4"))
+            tq_outlier = float(os.environ.get("TQ_OUTLIER_FRAC", "0.15"))
             self._turboquant_config = TurboQuantConfig(
                 bit_width=tq_bits,
-                outlier_fraction=0.15,
+                outlier_fraction=tq_outlier,
                 lite_mode=tq_lite,
             )
 
