@@ -221,3 +221,4 @@ patches/
 - **slot_bytes padding**: 95→128 bytes (26% waste) due to power-of-2 page-size alignment. Could be reduced with vLLM core changes.
 - **WPH not default**: Slightly faster than Triton at c>=2 but needs more production validation.
 - **Incremental decode**: CUDA graph capture uses full decode; incremental only in non-capture path.
+- **CUDA graph + large block_size**: Models with `block_size >= 8320` (e.g., Nemotron-H) crash at c>=2 due to graph replay memory access issues. Use `--enforce-eager` as workaround. Qwen3.5 (`block_size=4176`) is stable with graph.

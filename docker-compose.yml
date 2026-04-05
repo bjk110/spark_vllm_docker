@@ -24,6 +24,7 @@ services:
       - VLLM_USAGE_SOURCE=production
       - TORCH_MATMUL_PRECISION=high
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      - CUDA_LAUNCH_BLOCKING=${CUDA_LAUNCH_BLOCKING:-0}
       # ---- Model-specific env vars (0 = disabled) ----
       - VLLM_MARLIN_USE_ATOMIC_ADD=${VLLM_MARLIN_USE_ATOMIC_ADD:-0}
       - VLLM_USE_FLASHINFER_MOE_FP4=${VLLM_USE_FLASHINFER_MOE_FP4:-0}
@@ -35,6 +36,7 @@ services:
       - TQ_NO_INCREMENTAL=${TQ_NO_INCREMENTAL:-0}
       - TQ_CUDA_WPH=${TQ_CUDA_WPH:-0}
       - TQ_WPH_WARPS=${TQ_WPH_WARPS:-4}
+      - TQ_DEBUG_BOUNDS=${TQ_DEBUG_BOUNDS:-0}
       # ---- Multi-node networking (200Gbps RoCE) ----
       - VLLM_HOST_IP=${HEAD_ROCE_IP}
       - RAY_NODE_IP_ADDRESS=${HEAD_ROCE_IP}

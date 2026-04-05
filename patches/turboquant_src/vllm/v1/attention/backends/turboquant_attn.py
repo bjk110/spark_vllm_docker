@@ -261,18 +261,17 @@ class TurboQuantAttentionImpl(AttentionImpl):
                 )
 
         if hasattr(layer, "_tq_k_state"):
-            block_size = key_cache.shape[1]
-            max_blocks_needed = (
-                attn_metadata.max_seq_len + block_size - 1
-            ) // block_size
-            trimmed_bt = block_table[:, :max_blocks_needed]
+            # Use full block_table (no trimming). max_seq_len early exit
+            # inside the decode kernel skips unused slots. Trimming would
+            # change num_entries dynamically, breaking CUDA graph which
+            # expects fixed tensor shapes between capture and replay.
 
             if _tq_profile:
                 torch.cuda.synchronize()
                 _t0 = time.perf_counter()
 
             key_cache, value_cache, block_table = self._decode_turboquant_cache(
-                key_cache, value_cache, layer, trimmed_bt,
+                key_cache, value_cache, layer, block_table,
                 max_seq_len=attn_metadata.max_seq_len,
             )
 
@@ -372,6 +371,53 @@ class TurboQuantAttentionImpl(AttentionImpl):
         num_entries = flat_bt.shape[0]
         block_size = key_cache.shape[1]
         num_kv_heads = key_cache.shape[2]
+        num_blocks_total = key_cache.shape[0]
+
+        N = num_entries * block_size * num_kv_heads
+        capturing = torch.cuda.is_current_stream_capturing()
+
+        # Shape tracking: record capture-time shapes, compare at replay
+        if os.environ.get("TQ_DEBUG_BOUNDS", "0") in ("1", "true"):
+            if capturing:
+                # Record shapes during graph capture
+                self._capture_shapes = {
+                    "entries": num_entries, "N": N,
+                    "block_size": block_size, "kv_heads": num_kv_heads,
+                    "num_blocks": num_blocks_total, "max_seq": max_seq_len,
+                    "bt_shape": list(block_table.shape),
+                    "flat_bt_shape": list(flat_bt.shape),
+                }
+                logger.info(
+                    "[TQ-GRAPH-CAP] entries=%d N=%d block_size=%d "
+                    "kv_heads=%d blocks=%d max_seq=%d bt=%s",
+                    num_entries, N, block_size, num_kv_heads,
+                    num_blocks_total, max_seq_len, list(block_table.shape),
+                )
+            elif not capturing:
+                if not hasattr(self, "_dec_bounds_cnt"):
+                    self._dec_bounds_cnt = 0
+                self._dec_bounds_cnt += 1
+                # Compare with capture-time shapes if available
+                cap = getattr(self, "_capture_shapes", None)
+                mismatch = ""
+                if cap and (cap["entries"] != num_entries or cap["N"] != N):
+                    mismatch = (
+                        f" MISMATCH! cap_entries={cap['entries']} "
+                        f"cap_N={cap['N']} cap_max_seq={cap['max_seq']}"
+                    )
+                if self._dec_bounds_cnt <= 10 or mismatch:
+                    bt_max = flat_bt.max().item() if num_entries > 0 else -1
+                    logger.info(
+                        "[TQ-GRAPH-RUN] entries=%d N=%d bt_max=%d/%d "
+                        "max_seq=%d bt=%s%s",
+                        num_entries, N, bt_max, num_blocks_total,
+                        max_seq_len, list(flat_bt.shape), mismatch,
+                    )
+                    if bt_max >= num_blocks_total:
+                        logger.error(
+                            "[TQ-BOUNDS-DEC] OOB! bt_max %d >= num_blocks %d",
+                            bt_max, num_blocks_total,
+                        )
         head_size = layer._tq_k_state.head_size
 
         # Cache the remapped block_table (same size every call in CUDA graph)
@@ -935,8 +981,33 @@ class TurboQuantAttentionImpl(AttentionImpl):
         k_bits = int(layer._tq_k_state.config.bit_width)
         v_bits = int(layer._tq_v_state.config.bit_width)
         block_size = kv_cache.shape[2]
+        num_blocks = kv_cache.shape[0]
         block_indices = clamped_slots // block_size
         block_offsets = clamped_slots % block_size
+
+        # Bounds check (TQ_DEBUG_BOUNDS=1)
+        if os.environ.get("TQ_DEBUG_BOUNDS", "0") in ("1", "true"):
+            if not torch.cuda.is_current_stream_capturing():
+                bi_max = block_indices.max().item() if num_actual > 0 else -1
+                bo_max = block_offsets.max().item() if num_actual > 0 else -1
+                slot_max = clamped_slots.max().item() if num_actual > 0 else -1
+                if not hasattr(self, "_enc_bounds_cnt"):
+                    self._enc_bounds_cnt = 0
+                self._enc_bounds_cnt += 1
+                if self._enc_bounds_cnt <= 10 or bi_max >= num_blocks:
+                    logger.info(
+                        "[TQ-BOUNDS-ENC] tokens=%d slots_max=%d "
+                        "block_idx_max=%d/%d block_off_max=%d/%d "
+                        "cache=%s kv=%s",
+                        num_actual, slot_max,
+                        bi_max, num_blocks, bo_max, block_size,
+                        list(kv_cache.shape), list(slot_mapping.shape),
+                    )
+                if bi_max >= num_blocks:
+                    logger.error(
+                        "[TQ-BOUNDS-ENC] OOB! block_idx %d >= num_blocks %d",
+                        bi_max, num_blocks,
+                    )
 
         if layer._tq_k_state.config.lite_mode:
             self._encode_lite(

@@ -446,8 +446,6 @@ def _fused_paged_decode_direct_kernel(
     cache_ptr,
     # Block IDs: [num_entries]
     flat_bt_ptr,
-    # Pre-extracted norms: [N] float16
-    norms_ptr,
     # Sign flips: [BLOCK_D] float32
     signs_ptr,
     # Codebook: [num_centroids] float32
@@ -472,6 +470,7 @@ def _fused_paged_decode_direct_kernel(
     outlier_u8_count: tl.constexpr,
     packed_bytes: tl.constexpr,
     slot_bytes: tl.constexpr,
+    norm_offset: tl.constexpr,
     LOG2_D: tl.constexpr,
     max_seq_len: tl.int32,
     HAS_OUTLIERS: tl.constexpr,
@@ -546,9 +545,16 @@ def _fused_paged_decode_direct_kernel(
     had_scale = 1.0 / tl.sqrt(float(BLOCK_D))
     x = x * had_scale
 
-    # ---- Sign flips + norm scale ----
+    # ---- Sign flips + norm (read norm directly from slot, no Python gather) ----
     signs = tl.load(signs_ptr + dim_offs)
-    norm_val = tl.load(norms_ptr + row_idx).to(tl.float32)
+    # Type-pun: read 2 norm bytes → scratch → reload as fp16
+    norm_b0 = tl.load(cache_ptr + slot_base + norm_offset)
+    norm_b1 = tl.load(cache_ptr + slot_base + norm_offset + 1)
+    scratch_u8_n = (scratch_ptr + scratch_base).to(tl.pointer_type(tl.uint8))
+    tl.store(scratch_u8_n + 0, norm_b0)
+    tl.store(scratch_u8_n + 1, norm_b1)
+    scratch_fp16_n = (scratch_ptr + scratch_base).to(tl.pointer_type(tl.float16))
+    norm_val = tl.load(scratch_fp16_n).to(tl.float32)
     x = x * signs * norm_val
 
     # ---- Write output ----
@@ -615,10 +621,8 @@ def fused_paged_decode(
     outlier_u8_count = n_outliers * 2
     norm_offset = outlier_u8_count + packed_bytes
 
-    # Norms-only gather: 2 bytes/slot instead of full slot_bytes (64x smaller)
-    # Safe for odd norm_offset (e.g. 93)
-    used_norms = cache[flat_bt, :, :, norm_offset : norm_offset + 2]
-    norms = _safe_view_fp16(used_norms.reshape(N, 2)).reshape(N)
+    # Norms are read directly inside the Triton kernel (no Python gather).
+    # This makes the entire decode path graph-safe (no fancy indexing).
 
     has_outliers = normal_idx is not None and n_outliers > 0
     out = torch.zeros(N, head_size, dtype=torch.bfloat16, device=cache.device)
@@ -636,7 +640,6 @@ def fused_paged_decode(
     _fused_paged_decode_direct_kernel[(N,)](
         cache_ptr=cache,
         flat_bt_ptr=flat_bt,
-        norms_ptr=norms,
         signs_ptr=sign_flips,
         codebook_ptr=codebook,
         scratch_ptr=scratch,
@@ -654,6 +657,7 @@ def fused_paged_decode(
         outlier_u8_count=outlier_u8_count,
         packed_bytes=packed_bytes,
         slot_bytes=slot_bytes,
+        norm_offset=norm_offset,
         LOG2_D=LOG2_D,
         max_seq_len=effective_max,
         HAS_OUTLIERS=has_outliers,
