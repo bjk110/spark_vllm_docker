@@ -87,6 +87,10 @@ def cuda_wph_paged_decode(
                 N_total, effective_rows, skip_pct, block_d,
             )
 
+    # Ensure flat_bt is int64 (some models use int32 block tables)
+    if flat_bt.dtype != torch.int64:
+        flat_bt = flat_bt.to(torch.int64)
+
     out_flat = mod.turboquant_wph_paged_decode(
         cache,
         flat_bt,
