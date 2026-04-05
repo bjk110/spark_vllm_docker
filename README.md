@@ -8,10 +8,42 @@ Based on vLLM [PR #38280](https://github.com/vllm-project/vllm/pull/38280) (lish
 
 Compresses vLLM KV cache from bf16 to 4-bit via Walsh-Hadamard rotation + Lloyd-Max quantization. Model weights are **unchanged** — only the KV cache storage format changes.
 
+## Docker Image
+
 ```bash
-# Enable TurboQuant
+# Pull pre-built image from GHCR
+docker pull ghcr.io/bjk110/vllm-spark:turboquant
+
+# Or build from source
+docker buildx build -f Dockerfile.gemma4 -t vllm-spark:turboquant --load .
+```
+
+### Quick Start
+
+```bash
+cp models/nemotron-120b-nvfp4-tq.env .env
+sed -i 's|\[model_path\]|/path/to/models|' .env
+docker compose --profile head up -d
+```
+
+Enable TurboQuant by adding `--kv-cache-dtype turboquant` to `VLLM_EXTRA_ARGS`:
+
+```bash
 VLLM_EXTRA_ARGS=--enable-chunked-prefill --kv-cache-dtype turboquant
 ```
+
+## Software Stack
+
+| Component | Version |
+|---|---|
+| Docker Image | `ghcr.io/bjk110/vllm-spark:turboquant` |
+| Base Image | NGC PyTorch 26.03 |
+| vLLM | 0.19.1 (commit a7d79fa, source build) |
+| CUDA | 13.2 (native) |
+| PyTorch | 2.11.0a0 |
+| FlashInfer | v0.6.7 (SM121 source build) |
+| Transformers | 5.5.0 |
+| TurboQuant WPH ext | AOT SM121 (BLOCK_D=128/256, 2/4/8 warps) |
 
 ## Test Environment
 
@@ -19,11 +51,17 @@ VLLM_EXTRA_ARGS=--enable-chunked-prefill --kv-cache-dtype turboquant
 |---|---|
 | GPU | NVIDIA GB10 (Blackwell, SM121) x2 DGX Spark |
 | Memory | 121 GB unified (GPU+CPU shared) |
-| vLLM | 0.19.1 (commit a7d79fa, source build) |
-| Base Image | NGC PyTorch 26.03 (CUDA 13.2, PyTorch 2.11) |
-| Test Model | RedHatAI/Qwen3.5-122B-A10B-NVFP4, TP1 |
-| Model Config | head_dim=256, num_kv_heads=2, 48 layers, hybrid (attention+Mamba+GDN) |
 | Benchmark | [llama-benchy](https://github.com/eugr/llama-benchy) v0.3.4, pp2048 tg32 |
+
+### Tested Models
+
+| Model | Params | Quantization | head_dim | block_d | Architecture | Status |
+|---|---|---|---|---|---|---|
+| RedHatAI/Qwen3.5-122B-A10B-NVFP4 | 122B MoE | NVFP4 | 256 | 256 | Hybrid (Attn+Mamba+GDN) | **Verified** |
+| NVIDIA/Nemotron-3-Super-120B-A12B-NVFP4 | 120B MoE | NVFP4 | 128 | 128 | Hybrid (Attn+Mamba+MoE) | **Verified** |
+| google/gemma-4-31B-it | 31B Dense | BF16 | 256+512 | — | Heterogeneous head_dim | **Blocked** (vLLM forces TRITON_ATTN) |
+| Models with head_dim=128 | — | Any | 128 | 128 | Any | Verified (unit tests) |
+| Models with head_dim=256 | — | Any | 256 | 256 | Any | Verified (unit tests) |
 
 ## Optimization History
 
@@ -120,7 +158,15 @@ Warp-shuffle butterfly — register-only, no shared memory, no barriers.
 | TTFT c=1 | 984 ms | 1,068 ms | 1,046 ms |
 | KV cache | 155K tokens | 405K tokens | 405K tokens |
 
-**Korean QA benchmark**: 12/12 pass (censorship, reading comprehension, math, hangul analysis, roleplay, common sense). No quality degradation observed.
+#### Nemotron-H 120B NVFP4 (TP1, head_dim=128)
+
+| Metric | TQ Triton | TQ WPH v2 |
+|---|---|---|
+| tg32 c=1 | 15.1 t/s | **15.3 t/s** |
+| KV cache | 1,548K tokens | 1,423K tokens |
+| TTFT c=1 | 1,656 ms | 1,614 ms |
+
+**Korean QA benchmark** (Qwen3.5): 12/12 pass (censorship, reading comprehension, math, hangul analysis, roleplay, common sense). No quality degradation observed.
 
 ### Regression Tests
 

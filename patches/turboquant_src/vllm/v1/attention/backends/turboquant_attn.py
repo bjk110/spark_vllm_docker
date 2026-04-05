@@ -243,6 +243,20 @@ class TurboQuantAttentionImpl(AttentionImpl):
         if _tq_profile and torch.cuda.is_current_stream_capturing():
             _tq_profile = False
 
+        # Model-level capability summary (once, after all layers registered)
+        if hasattr(layer, "_tq_k_state") and \
+                hasattr(TurboQuantAttentionImpl, "_model_cap") and \
+                not hasattr(TurboQuantAttentionImpl, "_model_cap_logged"):
+            cap = TurboQuantAttentionImpl._model_cap
+            if cap["total"] > 0:
+                TurboQuantAttentionImpl._model_cap_logged = True
+                logger.info(
+                    "[TQ-MODEL] %d layers: %d WPH + %d Triton | "
+                    "block_d=%s",
+                    cap["total"], cap["wph"], cap["triton"],
+                    sorted(cap["block_d_set"]),
+                )
+
         if hasattr(layer, "_tq_k_state"):
             block_size = key_cache.shape[1]
             max_blocks_needed = (
@@ -534,23 +548,41 @@ class TurboQuantAttentionImpl(AttentionImpl):
         packed_bytes = math.ceil(normal_size * 4 / 8)
 
         # ── Capability-based backend dispatch ──
-        # WPH is used only when:
-        #   1. TQ_CUDA_WPH=1 (global opt-in)
-        #   2. Both K and V states support WPH (block_d in {128,256})
-        #   3. AOT extension is available
         wph_requested = os.environ.get("TQ_CUDA_WPH", "0") in ("1", "true")
         wph_capable = k_state.wph_supported and v_state.wph_supported
+        use_wph = wph_requested and wph_capable
 
-        # Log capability summary once per layer
+        # Per-layer capability log (once) + model summary accumulation
         if not hasattr(self, "_cap_logged"):
             self._cap_logged = True
+            dispatch = "WPH" if use_wph else "Triton"
+            reason = ""
+            if wph_requested and not wph_capable:
+                reasons = []
+                if not k_state.wph_supported:
+                    reasons.append(f"K:{k_state.wph_disabled_reason}")
+                if not v_state.wph_supported:
+                    reasons.append(f"V:{v_state.wph_disabled_reason}")
+                reason = f" ({', '.join(reasons)})"
             logger.info(
-                "[TQ-CAP] layer k: block_d=%d wph=%s | "
-                "v: block_d=%d wph=%s | dispatch=%s",
-                k_state.block_d, k_state.wph_supported,
-                v_state.block_d, v_state.wph_supported,
-                "WPH" if (wph_requested and wph_capable) else "Triton",
+                "[TQ-CAP] L%d: head=%d normal=%d outliers=%d block_d=%d "
+                "→ %s%s",
+                k_state.layer_idx, head_size, normal_size,
+                n_outliers, k_state.block_d, dispatch, reason,
             )
+            # Accumulate for model-level summary
+            if not hasattr(TurboQuantAttentionImpl, "_model_cap"):
+                TurboQuantAttentionImpl._model_cap = {
+                    "total": 0, "wph": 0, "triton": 0,
+                    "block_d_set": set(),
+                }
+            cap = TurboQuantAttentionImpl._model_cap
+            cap["total"] += 1
+            cap["block_d_set"].add(k_state.block_d)
+            if use_wph:
+                cap["wph"] += 1
+            else:
+                cap["triton"] += 1
 
         if wph_requested and wph_capable:
             try:

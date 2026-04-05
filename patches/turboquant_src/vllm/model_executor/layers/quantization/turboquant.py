@@ -372,35 +372,48 @@ class TurboQuantState:
                 self.boundaries = (self.codebook[:-1] + self.codebook[1:]) / 2.0
                 self.hi_bits = None
 
-    # ── Layer capability (computed once at init, used at decode) ──
+        # Freeze capability after all state is initialized
+        self._init_capability()
 
-    @property
-    def block_d(self) -> int:
-        """BLOCK_D for this layer = next_power_of_2(normal_size)."""
-        return self._hadamard_d if hasattr(self, "_hadamard_d") else next_power_of_2(self.normal_size)
+    # ── Layer capability (fixed at init, no recomputation in hot path) ──
 
-    @property
-    def wph_supported(self) -> bool:
-        """Whether CUDA WPH kernel supports this layer's dimensions."""
-        bd = self.block_d
-        return bd in (128, 256) and not self.config.lite_mode
+    # Supported BLOCK_D values for CUDA WPH kernel
+    _WPH_SUPPORTED_BLOCK_D = frozenset({128, 256})
 
-    @property
-    def n_outliers(self) -> int:
-        return self.head_size - self.normal_size
+    def _init_capability(self) -> None:
+        """Compute and freeze layer capability. Called once at end of __init__."""
+        self.block_d: int = (
+            self._hadamard_d
+            if hasattr(self, "_hadamard_d")
+            else next_power_of_2(self.normal_size)
+        )
+        self.n_outliers: int = self.head_size - self.normal_size
 
-    def capability_summary(self) -> dict:
-        """Return a dict summarizing this layer's TurboQuant capability."""
+        # WPH gating: check all conditions, record reason if disabled
+        self.wph_supported: bool = True
+        self.wph_disabled_reason: str = ""
+
+        if self.config.lite_mode:
+            self.wph_supported = False
+            self.wph_disabled_reason = "lite_mode"
+        elif self.block_d not in self._WPH_SUPPORTED_BLOCK_D:
+            self.wph_supported = False
+            self.wph_disabled_reason = (
+                f"unsupported_block_d={self.block_d} "
+                f"(need {sorted(self._WPH_SUPPORTED_BLOCK_D)})"
+            )
+
+    def capability_dict(self) -> dict:
+        """Compact capability dict for logging."""
         return {
-            "layer_idx": self.layer_idx,
-            "head_size": self.head_size,
-            "normal_size": self.normal_size,
-            "n_outliers": self.n_outliers,
+            "layer": self.layer_idx,
+            "head": self.head_size,
+            "normal": self.normal_size,
+            "outliers": self.n_outliers,
             "block_d": self.block_d,
-            "wph_supported": self.wph_supported,
-            "use_hadamard": getattr(self, "use_hadamard", False),
-            "lite_mode": self.config.lite_mode,
-            "bit_width": self.config.bit_width,
+            "wph": self.wph_supported,
+            "reason": self.wph_disabled_reason or "ok",
+            "bits": self.config.bit_width,
         }
 
     def _init_rotation(self, seed: int, device: torch.device) -> None:
