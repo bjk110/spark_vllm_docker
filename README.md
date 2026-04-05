@@ -58,7 +58,7 @@ VLLM_EXTRA_ARGS=--enable-chunked-prefill --kv-cache-dtype turboquant
 | Model | Params | Quantization | head_dim | block_d | Architecture | Status |
 |---|---|---|---|---|---|---|
 | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | 122B MoE | NVFP4 | 256 | 256 | Hybrid (Attn+Mamba+GDN) | **Verified** |
-| NVIDIA/Nemotron-3-Super-120B-A12B-NVFP4 | 120B MoE | NVFP4 | 128 | 128 | Hybrid (Attn+Mamba+MoE) | **Verified** |
+| NVIDIA/Nemotron-3-Super-120B-A12B-NVFP4 | 120B MoE | NVFP4 | 128 | 128 | Hybrid (Attn+Mamba+MoE) | **Verified** (eager-only, `--enforce-eager` required for c>=2) |
 | google/gemma-4-31B-it | 31B Dense | BF16 | 256+512 | — | Heterogeneous head_dim | **Blocked** (vLLM forces TRITON_ATTN) |
 | Models with head_dim=128 | — | Any | 128 | 128 | Any | Verified (unit tests) |
 | Models with head_dim=256 | — | Any | 256 | 256 | Any | Verified (unit tests) |
@@ -101,7 +101,7 @@ Eliminated `cache[flat_bt]` full gather (~34MB/layer memcpy).
 | Optimization | Description |
 |---|---|
 | Gather-free Triton kernel | `_fused_paged_decode_direct_kernel` reads paged cache via `cache_ptr + stride` |
-| Norms-only gather | 2 bytes/slot instead of full slot_bytes (64x smaller) |
+| Norm in-kernel read | Norm bytes read directly inside Triton kernel via scratch type-pun (no Python gather) |
 | `max_seq_len` early exit | Skips Hadamard butterfly for padding slots (block_size=4176 >> actual ~2080) |
 | `_safe_view_fp16` | Handles odd `norm_offset=93` safely (byte-level assembly for odd offsets) |
 
@@ -167,9 +167,39 @@ Warp-shuffle butterfly — register-only, no shared memory, no barriers.
 | TTFT c=1 | 1,628 ms | 1,631 ms | ~0% |
 | KV cache | 1,548K tokens | 1,423K tokens | — |
 
-Note: c>=2 benchmarks are unstable on this model due to 88-layer decode latency causing llama-benchy timeouts. c=1 results are stable and reproducible.
+Note: Nemotron requires `--enforce-eager` for TurboQuant (see Phase 6). c=1 results above are with CUDA graph enabled (single request is stable).
 
 **Korean QA benchmark** (Qwen3.5): 12/12 pass (censorship, reading comprehension, math, hangul analysis, roleplay, common sense). No quality degradation observed.
+
+### Phase 6: Nemotron Cross-Model Validation + CUDA Graph Debugging
+
+Tested TurboQuant on NVIDIA Nemotron-H 120B-A12B-NVFP4 (head_dim=128, 88 layers, hybrid Mamba+MoE, `block_size=8320`).
+
+| Issue | Finding |
+|---|---|
+| WPH int32 block_table | Nemotron uses int32 block tables; added `.to(int64)` cast |
+| c=1 single request | Both Triton and WPH work correctly |
+| c>=2 concurrent | `cudaErrorIllegalAddress` during CUDA graph replay |
+
+**CUDA graph crash root cause analysis**:
+
+| Condition | c=1 | c=2 | Result |
+|---|---|---|---|
+| bf16 KV (no TurboQuant) | ✅ | ✅ | Graph-safe |
+| TurboQuant + CUDA graph | ✅ | ❌ | `cudaErrorIllegalAddress` |
+| TurboQuant + `--enforce-eager` | ✅ | ✅ | Stable |
+
+Key findings:
+- Crash is NOT WPH-specific (Triton also crashes)
+- Crash is NOT caused by norms Python gather (removed, still crashes)
+- Crash occurs during `cudagraph.replay()`, not during Python code
+- `block_table.reshape(-1)` produces `entries` that changes between graph capture sizes
+- Nemotron's `block_size=8320` (vs Qwen3.5's 4176) amplifies intermediate tensor sizes
+- Graph capture records fixed-size kernel launches; replay with different batch geometry overflows
+
+**Workaround**: Nemotron preset uses `--enforce-eager` to bypass CUDA graph entirely.
+
+**Qwen3.5 is unaffected** because its smaller `block_size=4176` keeps intermediate tensors within graph-captured allocation sizes for `cudagraph_capture_sizes=[1,2,4,8]`.
 
 ### Regression Tests
 
