@@ -4,7 +4,7 @@
 #
 # NGC 26.03 (CUDA 13.2, PyTorch 2.11) +
 # vLLM main (Gemma 4 support, source build, _C_stable_libtorch incl.) +
-# FlashInfer 0.6.7 (source build for SM121) +
+# FlashInfer 0.6.7.post3 (source build for SM121, Blackwell deadlock fix, symlink race fix) +
 # transformers 5.5.0 (required for Gemma 4)
 #
 # Build:
@@ -21,7 +21,7 @@ ARG BUILD_JOBS=16
 
 # Pinned versions — change these to update
 ARG VLLM_COMMIT=a7d79fa
-ARG FLASHINFER_REF=v0.6.7
+ARG FLASHINFER_REF=v0.6.7.post3
 ARG TRANSFORMERS_VER=5.5.0
 ARG TORCH_CUDA_ARCH="12.1a"
 

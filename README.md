@@ -22,7 +22,7 @@ Upgraded from v018 to vLLM 0.19.1 with Gemma 4 support, async scheduling, and CU
 |---|---|
 | Base Image | NGC PyTorch 26.03 |
 | vLLM | 0.19.1 (main a7d79fa, source build) |
-| FlashInfer | v0.6.7 (CUTLASS 4.4.2, SM121 source build) |
+| FlashInfer | v0.6.7.post3 (CUTLASS 4.4.2, SM121 source build) |
 | PyTorch | 2.11.0a0 |
 | CUDA | 13.2 (native) |
 | NCCL | 2.29.7 |
@@ -81,7 +81,7 @@ Build arguments:
 | Argument | Default | Description |
 |---|---|---|
 | `BUILD_JOBS` | 16 | Parallel build jobs |
-| `FLASHINFER_REF` | v0.6.7 | FlashInfer git ref |
+| `FLASHINFER_REF` | v0.6.7.post3 | FlashInfer git ref |
 | `VLLM_COMMIT` | a7d79fa | vLLM source commit |
 | `TORCH_CUDA_ARCH` | 12.1a | Target CUDA arch (Blackwell) |
 

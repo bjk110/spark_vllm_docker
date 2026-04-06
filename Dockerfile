@@ -6,7 +6,7 @@
 #   NGC 26.01 base (PyTorch 2.10 — vLLM 0.18.x wheel compatible) +
 #   CUDA 13.2 compat layer (cuBLASLt NVFP4 3x perf) +
 #   vLLM 0.18.1rc1 cu130 pre-built wheel +
-#   FlashInfer v0.6.7 (CUTLASS 4.4.2, SM121 NVFP4 fix) +
+#   FlashInfer v0.6.7.post3 (CUTLASS 4.4.2, SM121 NVFP4 fix, Blackwell deadlock fix) +
 #   PR #38423 NVFP4 DGX Spark patches
 #
 # Usage:
@@ -54,8 +54,8 @@ ENV CMAKE_CUDA_COMPILER_LAUNCHER=ccache
 RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     uv pip install nvidia-nvshmem-cu13 "apache-tvm-ffi<0.2"
 
-# FlashInfer v0.6.7 (CUTLASS 4.4.2 — SM121 NVFP4 fix)
-ARG FLASHINFER_REF=v0.6.7
+# FlashInfer v0.6.7.post3 (CUTLASS 4.4.2 — SM121 NVFP4 fix, Blackwell deadlock fix)
+ARG FLASHINFER_REF=v0.6.7.post3
 ARG FLASHINFER_REPO=https://github.com/flashinfer-ai/flashinfer.git
 
 RUN --mount=type=cache,id=git-flashinfer,target=/git-cache/flashinfer \
@@ -142,7 +142,7 @@ RUN mkdir -p tiktoken_encodings && \
       "https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken"
 ENV TIKTOKEN_ENCODINGS_BASE=${VLLM_BASE_DIR}/tiktoken_encodings
 
-# ---- Install FlashInfer v0.6.7 wheels from builder ----
+# ---- Install FlashInfer wheels from builder ----
 RUN --mount=type=bind,from=flashinfer-builder,source=/workspace/wheels,target=/mount/wheels \
     --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     uv pip install /mount/wheels/*.whl

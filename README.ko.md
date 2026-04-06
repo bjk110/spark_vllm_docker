@@ -22,7 +22,7 @@ v018에서 vLLM 0.19.1로 업그레이드하여 Gemma 4 지원, 비동기 스케
 |---|---|
 | 베이스 이미지 | NGC PyTorch 26.03 |
 | vLLM | 0.19.1 (main a7d79fa, 소스 빌드) |
-| FlashInfer | v0.6.7 (CUTLASS 4.4.2, SM121 소스 빌드) |
+| FlashInfer | v0.6.7.post3 (CUTLASS 4.4.2, SM121 소스 빌드) |
 | PyTorch | 2.11.0a0 |
 | CUDA | 13.2 (네이티브) |
 | NCCL | 2.29.7 |
@@ -81,7 +81,7 @@ docker buildx build -f Dockerfile.gemma4 \
 | 인자 | 기본값 | 설명 |
 |---|---|---|
 | `BUILD_JOBS` | 16 | 병렬 빌드 작업 수 |
-| `FLASHINFER_REF` | v0.6.7 | FlashInfer git ref |
+| `FLASHINFER_REF` | v0.6.7.post3 | FlashInfer git ref |
 | `VLLM_COMMIT` | a7d79fa | vLLM 소스 커밋 |
 | `TORCH_CUDA_ARCH` | 12.1a | 타겟 CUDA 아키텍처 (Blackwell) |
 
