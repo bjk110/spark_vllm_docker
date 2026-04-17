@@ -189,7 +189,7 @@ All configuration is via `.env`. See [`.env.example`](.env.example) for full doc
 
 | Variable | Description | Example |
 |---|---|---|
-| `VLLM_IMAGE` | Pre-built Docker image | `vllm-spark:v020-ngc2603` |
+| `VLLM_IMAGE` | Docker image (local or GHCR) | `ghcr.io/bjk110/vllm-spark:v020-ngc2603` |
 | `MODEL_PATH` | Host path to model weights | `/home/user/Models/Qwen/...` |
 | `MODEL_CONTAINER_PATH` | Container mount point | `/models/Qwen3.5-397B-...` |
 | `SERVED_MODEL_NAME` | API model name | `Qwen/Qwen3.5-397B-...` |
