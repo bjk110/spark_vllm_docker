@@ -273,6 +273,30 @@ sudo sysctl -w vm.swappiness=10
 echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 ```
 
+## Branch structure
+
+This repository is currently maintained with two primary branches:
+
+- **`main`**: the current base branch
+  Contains the refreshed base stack, including the updated vLLM / FlashInfer / Transformers / container baseline.
+
+- **`feat/turboquant-rebase-20260417`**: the active TurboQuant branch
+  Used for TurboQuant-specific integration, validation, and follow-up experiments on top of the current base branch.
+
+### Archived branch history
+
+Older experimental branches have been cleaned up after their contents were either merged into `main` or superseded by the current TurboQuant rebase work.
+
+The legacy TurboQuant branch is preserved as a tag:
+
+- **`archive/feat-turboquant`**
+
+If needed, it can be restored with:
+
+```bash
+git checkout -b feat/turboquant archive/feat-turboquant
+```
+
 ## License
 
 Configuration files are provided as-is for reference. Models are subject to their respective licenses ([Qwen License](https://huggingface.co/Qwen/Qwen3.5-397B-A17B)).
