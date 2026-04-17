@@ -2,10 +2,10 @@
 """
 Patch vLLM for PyTorch 2.11 (NGC 26.03) compatibility.
 
-Two fixes:
-1. Remove hoist=True from register_opaque_type() — kwarg removed in PyTorch 2.11
-2. Fix __fx_repr__ return type: {ModuleName} (set) → {"ModuleName": ModuleName} (dict)
-   PyTorch 2.11's get_opaque_obj_repr() expects dict[str, type], not set
+Fix: Remove hoist=True from register_opaque_type() — kwarg removed in PyTorch 2.11.
+
+Note: The __fx_repr__ set→dict fix is no longer needed (fixed upstream).
+Note: The class was renamed ModuleName → LayerName upstream (978a4462+).
 """
 import glob
 import sys
@@ -31,28 +31,16 @@ with open(target) as f:
 
 changes = 0
 
-# Fix 1: hoist=True
+# Fix: hoist=True — removed in PyTorch 2.11's register_opaque_type()
 if ", hoist=True" in code:
     code = code.replace(", hoist=True", "")
     changes += 1
-    print(f"[fix1] Removed hoist=True")
+    print("[fix] Removed hoist=True from register_opaque_type()")
 elif "hoist=True" not in code:
-    print(f"[fix1] hoist=True already absent — OK")
+    print("[fix] hoist=True already absent — OK")
 else:
-    print(f"FATAL: hoist=True in unexpected position")
+    print("FATAL: hoist=True in unexpected position")
     sys.exit(1)
-
-# Fix 2: __fx_repr__ set → dict
-# Before: return (f"ModuleName({self.value!r})", {ModuleName})
-# After:  return (f"ModuleName({self.value!r})", {"ModuleName": ModuleName})
-if "{ModuleName}" in code:
-    code = code.replace("{ModuleName}", '{"ModuleName": ModuleName}')
-    changes += 1
-    print(f"[fix2] Fixed __fx_repr__ set → dict")
-elif '{"ModuleName": ModuleName}' in code:
-    print(f"[fix2] Already patched — OK")
-else:
-    print(f"WARNING: {'{ModuleName}'} pattern not found — may need manual check")
 
 if changes > 0:
     with open(target, "w") as f:
@@ -65,5 +53,4 @@ else:
 with open(target) as f:
     final = f.read()
 assert "hoist=True" not in final, "FATAL: hoist=True still present"
-assert '{ModuleName}' not in final or '{"ModuleName": ModuleName}' in final, "FATAL: set pattern still present"
-print("VERIFIED: All patches applied correctly")
+print("VERIFIED: hoist=True patch applied correctly")

@@ -14,9 +14,25 @@ Supports multiple models (Qwen3.5, Gemma 4) with different quantizations via `.e
 
 ## Software Stack
 
-### v019-ngc2603 (latest, NGC 26.03)
+### v020-ngc2603 (latest, NGC 26.03)
 
-Upgraded from v018 to vLLM 0.19.1 with Gemma 4 support, async scheduling, and CUDA 13.2 `cuMemcpyBatchAsync` compatibility patch. Transformers 5.5.0 enables native Gemma 4 architecture (MoE + Dense, multimodal, thinking mode). TTFT improved ~2x over v018 thanks to vLLM V1 engine optimizations. All Qwen3.5 quantization formats (FP8, NVFP4, INT4) remain fully supported.
+Major update: vLLM main with **upstream TurboQuant KV cache compression** (PR #38479), FlashInfer v0.6.8 with SM121/GB10 optimizations (NVFP4 group GEMM, tile filtering, FP4 CUTLASS). Three upstream patches removed (cuMemcpyBatch, RoPE fix, PR #38423 — all merged). TurboQuant enables 2-4x KV cache capacity via `--kv-cache-dtype turboquant_k8v4`.
+
+| Component | Version |
+|---|---|
+| Base Image | NGC PyTorch 26.03 |
+| vLLM | 0.20.0.dev (main 978a4462, source build, TurboQuant included) |
+| FlashInfer | v0.6.8 (SM121 tile filtering, NVFP4 group GEMM, source build) |
+| PyTorch | 2.11.0a0 |
+| CUDA | 13.2 (native) |
+| NCCL | 2.29.7 |
+| Python | 3.12 |
+| Transformers | 5.5.4 |
+| `_C_stable_libtorch` | Included (NVFP4/FP8/CUTLASS full ops) |
+
+### v019-ngc2603 (previous, NGC 26.03)
+
+vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT improved ~2x over v018. Superseded by v020-ngc2603 which adds TurboQuant and FlashInfer v0.6.8.
 
 | Component | Version |
 |---|---|
@@ -25,37 +41,21 @@ Upgraded from v018 to vLLM 0.19.1 with Gemma 4 support, async scheduling, and CU
 | FlashInfer | v0.6.7.post3 (CUTLASS 4.4.2, SM121 source build) |
 | PyTorch | 2.11.0a0 |
 | CUDA | 13.2 (native) |
-| NCCL | 2.29.7 |
-| Python | 3.12 |
 | Transformers | 5.5.0 |
-| `_C_stable_libtorch` | Included (NVFP4/FP8/CUTLASS full ops) |
-
-### v018-ngc2603 (previous, NGC 26.03)
-
-First NGC 26.03 source build. Native CUDA 13.2 eliminated the compat layer overhead from 26.01, yielding **+23% KV cache**. PyTorch 2.11 enabled `_C_stable_libtorch` compilation — all NVFP4/FP8/CUTLASS ops built in a single image. Superseded by v019-ngc2603 which adds Gemma 4 support and improved TTFT.
-
-| Component | Version |
-|---|---|
-| Base Image | NGC PyTorch 26.03 |
-| vLLM | 0.18.3 (main c494977, source build) |
-| FlashInfer | v0.6.7 (SM121 source build) |
-| PyTorch | 2.11.0a0 |
-| CUDA | 13.2 (native) |
-| Transformers | 5.2.0 |
 
 ## Supported Models
 
 | Preset | Model | Quantization | TP | Image |
 |---|---|---|---|---|
-| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | 1 | v019-ngc2603 |
-| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (multimodal) | 2 | v019-ngc2603 |
-| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (pre-quantized) | 1 | v019-ngc2603 |
-| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | 1 | v019-ngc2603 |
-| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only, abliterated) | 2 | v019-ngc2603 |
-| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (text-only, abliterated) | 1 | v019-ngc2603 |
-| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v019-ngc2603 |
-| `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 1 | v019-ngc2603 |
-| `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 2 | v019-ngc2603 |
+| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | 1 | v020-ngc2603 |
+| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (multimodal) | 2 | v020-ngc2603 |
+| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (pre-quantized) | 1 | v020-ngc2603 |
+| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | 1 | v020-ngc2603 |
+| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only, abliterated) | 2 | v020-ngc2603 |
+| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (text-only, abliterated) | 1 | v020-ngc2603 |
+| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v020-ngc2603 |
+| `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 1 | v020-ngc2603 |
+| `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 2 | v020-ngc2603 |
 
 ## Quick Start
 
@@ -64,16 +64,16 @@ First NGC 26.03 source build. Native CUDA 13.2 eliminated the compat layer overh
 #### Option A: Pull pre-built image from GHCR
 
 ```bash
-# NGC 26.03 + vLLM 0.19.1 (Gemma 4 + Qwen3.5, all quantizations)
-docker pull ghcr.io/bjk110/vllm-spark:v019-ngc2603
+# NGC 26.03 + vLLM 0.20.0.dev (TurboQuant + Gemma 4 + Qwen3.5)
+docker pull ghcr.io/bjk110/vllm-spark:v020-ngc2603
 ```
 
 #### Option B: Build from source
 
 ```bash
-# NGC 26.03 source build (vLLM 0.19.1)
+# NGC 26.03 source build (vLLM main, TurboQuant included)
 docker buildx build -f Dockerfile.gemma4 \
-  -t vllm-spark:v019-ngc2603 --load .
+  -t vllm-spark:v020-ngc2603 --load .
 ```
 
 Build arguments:
@@ -81,8 +81,8 @@ Build arguments:
 | Argument | Default | Description |
 |---|---|---|
 | `BUILD_JOBS` | 16 | Parallel build jobs |
-| `FLASHINFER_REF` | v0.6.7.post3 | FlashInfer git ref |
-| `VLLM_COMMIT` | a7d79fa | vLLM source commit |
+| `FLASHINFER_REF` | v0.6.8 | FlashInfer git ref |
+| `VLLM_COMMIT` | 978a4462 | vLLM source commit |
 | `TORCH_CUDA_ARCH` | 12.1a | Target CUDA arch (Blackwell) |
 
 ### 1. Choose a Model Preset
@@ -156,8 +156,8 @@ vllm-spark/
 ├── docker-compose.yml          # Unified compose (head + worker profiles)
 ├── entrypoint.sh               # Smart entrypoint (TP1/TP2 auto-routing)
 ├── .env.example                # Full configuration template
-├── Dockerfile.gemma4           # v019-ngc2603 (NGC 26.03, latest)
-├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, previous)
+├── Dockerfile.gemma4           # v020-ngc2603 (NGC 26.03, latest)
+├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, archived)
 ├── models/                     # Validated model presets
 │   ├── gemma4-26b-a4b.env      # Gemma 4 26B MoE (TP1)
 │   ├── redhatai-122b-nvfp4.env # RedHatAI NVFP4 (TP1)
@@ -173,7 +173,7 @@ vllm-spark/
 │   ├── results_wangzhang-fp8-tp2.json
 │   └── results_wangzhang-nvfp4-tp1.json
 ├── patches/                    # SM121 / PyTorch 2.11 compatibility
-│   ├── fix_pytorch211_compat.py  # hoist + __fx_repr__ fix
+│   ├── fix_pytorch211_compat.py  # hoist=True removal (PyTorch 2.11)
 │   └── ...
 └── scripts/
     ├── run-cluster-node.sh     # Manual Ray cluster bootstrap
@@ -189,7 +189,7 @@ All configuration is via `.env`. See [`.env.example`](.env.example) for full doc
 
 | Variable | Description | Example |
 |---|---|---|
-| `VLLM_IMAGE` | Pre-built Docker image | `vllm-spark:v019-ngc2603` |
+| `VLLM_IMAGE` | Pre-built Docker image | `vllm-spark:v020-ngc2603` |
 | `MODEL_PATH` | Host path to model weights | `/home/user/Models/Qwen/...` |
 | `MODEL_CONTAINER_PATH` | Container mount point | `/models/Qwen3.5-397B-...` |
 | `SERVED_MODEL_NAME` | API model name | `Qwen/Qwen3.5-397B-...` |
@@ -201,15 +201,17 @@ All configuration is via `.env`. See [`.env.example`](.env.example) for full doc
 
 The Dockerfile applies SM121 (Blackwell) compatibility patches:
 
-| Patch | Purpose |
-|---|---|
-| `fix_cuda13_memcpy_batch` | `cuMemcpyBatchAsync` API fix for CUDA 13.0+ |
-| `fastsafetensors_natural_sort` | Multi-node weight loading order fix |
-| `qwen3_5_moe_rope_fix` | RoPE validation fix for transformers 5.x |
-| `aot_cache_fix` | torch.fx.Node pickling fix for AOT cache |
-| `nogds_force` | Force `nogds=True` (GB10 has no GDS support) |
-| `apply_sm121_patches` | `is_blackwell_class`, NVFP4 split, TRITON_PTXAS |
-| `moe_config_e256/e512` | GB10-tuned MoE kernel configs |
+| Patch | Purpose | Status |
+|---|---|---|
+| `fix_pytorch211_compat` | `hoist=True` removal for PyTorch 2.11 | Active |
+| `fastsafetensors_natural_sort` | Multi-node weight loading order fix | Active |
+| `aot_cache_fix` | torch.fx.Node pickling fix for AOT cache | Active |
+| `nogds_force` | Force `nogds=True` (GB10 has no GDS support) | Active |
+| `apply_sm121_patches` | `is_blackwell_class`, NVFP4 split, TRITON_PTXAS | Active |
+| `moe_config_e256/e512` | GB10-tuned MoE kernel configs | Active |
+| ~~`fix_cuda13_memcpy_batch`~~ | `cuMemcpyBatchAsync` API fix | Removed (upstream) |
+| ~~`qwen3_5_moe_rope_fix`~~ | RoPE validation fix | Removed (upstream) |
+| ~~`pr38423_nvfp4_spark`~~ | NVFP4 DGX Spark fixes | Removed (upstream) |
 
 ## Benchmark Results
 
