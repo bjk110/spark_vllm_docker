@@ -189,7 +189,7 @@ vllm-spark/
 
 | 변수 | 설명 | 예시 |
 |---|---|---|
-| `VLLM_IMAGE` | 사전 빌드된 Docker 이미지 | `vllm-spark:v020-ngc2603` |
+| `VLLM_IMAGE` | Docker 이미지 (로컬 또는 GHCR) | `ghcr.io/bjk110/vllm-spark:v020-ngc2603` |
 | `MODEL_PATH` | 호스트의 모델 가중치 경로 | `/home/user/Models/Qwen/...` |
 | `MODEL_CONTAINER_PATH` | 컨테이너 내 마운트 경로 | `/models/Qwen3.5-397B-...` |
 | `SERVED_MODEL_NAME` | API 모델 이름 | `Qwen/Qwen3.5-397B-...` |
