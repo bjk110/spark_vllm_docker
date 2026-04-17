@@ -268,6 +268,73 @@ Dockerfile에서 적용하는 SM121 (Blackwell) 호환성 패치:
 | 4 | 60~67 | 85~88 |
 | 8 | 59~91 | 152~160 |
 
+### 397B INT4 TP2 — TurboQuant KV 캐시 모드 비교
+
+동일 397B INT4 AutoRound 모델, `v020-tq` 이미지, TP=2 (spark01+spark02, 200Gbps RoCE), `max_model_len=32768`, `gpu_memory_utilization=0.90`. `--kv-cache-dtype` 만 변경. 측정일 2026-04-17.
+
+#### 용량·품질 프로파일
+
+| 모드 | 압축비 | KV tokens | Max conc @ 32K | PPL vs bf16* |
+|---|---:|---:|---:|---:|
+| `turboquant_3bit_nc` | 4.9x | 75,488 | 3.00x | +20.6% |
+| `turboquant_k3v4_nc` | 3.5x | 64,960 | 3.00x | +10.6% |
+| `turboquant_4bit_nc` | 3.8x | 57,120 | 2.82x | +2.7% |
+| `turboquant_k8v4`    | 2.6x | 38,528 | 2.50x | +1.2% |
+
+*PPL 수치는 upstream `TurboQuantConfig` docstring 기준값.
+
+참고: `k3v4_nc` 는 `4bit_nc` 에 모든 축에서 열세 — 압축비(3.8x > 3.5x)·품질(+2.7% < +10.6%) 둘 다 `4bit_nc` 가 우세. 3-bit 키의 품질 손실이 너무 큼.
+
+#### Prefill 처리량 — `t/s (total)`
+
+| 모드 | pp512 c1 | pp1024 c1 | pp2048 c1 | pp2048 c4 |
+|---|---:|---:|---:|---:|
+| 3bit_nc | 916.1 | 1,313.4 | 1,673.4 | 1,928.9 |
+| k3v4_nc | 898.0 | 1,304.1 | 1,663.2 | 2,013.1 |
+| 4bit_nc | 873.8 | 1,300.7 | 1,642.7 | 1,930.8 |
+| k8v4    | 901.8 | 1,295.4 | 1,662.7 | 1,931.7 |
+
+전체 표: `benchmarks/llama-benchy/results_397b-int4-tq-*-c1to4.md`
+
+#### Decode 처리량 — tg128 `t/s (total)` / peak
+
+| 모드 | c1 | c2 | c3 | c4 peak |
+|---|---:|---:|---:|---:|
+| 3bit_nc | 26.7 | 42.1 | 50.1 | 72.0 |
+| k3v4_nc | 26.8 | 44.4 | 55.4 | 80.0 |
+| 4bit_nc | 26.6 | 44.7 | 55.2 | **84.0** |
+| k8v4    | 26.7 | 45.0 | 56.1 | 78.7 |
+
+#### 분석
+
+- **단일 요청(c1) decode 처리량은 모드 무관 동일** (26.6-26.8 t/s). 단일 스트림은 MoE matmul compute-bound 라 KV 메모리 대역폭 영향 없음.
+- **고부하(c4)에서 차이 발생**: `4bit_nc` 가 tg128 c4 peak 84 t/s 로 최고 — `3bit_nc` 대비 **+17%**. 4-bit value dequant 의 arithmetic intensity 가 3-bit 보다 효율적.
+- **KV 용량과 처리량은 비례하지 않음**: `3bit_nc` 는 `k8v4` 대비 KV 용량 2배지만 peak 처리량은 오히려 낮음. Dequant 비용이 지배적.
+- **Prefill 은 모드 무관 거의 평행** (±3%). 이 모델은 prefill 전체 compute 에서 attention R/W 비중이 작음.
+
+#### 한국어 QA 품질 (12 문항, mt=30000, thinking 제거)
+
+각 답변의 사실 정확성 기준 채점 (O=정답, △=부분정답, X=오답). 상세 답변은 `benchmarks/results/*_Qwen3.5-397B-A17B-int4-AutoRound_mt30000_*.txt` 참조.
+
+| 모드 | O | △ | X | Timeout | 정답률 |
+|---|---:|---:|---:|---:|---:|
+| `3bit_nc` | 7 | 2 | 3 | 0 | **66.7%** |
+| `k3v4_nc` | 8 | 3 | 1 | 0 | 79.2% |
+| `4bit_nc` | 8 | 3 | 1 | 0 | 79.2% |
+| `k8v4`    | 8 | 3 | 0 | 1 | 79.2% (Q6 제외) |
+
+`3bit_nc` 는 논리/자모분해 문항에서 실제 품질 저하 관측 — PPL +20.6% 예측치와 부합. 나머지 3개 모드는 이 벤치에서 구별 불가(12 문항은 +1% vs +10% PPL 차이를 잡기엔 부족). `k8v4` 의 1건 실패는 해마 이모지 답변이 과도하게 길어져 urllib 900초 클라이언트 타임아웃에 걸린 케이스 — vLLM/모델 문제 아님.
+
+#### 권장
+
+**`turboquant_4bit_nc` 가 운영 기본값으로 최적**:
+- c4 고부하에서 tg128 peak 최고 (84 t/s)
+- 3.8x KV 압축 (bf16 대비 ~2배 동시성 여유)
+- PPL +2.7% 만 — 실제 응답에서 체감 불가
+- 모든 축에서 `k3v4_nc` 우세
+
+`k8v4` 는 최고 품질이 필수이고 KV 용량이 병목이 아닌 경우에만. `3bit_nc` 는 품질 저하가 실측되므로 회피.
+
 ## 시스템 튜닝
 
 DGX Spark에 권장하는 OS 수준 설정:
