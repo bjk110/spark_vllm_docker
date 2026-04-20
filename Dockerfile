@@ -109,6 +109,10 @@ RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
 ARG NGC_TAG=26.01-py3
 FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS runner
 
+LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
+LABEL org.opencontainers.image.description="vLLM on DGX Spark (GB10/SM121) multi-node TP=2"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 ENV UV_CACHE_DIR=/root/.cache/uv

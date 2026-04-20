@@ -14,6 +14,10 @@
 ARG BASE_IMAGE=vllm-spark:v020-fi064
 FROM ${BASE_IMAGE}
 
+LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
+LABEL org.opencontainers.image.description="vLLM NVFP4 extension for DGX Spark (GB10/SM121)"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
 # NVFP4 runtime defaults (can be overridden via docker-compose environment)
 ENV VLLM_USE_FLASHINFER_MOE_FP4=1
 ENV VLLM_NVFP4_MOE_FORCE_MARLIN=1

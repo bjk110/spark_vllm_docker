@@ -149,6 +149,10 @@ RUN --mount=type=cache,id=ccache-gemma4,target=/root/.ccache \
 ARG NGC_TAG=26.03-py3
 FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS runner
 
+LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
+LABEL org.opencontainers.image.description="vLLM on DGX Spark (GB10/SM121) for Gemma4"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
 ARG TORCH_CUDA_ARCH
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
