@@ -56,6 +56,7 @@ vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT imp
 | `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v020-ngc2603 |
 | `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 1 | v020-ngc2603 |
 | `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 2 | v020-ngc2603 |
+| `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 original** (KV fp8) | 1 | v020-ngc2603 |
 
 ## Quick Start
 
@@ -263,6 +264,20 @@ All benchmarks measured with [llama-benchy](https://github.com/eugr/llama-benchy
 | 4 | 60~67 | 85~88 |
 | 8 | 59~91 | 152~160 |
 
+### Qwen3.6-35B-A3B — Single Node (TP1, FP16 + fp8 KV) ⚗️
+
+Experimental test preset (see [Experimental: Qwen3.6-35B-A3B FP16 test preset](#experimental-qwen36-35b-a3b-fp16-test-preset)).
+Original bf16/fp16 weights, fp8 KV cache, 32K context, `spark01` single-node.
+
+| Concurrency | pp2048 total t/s | tg32 total t/s | tg32 per-req t/s | peak tg t/s |
+|---|---|---|---|---|
+| 1 | 3,032 ± 825 | 32.4 ± 0.1 | 32.4 | 33 |
+| 2 | 4,724 ± 75 | 63.9 ± 2.2 | 32.0 | 66 |
+| 3 | 4,783 ± 439 | 61.1 ± 10.8 | 21.5 | 72 |
+| 4 | 5,206 ± 444 | 80.1 ± 19.2 | 22.4 | 101 |
+
+TTFT c=1: ~746 ms (pp2048).
+
 ## System Tuning
 
 Recommended OS-level settings for DGX Spark:
@@ -272,6 +287,68 @@ Recommended OS-level settings for DGX Spark:
 sudo sysctl -w vm.swappiness=10
 echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 ```
+
+## Experimental: Qwen3.6-35B-A3B FP16 test preset
+
+> This is an **experimental test preset** added for quick evaluation of the original
+> upstream Qwen3.6 weights on a single DGX Spark. It is **not** a base-stack change —
+> the main image, vLLM, FlashInfer, transformers, and CUDA versions are unchanged.
+
+- **Preset file**: `models/qwen3.6-35b-fp16.env`
+- **Scope**: `single DGX Spark / TP=1` (designed to fit one GB10 node with headroom)
+- **Model**: original Qwen3.6-35B-A3B weights (bf16/fp16, **not quantized**).
+  `--kv-cache-dtype fp8` is an optional KV-cache-only optimization and does **not**
+  change the model weights.
+- **Recommended options** (already in the preset):
+  - `--kv-cache-dtype fp8` (KV cache compression only)
+  - `--reasoning-parser qwen3`
+  - `--enable-chunked-prefill`
+  - `--enable-prefix-caching` (added by the entrypoint by default)
+
+### Before launching: stop the running 397B TP=2 stack
+
+```bash
+ssh spark01 'cd ~/docker/vllm-spark && docker compose --profile head down'
+ssh spark02 'cd ~/docker/vllm-spark && docker compose --profile worker down'
+# Clear unified-memory residue between model switches (GB10)
+ssh spark01 'sync && sudo sysctl -w vm.drop_caches=3'
+```
+
+### Model placement
+
+The model is assumed to exist at
+`/mnt/data/llm-models/Qwen/Qwen_Qwen3.6-35B-A3B` on the homeserver. Transfer it to
+the chosen Spark node (recommended: `spark01`, same node as the 397B head) before
+launch, then point `MODEL_PATH` at the local copy:
+
+```bash
+# From homeserver (~67 GB, ~6 min over the RoCE link)
+rsync -av /mnt/data/llm-models/Qwen/Qwen_Qwen3.6-35B-A3B/ \
+    spark01:/home/bjk110/Documents/Models/Qwen/Qwen_Qwen3.6-35B-A3B/
+
+# On spark01: materialize the preset and substitute the local model root
+ssh spark01 'cd ~/docker/vllm-spark && \
+    cp models/qwen3.6-35b-fp16.env .env && \
+    sed -i "s|\[model_path\]|/home/bjk110/Documents/Models/Qwen|" .env'
+```
+
+### Launch (single Spark, TP=1)
+
+```bash
+ssh spark01 'cd ~/docker/vllm-spark && \
+    docker compose --env-file .env --profile head up -d'
+```
+
+### If the first boot fails
+
+Adjust these values in `qwen3.6-35b-fp16.env` in this order (each step lowers
+memory pressure):
+
+1. `GPU_MEMORY_UTILIZATION=0.80`
+2. `MAX_MODEL_LEN=16384`
+3. `MAX_NUM_SEQS=4`
+4. Only if the above still fails: consider a TP=2 variant across `spark01` +
+   `spark02` (no preset ships for this — this experimental preset is TP=1 only).
 
 ## Branch structure
 

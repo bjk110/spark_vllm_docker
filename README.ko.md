@@ -56,6 +56,7 @@ vLLM 0.19.1 Gemma 4 지원, 비동기 스케줄링. Transformers 5.5.0. TTFT v01
 | `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v020-ngc2603 |
 | `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (런타임) | 1 | v020-ngc2603 |
 | `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (런타임) | 2 | v020-ngc2603 |
+| `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 원본** (KV fp8) | 1 | v020-ngc2603 |
 
 ## 빠른 시작
 
@@ -263,6 +264,20 @@ Dockerfile에서 적용하는 SM121 (Blackwell) 호환성 패치:
 | 4 | 60~67 | 85~88 |
 | 8 | 59~91 | 152~160 |
 
+### Qwen3.6-35B-A3B — 싱글 노드 (TP1, FP16 + fp8 KV) ⚗️
+
+실험용 테스트 프리셋 (아래 [실험: Qwen3.6-35B-A3B FP16 테스트 프리셋](#실험-qwen36-35b-a3b-fp16-테스트-프리셋) 참고).
+원본 bf16/fp16 가중치, fp8 KV cache, 32K 컨텍스트, `spark01` 단일 노드 측정.
+
+| 동시 요청 수 | pp2048 총 t/s | tg32 총 t/s | tg32 요청당 t/s | 피크 tg t/s |
+|---|---|---|---|---|
+| 1 | 3,032 ± 825 | 32.4 ± 0.1 | 32.4 | 33 |
+| 2 | 4,724 ± 75 | 63.9 ± 2.2 | 32.0 | 66 |
+| 3 | 4,783 ± 439 | 61.1 ± 10.8 | 21.5 | 72 |
+| 4 | 5,206 ± 444 | 80.1 ± 19.2 | 22.4 | 101 |
+
+TTFT c=1: 약 746 ms (pp2048).
+
 ## 시스템 튜닝
 
 DGX Spark에 권장하는 OS 수준 설정:
@@ -272,6 +287,66 @@ DGX Spark에 권장하는 OS 수준 설정:
 sudo sysctl -w vm.swappiness=10
 echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 ```
+
+## 실험: Qwen3.6-35B-A3B FP16 테스트 프리셋
+
+> Qwen3.6 원본 가중치를 단일 DGX Spark에서 빠르게 평가하기 위한 **실험용 테스트
+> 프리셋**입니다. **베이스 스택 변경 아님** — 메인 이미지, vLLM, FlashInfer,
+> transformers, CUDA 버전은 모두 그대로입니다.
+
+- **프리셋 파일**: `models/qwen3.6-35b-fp16.env`
+- **범위**: `단일 DGX Spark / TP=1` (GB10 1대에 여유를 가지고 올라가도록 설계)
+- **모델**: Qwen3.6-35B-A3B **원본 가중치** (bf16/fp16, **양자화 아님**).
+  `--kv-cache-dtype fp8`은 **KV cache 전용 최적화**일 뿐이며 모델 가중치를
+  바꾸지 않습니다.
+- **권장 옵션** (프리셋에 이미 포함):
+  - `--kv-cache-dtype fp8` (KV cache 압축만)
+  - `--reasoning-parser qwen3`
+  - `--enable-chunked-prefill`
+  - `--enable-prefix-caching` (entrypoint 기본값)
+
+### 기동 전: 현재 구동 중인 397B TP=2 스택 중지
+
+```bash
+ssh spark01 'cd ~/docker/vllm-spark && docker compose --profile head down'
+ssh spark02 'cd ~/docker/vllm-spark && docker compose --profile worker down'
+# GB10 unified memory 잔여 정리 (모델 전환 시 필수)
+ssh spark01 'sync && sudo sysctl -w vm.drop_caches=3'
+```
+
+### 모델 위치
+
+homeserver의 `/mnt/data/llm-models/Qwen/Qwen_Qwen3.6-35B-A3B`에 다운로드되어
+있다는 전제입니다. 테스트 대상 Spark 노드(권장: `spark01`, 기존 397B head와
+동일)로 복사 후 `MODEL_PATH`를 로컬 경로로 지정해 사용합니다.
+
+```bash
+# homeserver에서 (~67 GB, RoCE 링크로 ~6분)
+rsync -av /mnt/data/llm-models/Qwen/Qwen_Qwen3.6-35B-A3B/ \
+    spark01:/home/bjk110/Documents/Models/Qwen/Qwen_Qwen3.6-35B-A3B/
+
+# spark01: 프리셋 복사 + 로컬 경로 치환
+ssh spark01 'cd ~/docker/vllm-spark && \
+    cp models/qwen3.6-35b-fp16.env .env && \
+    sed -i "s|\[model_path\]|/home/bjk110/Documents/Models/Qwen|" .env'
+```
+
+### 기동 (단일 Spark, TP=1)
+
+```bash
+ssh spark01 'cd ~/docker/vllm-spark && \
+    docker compose --env-file .env --profile head up -d'
+```
+
+### 초기 기동 실패 시 조정 순서
+
+`qwen3.6-35b-fp16.env` 안에서 메모리 압박을 낮추는 순서대로 조정합니다.
+
+1. `GPU_MEMORY_UTILIZATION=0.80`
+2. `MAX_MODEL_LEN=16384`
+3. `MAX_NUM_SEQS=4`
+4. 그래도 실패 시 `spark01` + `spark02` TP=2 구성을 검토 (현재 프리셋은
+   TP=1 전용 — 이번 실험 프리셋 범위를 넘어섬).
 
 ## 브랜치 구조
 
