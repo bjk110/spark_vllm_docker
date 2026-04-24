@@ -18,7 +18,8 @@ SRC_ROOT="/mnt/data/llm-models/deepseek-ai"
 MODEL_DIR="deepseek-ai_DeepSeek-V4-Flash"
 SRC="${SRC_ROOT}/${MODEL_DIR}/"
 DST_HOST="${1:-spark01}"
-DST_ROOT="/mnt/data/llm-models/deepseek-ai"
+# Spark nodes store models under /home/bjk110/Documents/Models/
+DST_ROOT="/home/bjk110/Documents/Models/deepseek-ai"
 DST="${DST_HOST}:${DST_ROOT}/${MODEL_DIR}/"
 
 if [ ! -d "${SRC}" ]; then

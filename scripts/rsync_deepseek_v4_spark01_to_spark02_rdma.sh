@@ -14,11 +14,11 @@
 # =============================================================================
 set -euo pipefail
 
-SRC_ROOT="/mnt/data/llm-models/deepseek-ai"
+SRC_ROOT="/home/bjk110/Documents/Models/deepseek-ai"
 MODEL_DIR="deepseek-ai_DeepSeek-V4-Flash"
 SRC="${SRC_ROOT}/${MODEL_DIR}/"
 DST_IP="${1:-10.10.10.2}"
-DST_ROOT="/mnt/data/llm-models/deepseek-ai"
+DST_ROOT="/home/bjk110/Documents/Models/deepseek-ai"
 DST="${DST_IP}:${DST_ROOT}/${MODEL_DIR}/"
 
 if [ ! -d "${SRC}" ]; then
