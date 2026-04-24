@@ -1,0 +1,289 @@
+# syntax=docker/dockerfile:1.6
+# =========================================================================
+# vLLM on NVIDIA DGX Spark (GB10, SM121) — EXPERIMENTAL: DeepSeek-V4-Flash
+#
+# NGC 26.03 (CUDA 13.2, PyTorch 2.11) +
+# vLLM woosuk/dsv4-sync @ f481dcb7a (DSV4 + MTP + SVF) +
+# FlashInfer v0.6.8.post1 (SM121 tile filtering, NVFP4 group GEMM, FP4 CUTLASS) +
+# apache-tvm-ffi 0.1.9 + tilelang 0.1.9 (aarch64 wheel from GH releases) +
+# DeepGEMM + FlashMLA (CMake FetchContent during vLLM source build) +
+# Transformers 5.5.4
+#
+# Build:
+#   docker buildx build -f Dockerfile.deepseek-v4 \
+#     -t vllm-spark:deepseek-v4-exp --load .
+#
+# This Dockerfile derives from Dockerfile.gemma4. Divergence points:
+#   - VLLM_COMMIT pinned to woosuk/dsv4-sync tip (V4 + MTP + SVF)
+#   - FLASHINFER bumped 0.6.8 → 0.6.8.post1
+#   - tilelang + apache-tvm-ffi added (runtime deps of mhc.py JIT kernels)
+#   - Mooncake / LMCache / kv-connectors NOT installed (PD disagg disabled)
+#
+# Recipe reference:
+#   https://recipes.vllm.ai/deepseek-ai/DeepSeek-V4-Flash
+#   (DP=4 + EP + Mooncake PD disagg on H200/B200/B300)
+# This image targets the scaled-down 2× GB10 (no Mooncake, smaller DP/TP/EP).
+# =========================================================================
+
+ARG NGC_TAG=26.03-py3
+ARG BUILD_JOBS=16
+
+# Pinned versions
+ARG VLLM_COMMIT=f481dcb7a
+ARG VLLM_REF=woosuk/dsv4-sync
+ARG FLASHINFER_REF=v0.6.8.post1
+ARG TILELANG_VERSION=0.1.9
+ARG APACHE_TVM_FFI_VERSION=0.1.9
+ARG TRANSFORMERS_VER=5.5.4
+ARG TORCH_CUDA_ARCH="12.1a"
+
+# =========================================================================
+# STAGE 1: FlashInfer Builder (bumped to 0.6.8.post1)
+# =========================================================================
+FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS flashinfer-builder
+
+ARG BUILD_JOBS
+ARG FLASHINFER_REF
+ARG TORCH_CUDA_ARCH
+ENV MAX_JOBS=${BUILD_JOBS} \
+    CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS} \
+    DEBIAN_FRONTEND=noninteractive \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    UV_SYSTEM_PYTHON=1 \
+    UV_BREAK_SYSTEM_PACKAGES=1 \
+    UV_LINK_MODE=copy \
+    TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH} \
+    FLASHINFER_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH} \
+    PATH=/usr/lib/ccache:$PATH \
+    CCACHE_DIR=/root/.ccache \
+    CCACHE_MAXSIZE=50G \
+    CCACHE_COMPRESS=1 \
+    CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    CMAKE_CUDA_COMPILER_LAUNCHER=ccache
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ninja-build git ccache && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install uv && pip uninstall -y flash-attn 2>/dev/null || true
+
+RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
+    uv pip install --system nvidia-nvshmem-cu13 "apache-tvm-ffi<0.2"
+
+RUN --mount=type=cache,id=git-fi-dsv4,target=/git-cache/flashinfer \
+    if [ -d /git-cache/flashinfer/.git ]; then \
+        cp -a /git-cache/flashinfer /workspace/flashinfer && \
+        cd /workspace/flashinfer && git fetch origin --tags; \
+    else \
+        git clone https://github.com/flashinfer-ai/flashinfer.git /workspace/flashinfer && \
+        cp -a /workspace/flashinfer /git-cache/flashinfer; \
+    fi && \
+    cd /workspace/flashinfer && git checkout ${FLASHINFER_REF} && \
+    git submodule update --init --recursive
+
+COPY patches/flashinfer_cache.patch /workspace/flashinfer/
+RUN cd /workspace/flashinfer && \
+    (patch -p1 --dry-run < flashinfer_cache.patch &>/dev/null && \
+     patch -p1 < flashinfer_cache.patch || echo "[flashinfer] cache patch not applicable")
+
+WORKDIR /workspace/flashinfer
+RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
+    --mount=type=cache,id=ccache-dsv4,target=/root/.ccache \
+    sed -i -e 's/license = "Apache-2.0"/license = { text = "Apache-2.0" }/' \
+           -e '/license-files/d' pyproject.toml 2>/dev/null || true && \
+    uv build --no-build-isolation --wheel . --out-dir=/workspace/wheels -v
+
+RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
+    --mount=type=cache,id=ccache-dsv4,target=/root/.ccache \
+    for subpkg in flashinfer-cubin flashinfer-jit-cache; do \
+        if [ -d "$subpkg" ]; then \
+            echo "[flashinfer] Building $subpkg..." && \
+            cd /workspace/flashinfer/$subpkg && \
+            uv build --no-build-isolation --wheel . --out-dir=/workspace/wheels -v || \
+            echo "[flashinfer] $subpkg build failed (optional)"; \
+        fi; \
+    done
+
+
+# =========================================================================
+# STAGE 2: vLLM Builder (woosuk/dsv4-sync tip)
+# =========================================================================
+FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS vllm-builder
+
+ARG BUILD_JOBS
+ARG VLLM_COMMIT
+ARG VLLM_REF
+ARG TORCH_CUDA_ARCH
+ENV MAX_JOBS=${BUILD_JOBS} \
+    DEBIAN_FRONTEND=noninteractive \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH} \
+    PATH=/usr/lib/ccache:$PATH \
+    CCACHE_DIR=/root/.ccache \
+    CCACHE_MAXSIZE=50G \
+    CCACHE_COMPRESS=1
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git ninja-build ccache && \
+    rm -rf /var/lib/apt/lists/*
+
+# Clone vLLM, fetch woosuk/dsv4-sync branch, checkout pinned commit
+RUN git clone https://github.com/vllm-project/vllm.git /workspace/vllm-src && \
+    cd /workspace/vllm-src && \
+    git fetch origin ${VLLM_REF} && \
+    git checkout ${VLLM_COMMIT} && \
+    ACTUAL=$(git rev-parse HEAD) && \
+    echo "vLLM pinned to: ${ACTUAL}" && \
+    echo "${ACTUAL}" | grep -q "^${VLLM_COMMIT}" || \
+      (echo "FATAL: commit mismatch — expected ${VLLM_COMMIT}*, got ${ACTUAL}" && exit 1) && \
+    echo "---V4 files present---" && \
+    ls vllm/model_executor/models/deepseek_v4.py \
+       vllm/model_executor/models/deepseek_v4_mtp.py \
+       vllm/model_executor/layers/deepseek_v4_attention.py \
+       vllm/model_executor/layers/mhc.py \
+       csrc/fused_deepseek_v4_qnorm_rope_kv_insert_kernel.cu \
+       csrc/moe/topk_softplus_sqrt_kernels.cu
+
+RUN pip install -q setuptools setuptools-scm ninja cmake wheel packaging
+
+# PyTorch 2.11 compat patch (hoist=True kwarg removal). Non-fatal if anchor
+# already absent — woosuk/dsv4-sync base may already have this fix upstream.
+COPY patches/fix_pytorch211_compat.py /tmp/fix_pytorch211_compat.py
+RUN cd /workspace/vllm-src && python3 /tmp/fix_pytorch211_compat.py || \
+    echo "[patch] fix_pytorch211_compat: anchor not found or already applied — continuing"
+
+# Build vLLM wheel. CMake FetchContent pulls DeepGEMM + FlashMLA at build time.
+RUN --mount=type=cache,id=ccache-dsv4,target=/root/.ccache \
+    cd /workspace/vllm-src && \
+    SETUPTOOLS_SCM_PRETEND_VERSION="0.20.1.dev+dsv4" \
+    VLLM_TARGET_DEVICE=cuda \
+    python3 setup.py bdist_wheel -d /workspace/wheels && \
+    ls -lh /workspace/wheels/*.whl && \
+    echo "[vllm] Wheel built successfully"
+
+
+# =========================================================================
+# STAGE 3: Runner
+# =========================================================================
+ARG NGC_TAG=26.03-py3
+FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS runner
+
+LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
+LABEL org.opencontainers.image.description="vLLM on DGX Spark (GB10/SM121) EXPERIMENTAL DeepSeek-V4-Flash"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+ARG TORCH_CUDA_ARCH
+ARG TILELANG_VERSION
+ARG APACHE_TVM_FFI_VERSION
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    UV_SYSTEM_PYTHON=1 \
+    UV_BREAK_SYSTEM_PACKAGES=1 \
+    UV_LINK_MODE=copy \
+    VLLM_BASE_DIR=/workspace/vllm \
+    TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH} \
+    TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl vim git libxcb1 && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install uv && pip uninstall -y flash-attn 2>/dev/null || true
+
+WORKDIR ${VLLM_BASE_DIR}
+
+# Tiktoken encodings (offline)
+RUN mkdir -p tiktoken_encodings && \
+    wget -qO tiktoken_encodings/o200k_base.tiktoken \
+      "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken" && \
+    wget -qO tiktoken_encodings/cl100k_base.tiktoken \
+      "https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken"
+ENV TIKTOKEN_ENCODINGS_BASE=${VLLM_BASE_DIR}/tiktoken_encodings
+
+# ---- Install FlashInfer ----
+RUN --mount=type=bind,from=flashinfer-builder,source=/workspace/wheels,target=/mount/fi \
+    pip install /mount/fi/*.whl 2>/dev/null || \
+    pip install /mount/fi/flashinfer_python*.whl /mount/fi/flashinfer_cubin*.whl 2>/dev/null || \
+    (echo "FATAL: FlashInfer install failed" && exit 1)
+
+# ---- Install vLLM ----
+RUN --mount=type=bind,from=vllm-builder,source=/workspace/wheels,target=/mount/vllm \
+    pip install /mount/vllm/*.whl --no-deps && \
+    python3 -c "from pathlib import Path; \
+      so = Path('/usr/local/lib/python3.12/dist-packages/vllm/_C_stable_libtorch.abi3.so'); \
+      assert so.exists(), f'{so} not found'; \
+      print(f'_C_stable_libtorch.abi3.so: {so.stat().st_size/1e6:.1f} MB')"
+
+# ---- Runtime dependencies ----
+RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
+    DEPS=$(pip show vllm 2>/dev/null | grep ^Requires | sed 's/Requires: //' | tr ',' '\n' | \
+      sed 's/^ *//;s/ *$//' | grep -v -E '^(torch|torchvision|torchaudio|flashinfer|$)' | \
+      tr '\n' ' ') && \
+    uv pip install --system $DEPS ray[default] fastsafetensors nvidia-nvshmem-cu13 uvloop
+
+# ---- apache-tvm-ffi + tilelang (required by vllm/model_executor/layers/mhc.py) ----
+# apache-tvm-ffi has aarch64 PyPI wheel.
+# tilelang has aarch64 wheel only on GitHub releases (NOT on PyPI). Use a manual
+# URL resolution so we fail loud if the expected arch wheel is missing.
+RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
+    uv pip install --system "apache-tvm-ffi==${APACHE_TVM_FFI_VERSION}" && \
+    ARCH="$(uname -m)" && \
+    case "${ARCH}" in \
+      aarch64) TL_WHL="tilelang-${TILELANG_VERSION}-cp38-abi3-manylinux_2_34_aarch64.whl" ;; \
+      x86_64)  TL_WHL="tilelang-${TILELANG_VERSION}-cp38-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" ;; \
+      *) echo "FATAL: unsupported arch ${ARCH} for tilelang" && exit 1 ;; \
+    esac && \
+    TL_URL="https://github.com/tile-ai/tilelang/releases/download/v${TILELANG_VERSION}/${TL_WHL}" && \
+    echo "Installing tilelang: ${TL_URL}" && \
+    uv pip install --system "${TL_URL}"
+
+# ---- Transformers ----
+ARG TRANSFORMERS_VER
+RUN uv pip install transformers==${TRANSFORMERS_VER} --upgrade --no-deps --system && \
+    uv pip install huggingface-hub --upgrade --no-deps --system
+
+# ---- Patches (non-fatal, skip if not applicable) ----
+# fastsafetensors: multi-node weight loading order
+COPY patches/fastsafetensors_natural_sort.patch /tmp/
+RUN cd / && (patch -p1 --dry-run < /tmp/fastsafetensors_natural_sort.patch &>/dev/null && \
+     patch -p1 < /tmp/fastsafetensors_natural_sort.patch && \
+     echo "[patch] fastsafetensors OK" || echo "[patch] fastsafetensors skip")
+
+# AOT cache fix (torch.fx.Node pickling)
+COPY patches/aot_cache_fix.patch /tmp/
+RUN cd / && (patch -p1 --dry-run < /tmp/aot_cache_fix.patch &>/dev/null && \
+     patch -p1 < /tmp/aot_cache_fix.patch && \
+     echo "[patch] aot_cache OK" || echo "[patch] aot_cache skip")
+
+# GB10 has no GDS support — force nogds=True in weight loader
+COPY patches/nogds_force.patch /tmp/
+RUN cd / && (patch -p1 --dry-run < /tmp/nogds_force.patch &>/dev/null && \
+     patch -p1 < /tmp/nogds_force.patch && \
+     echo "[patch] nogds OK" || echo "[patch] nogds skip")
+
+# GB10-tuned MoE kernel configs (E=256 matches V4's n_routed_experts)
+COPY patches/moe_config_e256.json \
+     /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=256,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
+COPY patches/moe_config_e512.json \
+     /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=512,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
+
+# SM121 (Blackwell GB10) platform patches
+COPY patches/apply_sm121_patches.py /tmp/
+RUN python3 /tmp/apply_sm121_patches.py || echo "[patch] SM121 partial"
+
+RUN uv pip uninstall triton-kernels 2>/dev/null || true
+
+# ---- V4 import sanity (fail build if module import fails) ----
+COPY scripts/check_deepseek_v4_env.sh /opt/scripts/check_deepseek_v4_env.sh
+RUN chmod +x /opt/scripts/check_deepseek_v4_env.sh && \
+    /opt/scripts/check_deepseek_v4_env.sh --build-time
+
+# ---- Existing verification scripts (shared with gemma4 image) ----
+COPY scripts/verify_imports.py /opt/scripts/verify_imports.py
+COPY scripts/verify_runtime.sh /opt/scripts/verify_runtime.sh
+RUN chmod +x /opt/scripts/verify_runtime.sh
+
+# ---- Entrypoint scripts ----
+COPY scripts/run-cluster-node.sh ${VLLM_BASE_DIR}/
+RUN chmod +x ${VLLM_BASE_DIR}/run-cluster-node.sh
+ENV PATH=${VLLM_BASE_DIR}:$PATH
+
+EXPOSE 8000
