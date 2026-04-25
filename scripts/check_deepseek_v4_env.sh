@@ -63,6 +63,29 @@ try:
 except Exception as e:
     failed.append(("registry", repr(e)))
 
+# PR #40852 SM120 reference path env vars must be registered in vllm.envs
+try:
+    import vllm.envs as venvs
+    canonical = ["VLLM_TRITON_MLA_SPARSE", "VLLM_TRITON_MLA_SPARSE_TOPK_CHUNK_SIZE",
+                 "VLLM_TRITON_MLA_SPARSE_QUERY_CHUNK_SIZE"]
+    legacy = ["VLLM_SM120_REFERENCE_DEEPSEEK_V4_ATTENTION",
+              "VLLM_SM120_REFERENCE_TOPK_CHUNK_SIZE",
+              "VLLM_SM120_REFERENCE_QUERY_CHUNK_SIZE"]
+    missing = [v for v in canonical + legacy if not hasattr(venvs, v)]
+    if missing:
+        failed.append(("envs.SM120_path", f"missing: {missing}"))
+    else:
+        ok.append(f"envs.SM120_path: {len(canonical)} canonical + {len(legacy)} legacy registered")
+except Exception as e:
+    failed.append(("envs.SM120_path", repr(e)))
+
+# Vendored DeepGEMM (CMake FetchContent → jasl/DeepGEMM SM120 fallback)
+try:
+    import vllm.third_party.deep_gemm as dg
+    ok.append(f"vendored deep_gemm: {dg.__file__}")
+except Exception as e:
+    failed.append(("vendored deep_gemm", repr(e)))
+
 # TokenizerMode Literal must contain 'deepseek_v4'
 try:
     import typing, vllm.config.model as cfgmod

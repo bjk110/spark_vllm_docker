@@ -1,23 +1,30 @@
 # syntax=docker/dockerfile:1.6
 # =========================================================================
 # vLLM on NVIDIA DGX Spark (GB10, SM121) — EXPERIMENTAL: DeepSeek-V4-Flash
+# Reflects vLLM PR #40852 [POC] DeepSeek V4 on RTX Pro 6000 (SM120):
+#   https://github.com/vllm-project/vllm/pull/40852
+#
+# This image is correctness-first reference fallback (NOT production tuned).
+# Goal: start DeepSeek-V4-Flash server on 2× GB10 and serve max_tokens=1..16.
 #
 # NGC 26.03 (CUDA 13.2, PyTorch 2.11) +
-# vLLM woosuk/dsv4-sync @ f481dcb7a (DSV4 + MTP + SVF) +
+# vLLM jasl/ds4-sm120-prototype @ 1523228e (PR #40852 head) +
 # FlashInfer v0.6.8.post1 (SM121 tile filtering, NVFP4 group GEMM, FP4 CUTLASS) +
 # apache-tvm-ffi 0.1.9 + tilelang 0.1.9 (aarch64 wheel from GH releases) +
-# DeepGEMM + FlashMLA (CMake FetchContent during vLLM source build) +
+# DeepGEMM jasl/DeepGEMM @ 959f1df (auto-fetched by vLLM CMake) +
 # Transformers 5.5.4
 #
 # Build:
 #   docker buildx build -f Dockerfile.deepseek-v4 \
-#     -t vllm-spark:deepseek-v4-exp --load .
+#     -t vllm-spark:deepseek-v4-sm120-poc --load .
 #
-# This Dockerfile derives from Dockerfile.gemma4. Divergence points:
-#   - VLLM_COMMIT pinned to woosuk/dsv4-sync tip (V4 + MTP + SVF)
-#   - FLASHINFER bumped 0.6.8 → 0.6.8.post1
-#   - tilelang + apache-tvm-ffi added (runtime deps of mhc.py JIT kernels)
-#   - Mooncake / LMCache / kv-connectors NOT installed (PD disagg disabled)
+# Key SM120 path (from PR #40852):
+#   - Reference sparse MLA attention (sink-aware, LSE-merge stages)
+#   - SM120 FP8 indexer logits fallback (replaces DeepGEMM fp8_fp4_mqa_logits)
+#   - DeepGEMM CMake arch filter accepts 12.0f for CUDA 13+
+#   - PP=2 prototype (TP=1 + PP=2 validated by jasl on single host)
+#   - SM12x auto-selects reference path when VLLM_TRITON_MLA_SPARSE is unset.
+#     Legacy aliases VLLM_SM120_REFERENCE_* still honored.
 #
 # Recipe reference:
 #   https://recipes.vllm.ai/deepseek-ai/DeepSeek-V4-Flash
@@ -28,17 +35,26 @@
 ARG NGC_TAG=26.03-py3
 ARG BUILD_JOBS=16
 
+# vLLM PR #40852 head (jasl/ds4-sm120-prototype tip)
+# Tip commit: 1523228e62b92d877df05a9034fbfeb32aeaf308 (2026-04-25)
+# Base: vllm-project/vllm main @ bc2ae5a3d6b59690b6a3312f0ed63842e8bc600b
+ARG VLLM_REPO_URL=https://github.com/jasl/vllm.git
+ARG VLLM_REF=ds4-sm120-prototype
+ARG VLLM_COMMIT=1523228e62b92d877df05a9034fbfeb32aeaf308
+
 # Pinned versions
-ARG VLLM_COMMIT=f481dcb7a
-ARG VLLM_REF=woosuk/dsv4-sync
 ARG FLASHINFER_REF=v0.6.8.post1
 ARG TILELANG_VERSION=0.1.9
 ARG APACHE_TVM_FFI_VERSION=0.1.9
 ARG TRANSFORMERS_VER=5.5.4
-ARG TORCH_CUDA_ARCH="12.1a"
+
+# Per PR #40852 SM120 prototype: build with 12.0a (cuda_archs_loose_intersection
+# resolves 12.0a from arch list to DeepGEMM 12.0f support). GB10 (SM121)
+# falls under SM12x compatibility model.
+ARG TORCH_CUDA_ARCH="12.0a"
 
 # =========================================================================
-# STAGE 1: FlashInfer Builder (bumped to 0.6.8.post1)
+# STAGE 1: FlashInfer Builder
 # =========================================================================
 FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS flashinfer-builder
 
@@ -66,10 +82,10 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* && \
     pip install uv && pip uninstall -y flash-attn 2>/dev/null || true
 
-RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
+RUN --mount=type=cache,id=uv-dsv4-sm120,target=/root/.cache/uv \
     uv pip install --system nvidia-nvshmem-cu13 "apache-tvm-ffi<0.2"
 
-RUN --mount=type=cache,id=git-fi-dsv4,target=/git-cache/flashinfer \
+RUN --mount=type=cache,id=git-fi-dsv4-sm120,target=/git-cache/flashinfer \
     if [ -d /git-cache/flashinfer/.git ]; then \
         cp -a /git-cache/flashinfer /workspace/flashinfer && \
         cd /workspace/flashinfer && git fetch origin --tags; \
@@ -86,14 +102,14 @@ RUN cd /workspace/flashinfer && \
      patch -p1 < flashinfer_cache.patch || echo "[flashinfer] cache patch not applicable")
 
 WORKDIR /workspace/flashinfer
-RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
-    --mount=type=cache,id=ccache-dsv4,target=/root/.ccache \
+RUN --mount=type=cache,id=uv-dsv4-sm120,target=/root/.cache/uv \
+    --mount=type=cache,id=ccache-dsv4-sm120,target=/root/.ccache \
     sed -i -e 's/license = "Apache-2.0"/license = { text = "Apache-2.0" }/' \
            -e '/license-files/d' pyproject.toml 2>/dev/null || true && \
     uv build --no-build-isolation --wheel . --out-dir=/workspace/wheels -v
 
-RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
-    --mount=type=cache,id=ccache-dsv4,target=/root/.ccache \
+RUN --mount=type=cache,id=uv-dsv4-sm120,target=/root/.cache/uv \
+    --mount=type=cache,id=ccache-dsv4-sm120,target=/root/.ccache \
     for subpkg in flashinfer-cubin flashinfer-jit-cache; do \
         if [ -d "$subpkg" ]; then \
             echo "[flashinfer] Building $subpkg..." && \
@@ -105,58 +121,75 @@ RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
 
 
 # =========================================================================
-# STAGE 2: vLLM Builder (woosuk/dsv4-sync tip)
+# STAGE 2: vLLM Builder (jasl/ds4-sm120-prototype tip)
+# DeepGEMM is now built by vLLM's CMake (FetchContent → jasl/DeepGEMM SM120
+# fallback @ 959f1df). No separate DeepGEMM install step required.
 # =========================================================================
 FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS vllm-builder
 
 ARG BUILD_JOBS
-ARG VLLM_COMMIT
+ARG VLLM_REPO_URL
 ARG VLLM_REF
+ARG VLLM_COMMIT
 ARG TORCH_CUDA_ARCH
 ENV MAX_JOBS=${BUILD_JOBS} \
     DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
+    CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:/usr/lib/ccache:$PATH \
+    TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas \
+    CUDA_ARCH_LIST=120a \
     TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH} \
-    PATH=/usr/lib/ccache:$PATH \
     CCACHE_DIR=/root/.ccache \
     CCACHE_MAXSIZE=50G \
-    CCACHE_COMPRESS=1
+    CCACHE_COMPRESS=1 \
+    CCACHE_NOHASHDIR=true
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git ninja-build ccache && \
     rm -rf /var/lib/apt/lists/*
 
-# Clone vLLM, fetch woosuk/dsv4-sync branch, checkout pinned commit
-RUN git clone https://github.com/vllm-project/vllm.git /workspace/vllm-src && \
+# Clone jasl/vllm fork, checkout pinned PR #40852 commit
+RUN git clone ${VLLM_REPO_URL} /workspace/vllm-src && \
     cd /workspace/vllm-src && \
     git fetch origin ${VLLM_REF} && \
     git checkout ${VLLM_COMMIT} && \
     ACTUAL=$(git rev-parse HEAD) && \
     echo "vLLM pinned to: ${ACTUAL}" && \
-    echo "${ACTUAL}" | grep -q "^${VLLM_COMMIT}" || \
-      (echo "FATAL: commit mismatch — expected ${VLLM_COMMIT}*, got ${ACTUAL}" && exit 1) && \
-    echo "---V4 files present---" && \
+    [ "${ACTUAL}" = "${VLLM_COMMIT}" ] || \
+      (echo "FATAL: commit mismatch — expected ${VLLM_COMMIT}, got ${ACTUAL}" && exit 1) && \
+    echo "---V4 + SM120 reference files present---" && \
     ls vllm/model_executor/models/deepseek_v4.py \
        vllm/model_executor/models/deepseek_v4_mtp.py \
        vllm/model_executor/layers/deepseek_v4_attention.py \
        vllm/model_executor/layers/mhc.py \
+       cmake/external_projects/deepgemm.cmake \
        csrc/fused_deepseek_v4_qnorm_rope_kv_insert_kernel.cu \
-       csrc/moe/topk_softplus_sqrt_kernels.cu
+       csrc/moe/topk_softplus_sqrt_kernels.cu && \
+    echo "---SM120 / TRITON_MLA_SPARSE env vars registered---" && \
+    grep -q "VLLM_TRITON_MLA_SPARSE" vllm/envs.py && \
+    grep -q "VLLM_SM120_REFERENCE_DEEPSEEK_V4_ATTENTION" vllm/envs.py && \
+    echo "---DeepGEMM SM12x arch entry present---" && \
+    grep -q "12.0f" cmake/external_projects/deepgemm.cmake
 
 RUN pip install -q setuptools setuptools-scm ninja cmake wheel packaging
 
-# PyTorch 2.11 compat patch (hoist=True kwarg removal). Non-fatal if anchor
-# already absent — woosuk/dsv4-sync base may already have this fix upstream.
+# PyTorch 2.11 compat patch (hoist=True kwarg removal). Non-fatal if upstream
+# already fixed — PR #40852 base is recent vLLM main and may have this.
 COPY patches/fix_pytorch211_compat.py /tmp/fix_pytorch211_compat.py
 RUN cd /workspace/vllm-src && python3 /tmp/fix_pytorch211_compat.py || \
     echo "[patch] fix_pytorch211_compat: anchor not found or already applied — continuing"
 
-# Build vLLM wheel. CMake FetchContent pulls DeepGEMM + FlashMLA at build time.
-RUN --mount=type=cache,id=ccache-dsv4,target=/root/.ccache \
+# Build vLLM wheel.
+# CMake FetchContent during build pulls jasl/DeepGEMM @ 959f1df (SM120 fallback)
+# and FlashMLA. Build log should report:
+#   "DeepGEMM CUDA architectures: 12.0a"
+RUN --mount=type=cache,id=ccache-dsv4-sm120,target=/root/.ccache \
     cd /workspace/vllm-src && \
-    SETUPTOOLS_SCM_PRETEND_VERSION="0.20.1.dev+dsv4" \
+    SETUPTOOLS_SCM_PRETEND_VERSION="0.20.1.dev+sm120poc" \
     VLLM_TARGET_DEVICE=cuda \
-    python3 setup.py bdist_wheel -d /workspace/wheels && \
+    python3 setup.py bdist_wheel -d /workspace/wheels 2>&1 | tee /workspace/vllm_build.log && \
+    grep -E "DeepGEMM CUDA architectures|DeepGEMM is available|FlashMLA" /workspace/vllm_build.log | head -20 && \
     ls -lh /workspace/wheels/*.whl && \
     echo "[vllm] Wheel built successfully"
 
@@ -168,7 +201,7 @@ ARG NGC_TAG=26.03-py3
 FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
-LABEL org.opencontainers.image.description="vLLM on DGX Spark (GB10/SM121) EXPERIMENTAL DeepSeek-V4-Flash"
+LABEL org.opencontainers.image.description="vLLM on DGX Spark (GB10/SM121) PR#40852 SM120 POC DeepSeek-V4-Flash"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 ARG TORCH_CUDA_ARCH
@@ -180,6 +213,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_BREAK_SYSTEM_PACKAGES=1 \
     UV_LINK_MODE=copy \
     VLLM_BASE_DIR=/workspace/vllm \
+    CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:$PATH \
+    CUDA_ARCH_LIST=120a \
     TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH} \
     TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
 
@@ -204,26 +240,32 @@ RUN --mount=type=bind,from=flashinfer-builder,source=/workspace/wheels,target=/m
     pip install /mount/fi/flashinfer_python*.whl /mount/fi/flashinfer_cubin*.whl 2>/dev/null || \
     (echo "FATAL: FlashInfer install failed" && exit 1)
 
-# ---- Install vLLM ----
+# ---- Install vLLM (with vendored DeepGEMM via CMake FetchContent) ----
 RUN --mount=type=bind,from=vllm-builder,source=/workspace/wheels,target=/mount/vllm \
     pip install /mount/vllm/*.whl --no-deps && \
     python3 -c "from pathlib import Path; \
       so = Path('/usr/local/lib/python3.12/dist-packages/vllm/_C_stable_libtorch.abi3.so'); \
       assert so.exists(), f'{so} not found'; \
-      print(f'_C_stable_libtorch.abi3.so: {so.stat().st_size/1e6:.1f} MB')"
+      print(f'_C_stable_libtorch.abi3.so: {so.stat().st_size/1e6:.1f} MB')" && \
+    python3 -c "from pathlib import Path; \
+      so = Path('/usr/local/lib/python3.12/dist-packages/vllm/third_party/deep_gemm'); \
+      assert so.exists() and so.is_dir(), f'{so} not present (DeepGEMM vendored install missing)'; \
+      print(f'vendored deep_gemm dir: {so}')"
+
+# Persist the vLLM build log for offline inspection (DeepGEMM arch line, etc.)
+RUN --mount=type=bind,from=vllm-builder,source=/workspace/vllm_build.log,target=/mount/vllm_build.log \
+    cp /mount/vllm_build.log /workspace/vllm_build.log && \
+    echo "--- last 40 lines of vllm build log ---" && tail -n 40 /workspace/vllm_build.log
 
 # ---- Runtime dependencies ----
-RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
+RUN --mount=type=cache,id=uv-dsv4-sm120,target=/root/.cache/uv \
     DEPS=$(pip show vllm 2>/dev/null | grep ^Requires | sed 's/Requires: //' | tr ',' '\n' | \
       sed 's/^ *//;s/ *$//' | grep -v -E '^(torch|torchvision|torchaudio|flashinfer|$)' | \
       tr '\n' ' ') && \
     uv pip install --system $DEPS ray[default] fastsafetensors nvidia-nvshmem-cu13 uvloop
 
 # ---- apache-tvm-ffi + tilelang (required by vllm/model_executor/layers/mhc.py) ----
-# apache-tvm-ffi has aarch64 PyPI wheel.
-# tilelang has aarch64 wheel only on GitHub releases (NOT on PyPI). Use a manual
-# URL resolution so we fail loud if the expected arch wheel is missing.
-RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
+RUN --mount=type=cache,id=uv-dsv4-sm120,target=/root/.cache/uv \
     uv pip install --system "apache-tvm-ffi==${APACHE_TVM_FFI_VERSION}" && \
     ARCH="$(uname -m)" && \
     case "${ARCH}" in \
@@ -234,20 +276,6 @@ RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
     TL_URL="https://github.com/tile-ai/tilelang/releases/download/v${TILELANG_VERSION}/${TL_WHL}" && \
     echo "Installing tilelang: ${TL_URL}" && \
     uv pip install --system "${TL_URL}"
-
-# ---- DeepGEMM (required by vllm/model_executor/layers/sparse_attn_indexer.py) ----
-# JIT kernel lib (no CUDA compile during install). Pinned to commit tested on GB10.
-# GB10 is SM12.1 — falls outside is_deep_gemm_supported() (SM9/SM10), but that only
-# affects MoE fast-path fallback. Sparse Attention Indexer only checks has_deep_gemm().
-ARG DEEPGEMM_COMMIT=891d57b
-RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
-    git clone --recursive https://github.com/deepseek-ai/DeepGEMM.git /workspace/DeepGEMM && \
-    cd /workspace/DeepGEMM && \
-    git checkout ${DEEPGEMM_COMMIT} && \
-    git submodule update --init --recursive && \
-    ./install.sh && \
-    cd / && rm -rf /workspace/DeepGEMM && \
-    python3 -c "import deep_gemm; print(f'[deep_gemm] installed: {deep_gemm.__file__}')"
 
 # ---- Transformers ----
 ARG TRANSFORMERS_VER
@@ -279,9 +307,16 @@ COPY patches/moe_config_e256.json \
 COPY patches/moe_config_e512.json \
      /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=512,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
 
-# SM121 (Blackwell GB10) platform patches
+# SM121 (Blackwell GB10) platform patches — non-fatal, jasl PR may have moved
+# anchors; reference path is now in deepseek_v4_attention.py and is auto-selected
+# for SM12x devices regardless.
 COPY patches/apply_sm121_patches.py /tmp/
-RUN python3 /tmp/apply_sm121_patches.py || echo "[patch] SM121 partial"
+RUN python3 /tmp/apply_sm121_patches.py || echo "[patch] SM121 partial — not fatal under jasl/ds4-sm120-prototype"
+
+# Safe-access patch for torch.float8_e8m0fnu (PR review feedback). Defensive
+# even though NGC 26.03 PyTorch 2.11 has the dtype.
+COPY patches/safe_float8_e8m0fnu.py /tmp/
+RUN python3 /tmp/safe_float8_e8m0fnu.py || echo "[patch] safe_float8_e8m0fnu skip"
 
 RUN uv pip uninstall triton-kernels 2>/dev/null || true
 
