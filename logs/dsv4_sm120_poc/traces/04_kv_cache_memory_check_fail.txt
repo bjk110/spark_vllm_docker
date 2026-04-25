@@ -1,0 +1,20 @@
+11163-(EngineCore pid=1698) ERROR 04-25 05:14:10 [core.py:1110]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py", line 283, in init_device
+11164-(EngineCore pid=1698) ERROR 04-25 05:14:10 [core.py:1110]     self.requested_memory = request_memory(init_snapshot, self.cache_config)
+11165-(EngineCore pid=1698) ERROR 04-25 05:14:10 [core.py:1110]                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11166-(EngineCore pid=1698) ERROR 04-25 05:14:10 [core.py:1110]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/utils.py", line 413, in request_memory
+11167-(EngineCore pid=1698) ERROR 04-25 05:14:10 [core.py:1110]     raise ValueError(
+11168:(EngineCore pid=1698) ERROR 04-25 05:14:10 [core.py:1110] ValueError: Free memory on device cuda:0 (33.99/121.63 GiB) on startup is less than desired GPU memory utilization (0.83, 100.95 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes.
+--
+11228-(EngineCore pid=1698)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py", line 283, in init_device
+11229-(EngineCore pid=1698)     self.requested_memory = request_memory(init_snapshot, self.cache_config)
+11230-(EngineCore pid=1698)                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11231-(EngineCore pid=1698)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/utils.py", line 413, in request_memory
+11232-(EngineCore pid=1698)     raise ValueError(
+11233:(EngineCore pid=1698) ValueError: Free memory on device cuda:0 (33.99/121.63 GiB) on startup is less than desired GPU memory utilization (0.83, 100.95 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes.
+--
+11253-(EngineCore pid=1698)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py", line 283, in init_device
+11254-(EngineCore pid=1698)     self.requested_memory = request_memory(init_snapshot, self.cache_config)
+11255-(EngineCore pid=1698)                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11256-(EngineCore pid=1698)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/utils.py", line 413, in request_memory
+11257-(EngineCore pid=1698)     raise ValueError(
+11258:(EngineCore pid=1698) ValueError: Free memory on device cuda:0 (38.4/121.63 GiB) on startup is less than desired GPU memory utilization (0.83, 100.95 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes.

@@ -1,0 +1,80 @@
+545-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+546-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/quantization/fp8.py", line 476, in apply
+547-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]     return self.fp8_linear.apply_weights(layer, x, bias)
+548-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+549-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/kernels/linear/scaled_mm/BlockScaledMMLinearKernel.py", line 132, in apply_weights
+550-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]     output = self.apply_block_scaled_mm(
+551-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+552-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/kernels/linear/scaled_mm/deep_gemm.py", line 122, in apply_block_scaled_mm
+553-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]     torch.ops.vllm.fp8_gemm_nt_op(A, As, B, Bs, output, self.use_deep_gemm_e8m0)
+554-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]   File "/usr/local/lib/python3.12/dist-packages/torch/_ops.py", line 1258, in __call__
+555-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]     return self._op(*args, **kwargs)
+556-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]            ^^^^^^^^^^^^^^^^^^^^^^^^^
+557-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/kernels/linear/scaled_mm/deep_gemm.py", line 134, in _fp8_gemm_nt_op
+558-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]     fp8_gemm_nt(
+559-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]   File "/usr/local/lib/python3.12/dist-packages/vllm/utils/deep_gemm.py", line 297, in fp8_gemm_nt
+560-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]     return _fp8_gemm_nt_impl(*args, disable_ue8m0_cast=not use_ue8m0, **kwargs)
+561-(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+562:(EngineCore pid=1273) ERROR 04-25 06:14:37 [core.py:1110] RuntimeError: Assertion error (/workspace/vllm-src/.deps/deepgemm-src/csrc/apis/../jit_kernels/impls/../heuristics/../../utils/layout.hpp:76): Unknown recipe
+--
+637-(EngineCore pid=1273)     hidden_states = self.model(
+638-(EngineCore pid=1273)                     ^^^^^^^^^^^
+639-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/decorators.py", line 467, in __call__
+640-(EngineCore pid=1273)     return self.forward(*args, **kwargs)
+641-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+642-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/deepseek_v4.py", line 654, in forward
+643-(EngineCore pid=1273)     hidden_states = layer(
+644-(EngineCore pid=1273)                     ^^^^^^
+645-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+646-(EngineCore pid=1273)     return self._call_impl(*args, **kwargs)
+647-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+648-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+649-(EngineCore pid=1273)     return forward_call(*args, **kwargs)
+650-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+651-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/deepseek_v4.py", line 528, in forward
+652-(EngineCore pid=1273)     x = self.attn(positions, x, None)
+653-(EngineCore pid=1273)         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+654-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+655-(EngineCore pid=1273)     return self._call_impl(*args, **kwargs)
+656-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+657-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+658-(EngineCore pid=1273)     return forward_call(*args, **kwargs)
+659-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+660-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/deepseek_v4.py", line 406, in forward
+661-(EngineCore pid=1273)     return self.mla_attn(positions, hidden_states, llama_4_scaling)
+662-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+663-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+664-(EngineCore pid=1273)     return self._call_impl(*args, **kwargs)
+665-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+666-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+667-(EngineCore pid=1273)     return forward_call(*args, **kwargs)
+668-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+669-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/deepseek_v4_attention.py", line 484, in forward
+670-(EngineCore pid=1273)     qr_kv, _ = self.fused_wqa_wkv(hidden_states)
+671-(EngineCore pid=1273)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+672-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+673-(EngineCore pid=1273)     return self._call_impl(*args, **kwargs)
+674-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+675-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+676-(EngineCore pid=1273)     return forward_call(*args, **kwargs)
+677-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+678-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/linear.py", line 581, in forward
+679-(EngineCore pid=1273)     output_parallel = self.quant_method.apply(self, input_, bias)
+680-(EngineCore pid=1273)                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+681-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/quantization/fp8.py", line 476, in apply
+682-(EngineCore pid=1273)     return self.fp8_linear.apply_weights(layer, x, bias)
+683-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+684-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/kernels/linear/scaled_mm/BlockScaledMMLinearKernel.py", line 132, in apply_weights
+685-(EngineCore pid=1273)     output = self.apply_block_scaled_mm(
+686-(EngineCore pid=1273)              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+687-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/kernels/linear/scaled_mm/deep_gemm.py", line 122, in apply_block_scaled_mm
+688-(EngineCore pid=1273)     torch.ops.vllm.fp8_gemm_nt_op(A, As, B, Bs, output, self.use_deep_gemm_e8m0)
+689-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/torch/_ops.py", line 1258, in __call__
+690-(EngineCore pid=1273)     return self._op(*args, **kwargs)
+691-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^
+692-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/kernels/linear/scaled_mm/deep_gemm.py", line 134, in _fp8_gemm_nt_op
+693-(EngineCore pid=1273)     fp8_gemm_nt(
+694-(EngineCore pid=1273)   File "/usr/local/lib/python3.12/dist-packages/vllm/utils/deep_gemm.py", line 297, in fp8_gemm_nt
+695-(EngineCore pid=1273)     return _fp8_gemm_nt_impl(*args, disable_ue8m0_cast=not use_ue8m0, **kwargs)
+696-(EngineCore pid=1273)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+697:(EngineCore pid=1273) RuntimeError: Assertion error (/workspace/vllm-src/.deps/deepgemm-src/csrc/apis/../jit_kernels/impls/../heuristics/../../utils/layout.hpp:76): Unknown recipe

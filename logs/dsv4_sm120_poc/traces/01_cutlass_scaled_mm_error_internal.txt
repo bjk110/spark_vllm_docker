@@ -1,0 +1,60 @@
+(EngineCore pid=1274) ERROR 04-25 05:31:25 [core.py:1110] RuntimeError: cutlass_gemm_caller, /workspace/vllm-src/csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/cutlass_gemm_caller.cuh:61, Error Internal
+(EngineCore pid=1274) Process EngineCore:
+(EngineCore pid=1274) Traceback (most recent call last):
+(EngineCore pid=1274)   File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+(EngineCore pid=1274)     self.run()
+(EngineCore pid=1274)   File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+(EngineCore pid=1274)     self._target(*self._args, **self._kwargs)
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1114, in run_engine_core
+(EngineCore pid=1274)     raise e
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1084, in run_engine_core
+(EngineCore pid=1274)     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=1274)                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=1274)     return func(*args, **kwargs)
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 850, in __init__
+(EngineCore pid=1274)     super().__init__(
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 127, in __init__
+(EngineCore pid=1274)     kv_cache_config = self._initialize_kv_caches(vllm_config)
+(EngineCore pid=1274)                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=1274)     return func(*args, **kwargs)
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 249, in _initialize_kv_caches
+(EngineCore pid=1274)     available_gpu_memory = self.model_executor.determine_available_memory()
+(EngineCore pid=1274)                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/abstract.py", line 142, in determine_available_memory
+(EngineCore pid=1274)     return self.collective_rpc("determine_available_memory")
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/ray_executor.py", line 506, in collective_rpc
+(EngineCore pid=1274)     return ray.get(ray_worker_outputs, timeout=timeout)
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/ray/_private/auto_init_hook.py", line 22, in auto_init_wrapper
+(EngineCore pid=1274)     return fn(*args, **kwargs)
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/ray/_private/client_mode_hook.py", line 107, in wrapper
+(EngineCore pid=1274)     return func(*args, **kwargs)
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/ray/_private/worker.py", line 2980, in get
+(EngineCore pid=1274)     values, debugger_breakpoint = worker.get_objects(
+(EngineCore pid=1274)                                   ^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/ray/_private/worker.py", line 1023, in get_objects
+(EngineCore pid=1274)     raise value.as_instanceof_cause()
+(EngineCore pid=1274) ray.exceptions.RayTaskError(RuntimeError): [36mray::RayWorkerWrapper.execute_method()[39m (pid=2396, ip=10.10.10.1, actor_id=b38ddad43c94c03b6a0254a601000000, repr=<vllm.v1.executor.ray_utils.RayWorkerWrapper object at 0xe7a9c23ab980>)
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/ray_utils.py", line 88, in execute_method
+(EngineCore pid=1274)     raise e
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/ray_utils.py", line 78, in execute_method
+(EngineCore pid=1274)     return run_method(self, method, args, kwargs)
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/serial_utils.py", line 510, in run_method
+(EngineCore pid=1274)     return func(*args, **kwargs)
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(EngineCore pid=1274)     return func(*args, **kwargs)
+(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py", line 370, in determine_available_memory
+(EngineCore pid=1274)     self.model_runner.profile_run()
+(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_model_runner.py", line 5826, in profile_run

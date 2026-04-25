@@ -1,0 +1,80 @@
+581-(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/linear.py", line 581, in forward
+582-(EngineCore pid=1274)     output_parallel = self.quant_method.apply(self, input_, bias)
+583-(EngineCore pid=1274)                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+584-(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/quantization/fp8.py", line 476, in apply
+585-(EngineCore pid=1274)     return self.fp8_linear.apply_weights(layer, x, bias)
+586-(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+587-(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/kernels/linear/scaled_mm/BlockScaledMMLinearKernel.py", line 132, in apply_weights
+588-(EngineCore pid=1274)     output = self.apply_block_scaled_mm(
+589-(EngineCore pid=1274)              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+590-(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/kernels/linear/scaled_mm/cutlass.py", line 268, in apply_block_scaled_mm
+591-(EngineCore pid=1274)     return ops.cutlass_scaled_mm(
+592-(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^^
+593-(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/vllm/_custom_ops.py", line 915, in cutlass_scaled_mm
+594-(EngineCore pid=1274)     torch.ops._C.cutlass_scaled_mm(out, a, b, scale_a, scale_b, bias)
+595-(EngineCore pid=1274)   File "/usr/local/lib/python3.12/dist-packages/torch/_ops.py", line 1258, in __call__
+596-(EngineCore pid=1274)     return self._op(*args, **kwargs)
+597-(EngineCore pid=1274)            ^^^^^^^^^^^^^^^^^^^^^^^^^
+598:(EngineCore pid=1274) RuntimeError: cutlass_gemm_caller, /workspace/vllm-src/csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/cutlass_gemm_caller.cuh:61, Error Internal
+--
+627-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+628-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/deepseek_v4.py", line 879, in forward
+629-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     hidden_states = self.model(
+630-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]                     ^^^^^^^^^^^
+631-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/decorators.py", line 467, in __call__
+632-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return self.forward(*args, **kwargs)
+633-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+634-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/deepseek_v4.py", line 654, in forward
+635-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     hidden_states = layer(
+636-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]                     ^^^^^^
+637-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+638-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return self._call_impl(*args, **kwargs)
+639-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+640-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+641-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return forward_call(*args, **kwargs)
+642-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+643-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/deepseek_v4.py", line 528, in forward
+644-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     x = self.attn(positions, x, None)
+645-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+646-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+647-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return self._call_impl(*args, **kwargs)
+648-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+649-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+650-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return forward_call(*args, **kwargs)
+651-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+652-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/deepseek_v4.py", line 406, in forward
+653-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return self.mla_attn(positions, hidden_states, llama_4_scaling)
+654-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+655-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+656-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return self._call_impl(*args, **kwargs)
+657-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+658-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+659-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return forward_call(*args, **kwargs)
+660-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+661-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/deepseek_v4_attention.py", line 484, in forward
+662-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     qr_kv, _ = self.fused_wqa_wkv(hidden_states)
+663-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+664-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+665-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return self._call_impl(*args, **kwargs)
+666-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+667-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+668-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return forward_call(*args, **kwargs)
+669-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+670-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/linear.py", line 581, in forward
+671-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     output_parallel = self.quant_method.apply(self, input_, bias)
+672-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+673-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/quantization/fp8.py", line 476, in apply
+674-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return self.fp8_linear.apply_weights(layer, x, bias)
+675-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+676-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/kernels/linear/scaled_mm/BlockScaledMMLinearKernel.py", line 132, in apply_weights
+677-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     output = self.apply_block_scaled_mm(
+678-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+679-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/kernels/linear/scaled_mm/cutlass.py", line 268, in apply_block_scaled_mm
+680-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return ops.cutlass_scaled_mm(
+681-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^
+682-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/vllm/_custom_ops.py", line 915, in cutlass_scaled_mm
+683-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     torch.ops._C.cutlass_scaled_mm(out, a, b, scale_a, scale_b, bias)
+684-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]   File "/usr/local/lib/python3.12/dist-packages/torch/_ops.py", line 1258, in __call__
+685-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]     return self._op(*args, **kwargs)
+686-(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87]            ^^^^^^^^^^^^^^^^^^^^^^^^^
+687:(EngineCore pid=1274) [36m(RayWorkerWrapper pid=2396)[0m ERROR 04-25 05:31:25 [ray_utils.py:87] RuntimeError: cutlass_gemm_caller, /workspace/vllm-src/csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/cutlass_gemm_caller.cuh:61, Error Internal
