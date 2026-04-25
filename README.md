@@ -158,6 +158,34 @@ curl http://spark01:8000/health        # dual-rdma
 
 ## Troubleshooting
 
+### `SyntaxError: invalid syntax` in `compilation/codegen.py` during EngineCore init (Qwen3.5 hybrid + torch.compile)
+
+```
+File "<string>", line 5
+    gdn_attention_core = torch.ops.vllm.gdn_attention_core(..., <vllm.utils.torch_utils.LayerName object at 0x...>)
+                                                                ^
+SyntaxError: invalid syntax
+```
+
+vLLM main since `951dca80` (PR #38657 "[compile] Invoke split FX graph by codegen") emits the default `repr()` of opaque arguments like `LayerName` into the generated execution function source. The hybrid GDN attention path used by Qwen3.5 takes a `LayerName` and trips this every cold start.
+
+**Workaround (recommended, no source patch)** — pass `use_inductor_graph_partition=True` so torch.compile uses Inductor's own partitioning instead of vLLM's split-by-codegen:
+
+```
+VLLM_EXTRA_ARGS=... --compilation-config {"use_inductor_graph_partition":true}
+```
+
+This keeps torch.compile + CUDAGraph (`FULL_AND_PIECEWISE`) enabled. Cold-start engine init is roughly 2× longer (≈ 440 s vs 250 s for `--enforce-eager` on 397B INT4 TP=2) due to the extra Inductor compile, but steady-state inference benefits from CUDA graph capture.
+
+**Last-resort workaround** — `--enforce-eager`. Disables torch.compile and CUDAGraph entirely; loses inference performance but guaranteed to bypass the codegen path.
+
+**Hot-patch (kept on standby)** — `patches/patch_codegen_fx_repr.py` rewrites `_node_ref()` to honor `__fx_repr__()` and merges its namespace into the `exec()` scope. Apply only if a future vLLM bump regresses the Inductor partition path or a different opaque type triggers the same SyntaxError:
+
+```bash
+docker exec vllm-spark-head python3 /patches/patch_codegen_fx_repr.py
+docker compose --profile head restart
+```
+
 ### `[c10d] The server socket on [::ffff:10.10.10.1]:<port> has timed out, will retry.`
 
 This means a single-Spark setup is leaking RDMA env (`VLLM_HOST_IP=10.10.10.1`,

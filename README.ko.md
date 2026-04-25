@@ -158,6 +158,34 @@ curl http://spark01:8000/health        # 듀얼-rdma
 
 ## 트러블슈팅
 
+### `SyntaxError: invalid syntax` (`compilation/codegen.py`, EngineCore init 시 — Qwen3.5 하이브리드 + torch.compile)
+
+```
+File "<string>", line 5
+    gdn_attention_core = torch.ops.vllm.gdn_attention_core(..., <vllm.utils.torch_utils.LayerName object at 0x...>)
+                                                                ^
+SyntaxError: invalid syntax
+```
+
+vLLM main `951dca80` (PR #38657 "[compile] Invoke split FX graph by codegen") 이후 codegen 단계에서 `LayerName` 같은 opaque 인자에 default `repr()`을 사용해 생성 코드 안에 박음. Qwen3.5 하이브리드의 GDN attention 경로가 `LayerName`을 인자로 받아 cold start마다 트리거됨.
+
+**권장 우회 (소스 패치 불필요)** — `use_inductor_graph_partition=True` 로 torch.compile이 Inductor 자체 partition을 쓰게 해 vLLM split-by-codegen 경로를 우회:
+
+```
+VLLM_EXTRA_ARGS=... --compilation-config {"use_inductor_graph_partition":true}
+```
+
+torch.compile + CUDAGraph (`FULL_AND_PIECEWISE`) 모두 유지. cold-start engine init이 약 2배 (397B INT4 TP=2 기준 ≈ 440s vs `--enforce-eager` 250s) 길어지지만, 정상 추론은 CUDA graph + Inductor 최적화 활용.
+
+**최후 수단** — `--enforce-eager`. torch.compile/CUDAGraph 모두 끔. 성능 손실 크지만 codegen 경로 자체를 우회하므로 확실.
+
+**핫패치 (대기 중)** — `patches/patch_codegen_fx_repr.py` 가 `_node_ref()` 를 `__fx_repr__()` 인지하도록 재작성하고 namespace 병합. Inductor partition 회귀나 다른 opaque type 도입 시에만 적용:
+
+```bash
+docker exec vllm-spark-head python3 /patches/patch_codegen_fx_repr.py
+docker compose --profile head restart
+```
+
 ### `[c10d] The server socket on [::ffff:10.10.10.1]:<port> has timed out, will retry.`
 
 단일 Spark 환경에서 RDMA 환경변수(`VLLM_HOST_IP=10.10.10.1`,

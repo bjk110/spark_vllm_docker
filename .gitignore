@@ -2,3 +2,4 @@
 .cache/
 *.log
 docker-compose.override.yml
+__pycache__/
