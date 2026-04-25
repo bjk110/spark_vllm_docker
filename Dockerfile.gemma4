@@ -20,8 +20,15 @@ ARG NGC_TAG=26.03-py3
 ARG BUILD_JOBS=16
 
 # Pinned versions — change these to update
-ARG VLLM_COMMIT=978a4462
-ARG FLASHINFER_REF=v0.6.8
+# vLLM main 95995bbe (2026-04-25) bumps:
+#   - PR #40060 (TURBOQUANT backend selection) merged upstream — patch removed
+#   - PR #40092 (FA3/FA4 prefill paths)         merged upstream — patch removed
+#   - PR #40194 (random signs cleanup)          merged upstream — bonus
+# FlashInfer v0.6.9 bumps:
+#   - PR #3113 b12x FP4 GEMM SM121 (GB10) support
+#   - PR #3066 b12x CuTe DSL fused MoE for SM120
+ARG VLLM_COMMIT=95995bbef81292e3ee1ef0df5ca3989bb481bdd5
+ARG FLASHINFER_REF=v0.6.9
 ARG TRANSFORMERS_VER=5.5.4
 ARG TORCH_CUDA_ARCH="12.1a"
 

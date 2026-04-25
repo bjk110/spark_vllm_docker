@@ -2,15 +2,17 @@
 """
 Apply upstream TurboQuant fixes to vLLM (post PR #38479 merge).
 
-These patches are cherry-picked from open PRs that fix issues or add
-features needed for DGX Spark (GB10, SM121, Qwen3.5 hybrid models).
+These patches are cherry-picked from still-OPEN PRs that fix issues or
+add features needed for DGX Spark (GB10, SM121, Qwen3.5 hybrid models).
 
-Applied PRs (in order):
+Applied PRs (still open as of vLLM main 95995bbe, 2026-04-25):
   1. PR #40074 — Triton decode index OOB fix
   2. PR #39988 — BF16 FP8 cast fix
-  3. PR #40060 — TURBOQUANT backend selection fix
-  4. PR #39931 — Hybrid model support (Qwen3.5)
-  5. PR #40092 — FA3/FA4 for prefill paths
+  3. PR #39931 — Hybrid model support (Qwen3.5)
+
+Removed (merged upstream — no patch needed):
+  - PR #40060 — TURBOQUANT backend selection fix     (merged 2026-04-17)
+  - PR #40092 — FA3/FA4 for prefill paths           (merged 2026-04-23)
 
 Usage (in Dockerfile, after vLLM install):
   COPY patches/apply_turboquant_fixes.py /tmp/
@@ -137,72 +139,9 @@ patch_file(
 
 
 # =====================================================================
-# PR #40060 — TURBOQUANT backend selection fix
+# PR #40060 (TURBOQUANT backend selection fix) merged upstream 2026-04-17.
+# Section removed; vLLM main 95995bbe and later already include it.
 # =====================================================================
-print("\n[PR #40060] TURBOQUANT backend selection fix...")
-
-# Remove the early-return shortcut for TQ
-patch_file(
-    "vllm/platforms/cuda.py",
-    [
-        (
-            "        # TurboQuant KV cache: route directly to TQ backend\n"
-            "        kv_cache_dtype = attn_selector_config.kv_cache_dtype\n"
-            "        if kv_cache_dtype is not None and kv_cache_dtype.startswith(\"turboquant_\"):\n"
-            "            return [(AttentionBackendEnum.TURBOQUANT, 0)], {}\n"
-            "\n"
-            "        backend_priorities = _get_backend_priorities(",
-            "        backend_priorities = _get_backend_priorities(",
-        ),
-    ],
-    40060,
-    "remove TQ early-return shortcut",
-)
-
-# Add TURBOQUANT to both priority lists via replace_all on the closing pattern.
-# Both Blackwell (SM10x) and Ampere/Hopper (SM80+) lists end with FLEX_ATTENTION.
-patch_file(
-    "vllm/platforms/cuda.py",
-    [
-        (
-            "                AttentionBackendEnum.FLEX_ATTENTION,\n"
-            "            ]\n"
-            "        else:\n"
-            "            return [\n"
-            "                AttentionBackendEnum.FLASH_ATTN,",
-            "                AttentionBackendEnum.FLEX_ATTENTION,\n"
-            "                AttentionBackendEnum.TURBOQUANT,\n"
-            "            ]\n"
-            "        else:\n"
-            "            return [\n"
-            "                AttentionBackendEnum.FLASH_ATTN,",
-        ),
-    ],
-    40060,
-    "add TURBOQUANT to Blackwell priorities",
-)
-
-# Add TURBOQUANT to the second (Ampere/Hopper) priority list
-patch_file(
-    "vllm/platforms/cuda.py",
-    [
-        (
-            "                AttentionBackendEnum.FLEX_ATTENTION,\n"
-            "            ]\n"
-            "\n"
-            "\n"
-            "def with_nvml_context",
-            "                AttentionBackendEnum.FLEX_ATTENTION,\n"
-            "                AttentionBackendEnum.TURBOQUANT,\n"
-            "            ]\n"
-            "\n"
-            "\n"
-            "def with_nvml_context",
-        ),
-    ],
-    40060,
-    "add TURBOQUANT to Ampere/Hopper priorities",
-)
 
 
 # =====================================================================
@@ -477,65 +416,9 @@ patch_file(
 
 
 # =====================================================================
-# PR #40092 — FA3/FA4 for prefill paths
+# PR #40092 (FA3/FA4 for prefill paths) merged upstream 2026-04-23.
+# Section removed; vLLM main 95995bbe and later already include it.
 # =====================================================================
-print("\n[PR #40092] FA3/FA4 for prefill paths...")
-
-# 5a. flash_attn.py — relax assertion for mixed-backend models
-patch_file(
-    "vllm/v1/attention/backends/flash_attn.py",
-    [
-        (
-            "    for layer in layers.values():\n"
-            "        assert isinstance(layer.impl, FlashAttentionImpl)\n"
-            "        sliding_window_configs.add(layer.impl.sliding_window)",
-            "    for layer in layers.values():\n"
-            "        if not isinstance(layer.impl, FlashAttentionImpl):\n"
-            "            continue\n"
-            "        sliding_window_configs.add(layer.impl.sliding_window)",
-        ),
-    ],
-    40092,
-    "relax assertion for mixed backends",
-)
-
-# 5b. turboquant_attn.py — add get_flash_attn_version import
-patch_file(
-    "vllm/v1/attention/backends/turboquant_attn.py",
-    [
-        (
-            "from vllm.v1.attention.backends.fa_utils import (\n"
-            "    is_flash_attn_varlen_func_available,\n"
-            ")",
-            "from vllm.v1.attention.backends.fa_utils import (\n"
-            "    get_flash_attn_version,\n"
-            "    is_flash_attn_varlen_func_available,\n"
-            ")",
-        ),
-    ],
-    40092,
-    "import get_flash_attn_version",
-)
-
-# 5c. turboquant_attn.py — set fa_version in __init__
-patch_file(
-    "vllm/v1/attention/backends/turboquant_attn.py",
-    [
-        (
-            "        self._n_centroids = cfg.n_centroids if not cfg.key_fp8 else 1\n"
-            "\n"
-            "        # Fixed NUM_KV_SPLITS",
-            "        self._n_centroids = cfg.n_centroids if not cfg.key_fp8 else 1\n"
-            "\n"
-            "        # Detect flash-attn version (FA2/3/4) for prefill paths.\n"
-            "        self.fa_version = get_flash_attn_version(head_size=head_size)\n"
-            "\n"
-            "        # Fixed NUM_KV_SPLITS",
-        ),
-    ],
-    40092,
-    "set fa_version in __init__",
-)
 
 
 # =====================================================================

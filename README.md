@@ -21,15 +21,15 @@ Pick the topology by setting `CLUSTER_MODE=single` (default) or
 
 ## Software Stack
 
-### v020-ngc2603 (latest, NGC 26.03)
+### v021-ngc2603 (latest, NGC 26.03)
 
-Major update: vLLM main with **upstream TurboQuant KV cache compression** (PR #38479), FlashInfer v0.6.8 with SM121/GB10 optimizations (NVFP4 group GEMM, tile filtering, FP4 CUTLASS). Three upstream patches removed (cuMemcpyBatch, RoPE fix, PR #38423 — all merged). TurboQuant enables 2-4x KV cache capacity via `--kv-cache-dtype turboquant_k8v4`.
+vLLM main bumped from 978a4462 to **95995bbe** (+236 commits incl. upstream merges of TQ backend selection #40060, FA3/FA4 prefill #40092, prior-art random-signs cleanup #40194). FlashInfer bumped **v0.6.8 → v0.6.9** with SM121 b12x FP4 GEMM (#3113) and b12x CuTe DSL fused MoE for SM120 (#3066). TurboQuant enables 2-4x KV cache capacity via `--kv-cache-dtype turboquant_k8v4`.
 
 | Component | Version |
 |---|---|
 | Base Image | NGC PyTorch 26.03 |
-| vLLM | 0.20.0.dev (main 978a4462, source build, TurboQuant included) |
-| FlashInfer | v0.6.8 (SM121 tile filtering, NVFP4 group GEMM, source build) |
+| vLLM | 0.20.0.dev (main 95995bbe, source build, TurboQuant included) |
+| FlashInfer | v0.6.9 (SM121 b12x FP4 GEMM, b12x CuTe DSL MoE, source build) |
 | PyTorch | 2.11.0a0 |
 | CUDA | 13.2 (native) |
 | NCCL | 2.29.7 |
@@ -39,7 +39,7 @@ Major update: vLLM main with **upstream TurboQuant KV cache compression** (PR #3
 
 ### v019-ngc2603 (previous, NGC 26.03)
 
-vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT improved ~2x over v018. Superseded by v020-ngc2603 which adds TurboQuant and FlashInfer v0.6.8.
+vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT improved ~2x over v018. Superseded by v021-ngc2603 (vLLM main 95995bbe + TurboQuant + FlashInfer v0.6.9).
 
 | Component | Version |
 |---|---|
@@ -54,20 +54,20 @@ vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT imp
 
 | Preset | Model | Quantization | TP | Image |
 |---|---|---|---|---|
-| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | 1 | v020-ngc2603 |
-| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (multimodal) | 2 | v020-ngc2603 |
-| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (pre-quantized) | 1 | v020-ngc2603 |
-| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | 1 | v020-ngc2603 |
-| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only, abliterated) | 2 | v020-ngc2603 |
-| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (text-only, abliterated) | 1 | v020-ngc2603 |
-| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v020-ngc2603 |
-| `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 1 | v020-ngc2603 |
-| `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 2 | v020-ngc2603 |
-| `qwen3.5-122b-prismaquant.env` | rdtand/Qwen3.5-122B-A10B-PrismaQuant-4.75bit-vllm | PrismaQuant 4.76bpp (NVFP4+MXFP8+BF16 mixed, MTP spec) | 1 | v020-ngc2603 |
-| `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 original** (KV fp8) | 1 | v020-ngc2603 |
-| `redhatai-122b-nvfp4-tq.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 + **TurboQuant KV** | 1 | v020-tq |
-| `gemma4-26b-a4b-tq.env` | google/gemma-4-26B-A4B-it | BF16 MoE + **TurboQuant KV** | 1 | v020-tq |
-| `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** | 2 | v020-tq |
+| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | 1 | v021-ngc2603 |
+| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (multimodal) | 2 | v021-ngc2603 |
+| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (pre-quantized) | 1 | v021-ngc2603 |
+| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | 1 | v021-ngc2603 |
+| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only, abliterated) | 2 | v021-ngc2603 |
+| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (text-only, abliterated) | 1 | v021-ngc2603 |
+| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v021-ngc2603 |
+| `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 1 | v021-ngc2603 |
+| `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 2 | v021-ngc2603 |
+| `qwen3.5-122b-prismaquant.env` | rdtand/Qwen3.5-122B-A10B-PrismaQuant-4.75bit-vllm | PrismaQuant 4.76bpp (NVFP4+MXFP8+BF16 mixed, MTP spec) | 1 | v021-ngc2603 |
+| `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 original** (KV fp8) | 1 | v021-ngc2603 |
+| `redhatai-122b-nvfp4-tq.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 + **TurboQuant KV** | 1 | v021-tq |
+| `gemma4-26b-a4b-tq.env` | google/gemma-4-26B-A4B-it | BF16 MoE + **TurboQuant KV** | 1 | v021-tq |
+| `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** | 2 | v021-tq |
 
 ## Quick Start
 
@@ -77,10 +77,10 @@ vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT imp
 
 ```bash
 # Base image (all models, no TQ patches)
-docker pull ghcr.io/bjk110/vllm-spark:v020-ngc2603
+docker pull ghcr.io/bjk110/vllm-spark:v021-ngc2603
 
 # TurboQuant image (base + upstream TQ bugfix patches for hybrid models)
-docker pull ghcr.io/bjk110/vllm-spark:v020-tq
+docker pull ghcr.io/bjk110/vllm-spark:v021-tq
 ```
 
 #### Option B: Build from source
@@ -88,7 +88,7 @@ docker pull ghcr.io/bjk110/vllm-spark:v020-tq
 ```bash
 # NGC 26.03 source build (vLLM main, TurboQuant included)
 docker buildx build -f Dockerfile.gemma4 \
-  -t vllm-spark:v020-ngc2603 --load .
+  -t vllm-spark:v021-ngc2603 --load .
 ```
 
 Build arguments:
@@ -96,8 +96,8 @@ Build arguments:
 | Argument | Default | Description |
 |---|---|---|
 | `BUILD_JOBS` | 16 | Parallel build jobs |
-| `FLASHINFER_REF` | v0.6.8 | FlashInfer git ref |
-| `VLLM_COMMIT` | 978a4462 | vLLM source commit |
+| `FLASHINFER_REF` | v0.6.9 | FlashInfer git ref |
+| `VLLM_COMMIT` | 95995bbe | vLLM source commit |
 | `TORCH_CUDA_ARCH` | 12.1a | Target CUDA arch (Blackwell) |
 
 ### 1. Choose a Model Preset
@@ -222,7 +222,7 @@ vllm-spark/
 ├── docker-compose.yml          # Unified compose (head + worker profiles)
 ├── entrypoint.sh               # Smart entrypoint (TP1/TP2 auto-routing)
 ├── .env.example                # Full configuration template
-├── Dockerfile.gemma4           # v020-ngc2603 (NGC 26.03, latest)
+├── Dockerfile.gemma4           # v021-ngc2603 (NGC 26.03, latest)
 ├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, archived)
 ├── models/                     # Validated model presets
 │   ├── gemma4-26b-a4b.env      # Gemma 4 26B MoE (TP1)
@@ -256,7 +256,7 @@ All configuration is via `.env`. See [`.env.example`](.env.example) for full doc
 
 | Variable | Description | Example |
 |---|---|---|
-| `VLLM_IMAGE` | Docker image (local or GHCR) | `ghcr.io/bjk110/vllm-spark:v020-ngc2603` |
+| `VLLM_IMAGE` | Docker image (local or GHCR) | `ghcr.io/bjk110/vllm-spark:v021-ngc2603` |
 | `MODEL_PATH` | Host path to model weights | `/home/user/Models/Qwen/...` |
 | `MODEL_CONTAINER_PATH` | Container mount point | `/models/Qwen3.5-397B-...` |
 | `SERVED_MODEL_NAME` | API model name | `Qwen/Qwen3.5-397B-...` |
@@ -388,7 +388,7 @@ TTFT c=1: ~746 ms (pp2048).
 
 ### 397B INT4 TP2 — TurboQuant KV Cache Sweep
 
-Same 397B INT4 AutoRound model on `v020-tq`, TP=2 (spark01+spark02 over 200 Gbps RoCE), `max_model_len=32768`, `gpu_memory_utilization=0.90`. Only `--kv-cache-dtype` varies. Measured 2026-04-17.
+Same 397B INT4 AutoRound model on `v021-tq`, TP=2 (spark01+spark02 over 200 Gbps RoCE), `max_model_len=32768`, `gpu_memory_utilization=0.90`. Only `--kv-cache-dtype` varies. Measured 2026-04-17.
 
 #### Capacity & Quality Profile
 

@@ -21,15 +21,15 @@ compose 파일로 두 가지 토폴로지를 지원합니다:
 
 ## 소프트웨어 스택
 
-### v020-ngc2603 (최신, NGC 26.03)
+### v021-ngc2603 (최신, NGC 26.03)
 
-주요 업데이트: vLLM main에 포함된 **upstream TurboQuant KV 캐시 압축** (PR #38479), FlashInfer v0.6.8 SM121/GB10 최적화 (NVFP4 group GEMM, tile filtering, FP4 CUTLASS). upstream 반영된 패치 3개 제거 (cuMemcpyBatch, RoPE fix, PR #38423). `--kv-cache-dtype turboquant_k8v4`로 KV 캐시 용량 2-4배 확장 가능.
+vLLM main 978a4462 → **95995bbe** (+236 commits, TQ backend selection #40060 / FA3/FA4 prefill #40092 / random-signs cleanup #40194 upstream 머지 포함). FlashInfer **v0.6.8 → v0.6.9** (SM121 b12x FP4 GEMM #3113, b12x CuTe DSL fused MoE #3066). `--kv-cache-dtype turboquant_k8v4`로 KV 캐시 용량 2-4배 확장 가능.
 
 | 구성요소 | 버전 |
 |---|---|
 | 베이스 이미지 | NGC PyTorch 26.03 |
-| vLLM | 0.20.0.dev (main 978a4462, 소스 빌드, TurboQuant 포함) |
-| FlashInfer | v0.6.8 (SM121 tile filtering, NVFP4 group GEMM, 소스 빌드) |
+| vLLM | 0.20.0.dev (main 95995bbe, 소스 빌드, TurboQuant 포함) |
+| FlashInfer | v0.6.9 (SM121 b12x FP4 GEMM, b12x CuTe DSL MoE, 소스 빌드) |
 | PyTorch | 2.11.0a0 |
 | CUDA | 13.2 (네이티브) |
 | NCCL | 2.29.7 |
@@ -39,7 +39,7 @@ compose 파일로 두 가지 토폴로지를 지원합니다:
 
 ### v019-ngc2603 (이전, NGC 26.03)
 
-vLLM 0.19.1 Gemma 4 지원, 비동기 스케줄링. Transformers 5.5.0. TTFT v018 대비 ~2배 향상. TurboQuant와 FlashInfer v0.6.8이 포함된 v020-ngc2603으로 대체됨.
+vLLM 0.19.1 Gemma 4 지원, 비동기 스케줄링. Transformers 5.5.0. TTFT v018 대비 ~2배 향상. v021-ngc2603 (vLLM main 95995bbe + TurboQuant + FlashInfer v0.6.9)으로 대체됨.
 
 | 구성요소 | 버전 |
 |---|---|
@@ -54,20 +54,20 @@ vLLM 0.19.1 Gemma 4 지원, 비동기 스케줄링. Transformers 5.5.0. TTFT v01
 
 | 프리셋 | 모델 | 양자화 | TP | 이미지 |
 |---|---|---|---|---|
-| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | 1 | v020-ngc2603 |
-| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (멀티모달) | 2 | v020-ngc2603 |
-| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (사전 양자화) | 1 | v020-ngc2603 |
-| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | 1 | v020-ngc2603 |
-| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (텍스트 전용, 탈검열) | 2 | v020-ngc2603 |
-| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (텍스트 전용, 탈검열) | 1 | v020-ngc2603 |
-| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v020-ngc2603 |
-| `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (런타임) | 1 | v020-ngc2603 |
-| `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (런타임) | 2 | v020-ngc2603 |
-| `qwen3.5-122b-prismaquant.env` | rdtand/Qwen3.5-122B-A10B-PrismaQuant-4.75bit-vllm | PrismaQuant 4.76bpp (NVFP4+MXFP8+BF16 혼합, MTP spec) | 1 | v020-ngc2603 |
-| `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 원본** (KV fp8) | 1 | v020-ngc2603 |
-| `redhatai-122b-nvfp4-tq.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 + **TurboQuant KV** | 1 | v020-tq |
-| `gemma4-26b-a4b-tq.env` | google/gemma-4-26B-A4B-it | BF16 MoE + **TurboQuant KV** | 1 | v020-tq |
-| `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** | 2 | v020-tq |
+| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | 1 | v021-ngc2603 |
+| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (멀티모달) | 2 | v021-ngc2603 |
+| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (사전 양자화) | 1 | v021-ngc2603 |
+| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | 1 | v021-ngc2603 |
+| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (텍스트 전용, 탈검열) | 2 | v021-ngc2603 |
+| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (텍스트 전용, 탈검열) | 1 | v021-ngc2603 |
+| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v021-ngc2603 |
+| `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (런타임) | 1 | v021-ngc2603 |
+| `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (런타임) | 2 | v021-ngc2603 |
+| `qwen3.5-122b-prismaquant.env` | rdtand/Qwen3.5-122B-A10B-PrismaQuant-4.75bit-vllm | PrismaQuant 4.76bpp (NVFP4+MXFP8+BF16 혼합, MTP spec) | 1 | v021-ngc2603 |
+| `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 원본** (KV fp8) | 1 | v021-ngc2603 |
+| `redhatai-122b-nvfp4-tq.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 + **TurboQuant KV** | 1 | v021-tq |
+| `gemma4-26b-a4b-tq.env` | google/gemma-4-26B-A4B-it | BF16 MoE + **TurboQuant KV** | 1 | v021-tq |
+| `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** | 2 | v021-tq |
 
 ## 빠른 시작
 
@@ -77,10 +77,10 @@ vLLM 0.19.1 Gemma 4 지원, 비동기 스케줄링. Transformers 5.5.0. TTFT v01
 
 ```bash
 # 기본 이미지 (모든 모델, TQ 패치 미포함)
-docker pull ghcr.io/bjk110/vllm-spark:v020-ngc2603
+docker pull ghcr.io/bjk110/vllm-spark:v021-ngc2603
 
 # TurboQuant 이미지 (기본 + 하이브리드 모델 TQ 버그픽스 패치)
-docker pull ghcr.io/bjk110/vllm-spark:v020-tq
+docker pull ghcr.io/bjk110/vllm-spark:v021-tq
 ```
 
 #### 방법 B: 소스에서 빌드
@@ -88,7 +88,7 @@ docker pull ghcr.io/bjk110/vllm-spark:v020-tq
 ```bash
 # NGC 26.03 소스 빌드 (vLLM main, TurboQuant 포함)
 docker buildx build -f Dockerfile.gemma4 \
-  -t vllm-spark:v020-ngc2603 --load .
+  -t vllm-spark:v021-ngc2603 --load .
 ```
 
 빌드 인자:
@@ -96,8 +96,8 @@ docker buildx build -f Dockerfile.gemma4 \
 | 인자 | 기본값 | 설명 |
 |---|---|---|
 | `BUILD_JOBS` | 16 | 병렬 빌드 작업 수 |
-| `FLASHINFER_REF` | v0.6.8 | FlashInfer git ref |
-| `VLLM_COMMIT` | 978a4462 | vLLM 소스 커밋 |
+| `FLASHINFER_REF` | v0.6.9 | FlashInfer git ref |
+| `VLLM_COMMIT` | 95995bbe | vLLM 소스 커밋 |
 | `TORCH_CUDA_ARCH` | 12.1a | 타겟 CUDA 아키텍처 (Blackwell) |
 
 ### 1. 모델 프리셋 선택
@@ -221,7 +221,7 @@ vllm-spark/
 ├── docker-compose.yml          # 통합 compose (head + worker 프로필)
 ├── entrypoint.sh               # 스마트 엔트리포인트 (TP1/TP2 자동 분기)
 ├── .env.example                # 전체 설정 템플릿
-├── Dockerfile.gemma4           # v020-ngc2603 (NGC 26.03, 최신)
+├── Dockerfile.gemma4           # v021-ngc2603 (NGC 26.03, 최신)
 ├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, 아카이브)
 ├── models/                     # 검증된 모델 프리셋
 │   ├── gemma4-26b-a4b.env      # Gemma 4 26B MoE (TP1)
@@ -255,7 +255,7 @@ vllm-spark/
 
 | 변수 | 설명 | 예시 |
 |---|---|---|
-| `VLLM_IMAGE` | Docker 이미지 (로컬 또는 GHCR) | `ghcr.io/bjk110/vllm-spark:v020-ngc2603` |
+| `VLLM_IMAGE` | Docker 이미지 (로컬 또는 GHCR) | `ghcr.io/bjk110/vllm-spark:v021-ngc2603` |
 | `MODEL_PATH` | 호스트의 모델 가중치 경로 | `/home/user/Models/Qwen/...` |
 | `MODEL_CONTAINER_PATH` | 컨테이너 내 마운트 경로 | `/models/Qwen3.5-397B-...` |
 | `SERVED_MODEL_NAME` | API 모델 이름 | `Qwen/Qwen3.5-397B-...` |
@@ -387,7 +387,7 @@ TTFT c=1: 약 746 ms (pp2048).
 
 ### 397B INT4 TP2 — TurboQuant KV 캐시 모드 비교
 
-동일 397B INT4 AutoRound 모델, `v020-tq` 이미지, TP=2 (spark01+spark02, 200Gbps RoCE), `max_model_len=32768`, `gpu_memory_utilization=0.90`. `--kv-cache-dtype` 만 변경. 측정일 2026-04-17.
+동일 397B INT4 AutoRound 모델, `v021-tq` 이미지, TP=2 (spark01+spark02, 200Gbps RoCE), `max_model_len=32768`, `gpu_memory_utilization=0.90`. `--kv-cache-dtype` 만 변경. 측정일 2026-04-17.
 
 #### 용량·품질 프로파일
 
