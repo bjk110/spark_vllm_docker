@@ -235,6 +235,20 @@ RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
     echo "Installing tilelang: ${TL_URL}" && \
     uv pip install --system "${TL_URL}"
 
+# ---- DeepGEMM (required by vllm/model_executor/layers/sparse_attn_indexer.py) ----
+# JIT kernel lib (no CUDA compile during install). Pinned to commit tested on GB10.
+# GB10 is SM12.1 — falls outside is_deep_gemm_supported() (SM9/SM10), but that only
+# affects MoE fast-path fallback. Sparse Attention Indexer only checks has_deep_gemm().
+ARG DEEPGEMM_COMMIT=891d57b
+RUN --mount=type=cache,id=uv-dsv4,target=/root/.cache/uv \
+    git clone --recursive https://github.com/deepseek-ai/DeepGEMM.git /workspace/DeepGEMM && \
+    cd /workspace/DeepGEMM && \
+    git checkout ${DEEPGEMM_COMMIT} && \
+    git submodule update --init --recursive && \
+    ./install.sh && \
+    cd / && rm -rf /workspace/DeepGEMM && \
+    python3 -c "import deep_gemm; print(f'[deep_gemm] installed: {deep_gemm.__file__}')"
+
 # ---- Transformers ----
 ARG TRANSFORMERS_VER
 RUN uv pip install transformers==${TRANSFORMERS_VER} --upgrade --no-deps --system && \

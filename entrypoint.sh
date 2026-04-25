@@ -8,6 +8,13 @@ if [ "${APPLY_TEXT_ONLY_SHIM:-0}" = "1" ] && [ -f /patches/patch_qwen35_moe_text
     python3 /patches/patch_qwen35_moe_text.py || true
 fi
 
+# Apply DeepSeek-V4 config compat patch (transformers 5.5.4 strict dataclass).
+# Set APPLY_DSV4_PATCHES=1 in .env to enable.
+if [ "${APPLY_DSV4_PATCHES:-0}" = "1" ] && [ -f /patches/patch_deepseek_v4_config.py ]; then
+    echo "[entrypoint] Applying DeepseekV4Config compat patch (APPLY_DSV4_PATCHES=1)"
+    python3 /patches/patch_deepseek_v4_config.py || true
+fi
+
 # =============================================================================
 # vLLM Spark Unified Entrypoint
 #

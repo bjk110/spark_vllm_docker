@@ -45,7 +45,8 @@ mods = [
     "vllm.v1.attention.backends.mla.flashmla_sparse",
     "vllm.v1.attention.backends.mla.indexer",
     "tilelang",
-    "apache_tvm_ffi",
+    # PyPI package "apache-tvm-ffi" imports as "tvm_ffi"
+    "tvm_ffi",
     "flashinfer",
 ]
 for m in mods:
