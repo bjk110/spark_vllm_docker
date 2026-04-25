@@ -64,6 +64,20 @@ def patch_file(path: Path) -> bool:
 
 
 def main() -> int:
+    # Short-circuit: if the running PyTorch already exposes the dtype, the
+    # patch is a defensive no-op AND not safe to apply with a textual rewrite
+    # because the symbol appears inside f-string error messages that would
+    # turn into SyntaxError after substitution. Only apply when actually
+    # missing on this PyTorch build.
+    try:
+        import torch
+        if hasattr(torch, "float8_e8m0fnu"):
+            print("[safe_e8m0] torch.float8_e8m0fnu present natively — no patch needed")
+            return 0
+    except Exception as e:
+        print(f"[safe_e8m0] could not import torch ({e!r}) — skipping patch")
+        return 0
+
     any_changed = False
     for t in TARGETS:
         any_changed = patch_file(t) or any_changed
