@@ -15,6 +15,15 @@ if [ "${APPLY_DSV4_PATCHES:-0}" = "1" ] && [ -f /patches/patch_deepseek_v4_confi
     python3 /patches/patch_deepseek_v4_config.py || true
 fi
 
+# Force DeepGEMM linear FP8 path on SM12x (GB10). PR #40852 builds DeepGEMM
+# for SM12x but does not flip the Python is_deep_gemm_supported() gate. Without
+# this patch the FP8 BlockScaledMM picks CUTLASS and crashes with
+# cutlass_gemm_caller Error Internal on GB10. Set APPLY_SM12X_DEEP_GEMM=1.
+if [ "${APPLY_SM12X_DEEP_GEMM:-0}" = "1" ] && [ -f /patches/patch_sm12x_force_deep_gemm.py ]; then
+    echo "[entrypoint] Applying SM12x DeepGEMM gate patch (APPLY_SM12X_DEEP_GEMM=1)"
+    python3 /patches/patch_sm12x_force_deep_gemm.py || true
+fi
+
 # =============================================================================
 # vLLM Spark Unified Entrypoint
 #

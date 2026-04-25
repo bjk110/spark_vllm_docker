@@ -31,6 +31,9 @@ services:
       # ---- Patches (0 = disabled) ----
       - APPLY_TEXT_ONLY_SHIM=${APPLY_TEXT_ONLY_SHIM:-0}
       - APPLY_DSV4_PATCHES=${APPLY_DSV4_PATCHES:-0}
+      - APPLY_SM12X_DEEP_GEMM=${APPLY_SM12X_DEEP_GEMM:-0}
+      # ---- DeepGEMM SF E8M0 cast (SM12x layout transform fallback) ----
+      - VLLM_USE_DEEP_GEMM_E8M0=${VLLM_USE_DEEP_GEMM_E8M0:-1}
       # ---- Multi-node networking (200Gbps RoCE) ----
       - VLLM_HOST_IP=${HEAD_ROCE_IP}
       - RAY_NODE_IP_ADDRESS=${HEAD_ROCE_IP}
@@ -99,6 +102,9 @@ services:
       # ---- Patches (0 = disabled) ----
       - APPLY_TEXT_ONLY_SHIM=${APPLY_TEXT_ONLY_SHIM:-0}
       - APPLY_DSV4_PATCHES=${APPLY_DSV4_PATCHES:-0}
+      - APPLY_SM12X_DEEP_GEMM=${APPLY_SM12X_DEEP_GEMM:-0}
+      # ---- DeepGEMM SF E8M0 cast (SM12x layout transform fallback) ----
+      - VLLM_USE_DEEP_GEMM_E8M0=${VLLM_USE_DEEP_GEMM_E8M0:-1}
     deploy:
       resources:
         reservations:
