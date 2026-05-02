@@ -11,6 +11,9 @@ topologies from the same repo / Dockerfile / compose file:
 Pick the topology by setting `CLUSTER_MODE=single` (default) or
 `CLUSTER_MODE=dual-rdma` in your `.env`. See [`Quick Start`](#quick-start) below.
 
+For release-by-release detail and patch-by-patch status, see
+[`CHANGELOG.md`](CHANGELOG.md) and [`PATCH_STATUS.md`](PATCH_STATUS.md).
+
 ## Hardware
 
 | Topology | Node | Role | GPU | Memory | Interconnect |
@@ -52,22 +55,22 @@ vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT imp
 
 ## Supported Models
 
-| Preset | Model | Quantization | TP | Image |
-|---|---|---|---|---|
-| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | 1 | v021-ngc2603 |
-| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (multimodal) | 2 | v021-ngc2603 |
-| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (pre-quantized) | 1 | v021-ngc2603 |
-| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | 1 | v021-ngc2603 |
-| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only, abliterated) | 2 | v021-ngc2603 |
-| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (text-only, abliterated) | 1 | v021-ngc2603 |
-| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v021-ngc2603 |
-| `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 1 | v021-ngc2603 |
-| `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (runtime) | 2 | v021-ngc2603 |
-| `qwen3.5-122b-prismaquant.env` | rdtand/Qwen3.5-122B-A10B-PrismaQuant-4.75bit-vllm | PrismaQuant 4.76bpp (NVFP4+MXFP8+BF16 mixed, MTP spec) | 1 | v021-ngc2603 |
-| `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 original** (KV fp8) | 1 | v021-ngc2603 |
-| `redhatai-122b-nvfp4-tq.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 + **TurboQuant KV** | 1 | v021-tq |
-| `gemma4-26b-a4b-tq.env` | google/gemma-4-26B-A4B-it | BF16 MoE + **TurboQuant KV** | 1 | v021-tq |
-| `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** | 2 | v021-tq |
+| Preset | Model | Quantization / dtype | Topology | TP | Image | Notes |
+|---|---|---|---|---|---|---|
+| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | single | 1 | v021-ngc2603 | — |
+| `gemma4-26b-a4b-tq.env` | google/gemma-4-26B-A4B-it | BF16 MoE + **TurboQuant KV** (`turboquant_k8v4`) | single | 1 | v021-tq | TQ baked-in |
+| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (multimodal) | dual-rdma | 2 | v021-ngc2603 | — |
+| `qwen3.5-122b-nvfp4.env` | Qwen/Qwen3.5-122B-A10B | NVFP4 (runtime, FlashInfer) | single | 1 | v021-ngc2603 | — |
+| `qwen3.5-122b-nvfp4-tp2.env` | Qwen/Qwen3.5-122B-A10B | NVFP4 (runtime, FlashInfer) | dual-rdma | 2 | v021-ngc2603 | — |
+| `qwen3.5-122b-prismaquant.env` | rdtand/Qwen3.5-122B-A10B-PrismaQuant-4.75bit-vllm | PrismaQuant 4.76bpp (NVFP4+MXFP8+BF16 mixed) | single | 1 | v021-ngc2603 | MTP `n=1` default |
+| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (pre-quantized) | single | 1 | v021-ngc2603 | — |
+| `redhatai-122b-nvfp4-tq.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 + **TurboQuant KV** | single | 1 | v021-tq | TQ baked-in |
+| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | single | 1 | v021-ngc2603 | — |
+| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only, abliterated) | dual-rdma | 2 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1` |
+| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (text-only, abliterated) | single | 1 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1` |
+| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | dual-rdma | 2 | v021-ngc2603 | — |
+| `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** (`turboquant_3bit_nc` cascade) | dual-rdma | 2 | v021-tq | TQ baked-in; uses `--compilation-config {"use_inductor_graph_partition":true}` |
+| `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 original** (KV fp8) | single | 1 | v021-ngc2603 | Experimental |
 
 ## Quick Start
 
@@ -247,33 +250,45 @@ dispatches on `ROLE` × `TP_SIZE`:
 
 ```
 vllm-spark/
-├── docker-compose.yml          # Unified compose (head + worker profiles)
-├── entrypoint.sh               # Smart entrypoint (TP1/TP2 auto-routing)
-├── .env.example                # Full configuration template
-├── Dockerfile.gemma4           # v021-ngc2603 (NGC 26.03, latest)
-├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, archived)
-├── models/                     # Validated model presets
-│   ├── gemma4-26b-a4b.env      # Gemma 4 26B MoE (TP1)
-│   ├── redhatai-122b-nvfp4.env # RedHatAI NVFP4 (TP1)
-│   ├── intel-122b-int4.env     # Intel INT4 AutoRound (TP1)
-│   ├── wangzhang-122b-fp8.env  # abliterated FP8 (TP2)
-│   ├── wangzhang-122b-nvfp4.env # abliterated NVFP4 (TP1)
-│   ├── qwen3.5-397b-int4.env   # 397B INT4 (TP2)
-│   ├── qwen3.5-122b-fp8.env
-│   ├── qwen3.5-122b-nvfp4.env
-│   ├── qwen3.5-122b-nvfp4-tp2.env
-│   └── qwen3.5-122b-prismaquant.env # PrismaQuant 4.76bpp mixed (TP1)
-├── benchmarks/                 # llama-benchy benchmark results
-│   ├── results_intel-int4-tp1.json
-│   ├── results_wangzhang-fp8-tp2.json
-│   └── results_wangzhang-nvfp4-tp1.json
-├── patches/                    # SM121 / PyTorch 2.11 compatibility
-│   ├── fix_pytorch211_compat.py  # hoist=True removal (PyTorch 2.11)
-│   └── ...
+├── docker-compose.yml             # Unified compose (head + worker profiles)
+├── entrypoint.sh                  # CLUSTER_MODE-aware entrypoint
+├── .env.example                   # Full configuration template
+├── Dockerfile.gemma4              # v021-ngc2603 unified build (historical name)
+├── Dockerfile.ngc2603-v3          # v018-ngc2603 archived build
+├── Dockerfile.nvfp4               # NVFP4 runtime defaults overlay
+├── CHANGELOG.md                   # Release-by-release history
+├── PATCH_STATUS.md                # Per-patch purpose / status / removal condition
+├── models/                        # Validated model presets
+│   ├── gemma4-26b-a4b.env             # Gemma 4 26B MoE (single, TP1)
+│   ├── gemma4-26b-a4b-tq.env          # Gemma 4 + TurboQuant KV (single, TP1)
+│   ├── redhatai-122b-nvfp4.env        # RedHatAI NVFP4 (single, TP1)
+│   ├── redhatai-122b-nvfp4-tq.env     # RedHatAI NVFP4 + TurboQuant (single, TP1)
+│   ├── intel-122b-int4.env            # Intel INT4 AutoRound (single, TP1)
+│   ├── wangzhang-122b-fp8.env         # abliterated FP8 (dual-rdma, TP2)
+│   ├── wangzhang-122b-nvfp4.env       # abliterated NVFP4 (single, TP1)
+│   ├── qwen3.5-397b-int4.env          # 397B INT4 (dual-rdma, TP2)
+│   ├── qwen3.5-397b-int4-tq.env       # 397B INT4 + TurboQuant (dual-rdma, TP2)
+│   ├── qwen3.5-122b-fp8.env           # 122B FP8 multimodal (dual-rdma, TP2)
+│   ├── qwen3.5-122b-nvfp4.env         # 122B NVFP4 runtime (single, TP1)
+│   ├── qwen3.5-122b-nvfp4-tp2.env     # 122B NVFP4 runtime (dual-rdma, TP2)
+│   ├── qwen3.5-122b-prismaquant.env   # PrismaQuant 4.76bpp mixed (single, TP1)
+│   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 experimental (single, TP1)
+├── benchmarks/                    # llama-benchy benchmark results
+├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant patches
+│   ├── fix_pytorch211_compat.py       # hoist=True removal (PyTorch 2.11)
+│   ├── fastsafetensors_natural_sort.patch
+│   ├── aot_cache_fix.patch
+│   ├── nogds_force.patch
+│   ├── apply_sm121_patches.py
+│   ├── moe_config_e256.json / moe_config_e512.json
+│   ├── apply_turboquant_fixes.py      # v021-tq only
+│   ├── patch_qwen35_moe_text.py       # APPLY_TEXT_ONLY_SHIM=1 only
+│   ├── patch_codegen_fx_repr.py       # On-standby hot-patch (see Troubleshooting)
+│   └── ...                            # See PATCH_STATUS.md for the full inventory
 └── scripts/
-    ├── run-cluster-node.sh     # Manual Ray cluster bootstrap
-    ├── verify_imports.py       # Build/runtime verification
-    └── verify_runtime.sh       # Full GPU verification
+    ├── run-cluster-node.sh        # Manual Ray cluster bootstrap
+    ├── verify_imports.py          # Build-time import verification
+    └── verify_runtime.sh          # Full GPU verification
 ```
 
 ## Configuration
@@ -300,19 +315,23 @@ All configuration is via `.env`. See [`.env.example`](.env.example) for full doc
 
 ## Patches
 
-The Dockerfile applies SM121 (Blackwell) compatibility patches:
+Quick summary — see [`PATCH_STATUS.md`](PATCH_STATUS.md) for purpose, scope,
+upstream tracking, and removal conditions per patch.
 
 | Patch | Purpose | Status |
 |---|---|---|
-| `fix_pytorch211_compat` | `hoist=True` removal for PyTorch 2.11 | Active |
-| `fastsafetensors_natural_sort` | Multi-node weight loading order fix | Active |
-| `aot_cache_fix` | torch.fx.Node pickling fix for AOT cache | Active |
-| `nogds_force` | Force `nogds=True` (GB10 has no GDS support) | Active |
-| `apply_sm121_patches` | `is_blackwell_class`, NVFP4 split, TRITON_PTXAS | Active |
-| `moe_config_e256/e512` | GB10-tuned MoE kernel configs | Active |
-| ~~`fix_cuda13_memcpy_batch`~~ | `cuMemcpyBatchAsync` API fix | Removed (upstream) |
-| ~~`qwen3_5_moe_rope_fix`~~ | RoPE validation fix | Removed (upstream) |
-| ~~`pr38423_nvfp4_spark`~~ | NVFP4 DGX Spark fixes | Removed (upstream) |
+| `fix_pytorch211_compat` | `hoist=True` removal for PyTorch 2.11 | Active (build) |
+| `fastsafetensors_natural_sort` | Multi-node weight loading order fix | Active (build) |
+| `aot_cache_fix` | torch.fx.Node pickling fix for AOT cache | Active (build) |
+| `nogds_force` | Force `nogds=True` (GB10 has no GDS support) | Active (build) |
+| `apply_sm121_patches` | `is_blackwell_class`, NVFP4 split, TRITON_PTXAS | Active (build) |
+| `moe_config_e256/e512` | GB10-tuned MoE kernel configs | Active (build) |
+| `apply_turboquant_fixes` | TQ KV cherry-picks (PRs #40074, #39988, #39931) | Active (`v021-tq` only) |
+| `patch_qwen35_moe_text` | Text-only shim for abliterated Qwen3.5 MoE | Conditional (`APPLY_TEXT_ONLY_SHIM=1`) |
+| `patch_codegen_fx_repr` | `__fx_repr__()` honoring in `compilation/codegen.py` | On-standby (hot-patch — see Troubleshooting) |
+| ~~`fix_cuda13_memcpy_batch`~~ | `cuMemcpyBatchAsync` API fix | Removed (upstream — base-refresh-20260417) |
+| ~~`qwen3_5_moe_rope_fix`~~ | RoPE validation fix | Removed (upstream — base-refresh-20260417) |
+| ~~`pr38423_nvfp4_spark`~~ | NVFP4 DGX Spark fixes | Removed (upstream — base-refresh-20260417) |
 
 ## Benchmark Results
 
@@ -552,6 +571,39 @@ memory pressure):
 3. `MAX_NUM_SEQS=4`
 4. Only if the above still fails: consider a TP=2 variant across `spark01` +
    `spark02` (no preset ships for this — this experimental preset is TP=1 only).
+
+## Image tags & Git tags
+
+GHCR image tags (`ghcr.io/bjk110/vllm-spark:<tag>`) and Git tags do **not**
+march in lockstep yet — only `v018-ngc2603` exists as a Git tag. The mapping
+below documents what each image tag corresponds to in the Git history. Use
+this table when you need to reproduce or roll back to a specific image.
+
+| Image tag | Git ref (commit) | Stack | Notes |
+|---|---|---|---|
+| `v021-tq` (latest) | `3070f9a` | base + TQ patches + Inductor-graph-partition fix | Required for any `*-tq.env` preset |
+| `v021-ngc2603` (latest) | `8623187` | vLLM `95995bbe` + FlashInfer `v0.6.9` | Used by every non-TQ preset |
+| `v020-ngc2603` (transient) | `8efdf0b` (base-refresh-20260417 base bump) | vLLM `978a4462` + FlashInfer `v0.6.8` | Superseded by v021; only kept on GHCR for historical reproduction |
+| `v019-ngc2603` | `7736716` (Gemma 4 + vLLM 0.19.1 upgrade) | vLLM `0.19.1` `a7d79fa` + FlashInfer `v0.6.7.post3` | Superseded by v021 |
+| `v018-ngc2603` | `feb5993` (NGC 26.03 source build intro) — Git tag `v018-ngc2603` exists | vLLM `0.18.3` `c494977` + FlashInfer `v0.6.7` | The only currently-tagged release in Git |
+
+### Recommended Git tags to create
+
+Only `v018-ngc2603` is currently tagged. The maintainer can create the
+following tags to align Git tags with GHCR image tags. Run from a clean
+checkout of `main`; do **not** run blindly — verify the SHAs first.
+
+    git tag -a v019-ngc2603 7736716 -m "v019-ngc2603 — Gemma 4 + vLLM 0.19.1"
+    git tag -a v020-ngc2603 8efdf0b -m "v020-ngc2603 — base-refresh-20260417 (vLLM 978a4462, FlashInfer 0.6.8)"
+    git tag -a v021-ngc2603 8623187 -m "v021-ngc2603 — vLLM 95995bbe + FlashInfer v0.6.9"
+    git tag -a v021-tq      3070f9a -m "v021-tq — base + TurboQuant cherry-picks + codegen workaround"
+    git push origin v019-ngc2603 v020-ngc2603 v021-ngc2603 v021-tq
+
+**Verify commit before tagging.** The four SHAs above were extracted from
+`git log --oneline` at the time this README was last updated; if subsequent
+work reshuffles `main`, re-locate the boundary commits with:
+
+    git log --oneline --grep='base.refresh\|bump base.*v021\|0.19.1\|use Inductor graph partition'
 
 ## Branch structure
 

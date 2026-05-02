@@ -1,18 +1,24 @@
 # syntax=docker/dockerfile:1.6
 # =========================================================================
-# vLLM on NVIDIA DGX Spark (GB10, SM121)
+# vLLM on NVIDIA DGX Spark (GB10, SM121) — unified base image
+#
+# Note on the filename: this is the unified NGC 26.03 + vLLM main + FlashInfer
+# build for every supported model preset (Qwen3.5, Qwen3.6, Gemma 4, ...).
+# The `gemma4` suffix is historical (the file was added when Gemma 4 support
+# landed) and has not been renamed because external scripts and GHCR build
+# workflows reference it by this name. See README → "Image tags & Git tags".
 #
 # NGC 26.03 (CUDA 13.2, PyTorch 2.11) +
-# vLLM main (TurboQuant KV cache, Gemma 4, source build) +
-# FlashInfer 0.6.8 (SM121 tile filtering, NVFP4 group GEMM, FP4 CUTLASS) +
+# vLLM main 95995bbe (TurboQuant KV cache, Gemma 4, source build) +
+# FlashInfer 0.6.9 (SM121 b12x FP4 GEMM, b12x CuTe DSL fused MoE, FP4 CUTLASS) +
 # Transformers 5.5.4
 #
 # Build:
 #   docker buildx build -f Dockerfile.gemma4 \
-#     -t vllm-spark:v020-ngc2603 --load .
+#     -t vllm-spark:v021-ngc2603 --load .
 #
 # Verify:
-#   docker run --rm --gpus all vllm-spark:v020-ngc2603 \
+#   docker run --rm --gpus all vllm-spark:v021-ngc2603 \
 #     /opt/scripts/verify_runtime.sh
 # =========================================================================
 

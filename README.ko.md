@@ -11,6 +11,9 @@ compose 파일로 두 가지 토폴로지를 지원합니다:
 `.env`에서 `CLUSTER_MODE=single` (기본) 또는 `CLUSTER_MODE=dual-rdma`로 토폴로지를
 선택합니다. 자세한 내용은 아래 [`빠른 시작`](#빠른-시작)을 참고하세요.
 
+릴리스별 변경 이력은 [`CHANGELOG.md`](CHANGELOG.md), 패치별 상태/제거 조건은
+[`PATCH_STATUS.md`](PATCH_STATUS.md)를 참고하세요.
+
 ## 하드웨어
 
 | 토폴로지 | 노드 | 역할 | GPU | 메모리 | 인터커넥트 |
@@ -52,22 +55,22 @@ vLLM 0.19.1 Gemma 4 지원, 비동기 스케줄링. Transformers 5.5.0. TTFT v01
 
 ## 지원 모델
 
-| 프리셋 | 모델 | 양자화 | TP | 이미지 |
-|---|---|---|---|---|
-| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | 1 | v021-ngc2603 |
-| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (멀티모달) | 2 | v021-ngc2603 |
-| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (사전 양자화) | 1 | v021-ngc2603 |
-| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | 1 | v021-ngc2603 |
-| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (텍스트 전용, 탈검열) | 2 | v021-ngc2603 |
-| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (텍스트 전용, 탈검열) | 1 | v021-ngc2603 |
-| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | 2 | v021-ngc2603 |
-| `qwen3.5-122b-nvfp4.env` | Qwen3.5-122B-A10B | NVFP4 (런타임) | 1 | v021-ngc2603 |
-| `qwen3.5-122b-nvfp4-tp2.env` | Qwen3.5-122B-A10B | NVFP4 (런타임) | 2 | v021-ngc2603 |
-| `qwen3.5-122b-prismaquant.env` | rdtand/Qwen3.5-122B-A10B-PrismaQuant-4.75bit-vllm | PrismaQuant 4.76bpp (NVFP4+MXFP8+BF16 혼합, MTP spec) | 1 | v021-ngc2603 |
-| `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 원본** (KV fp8) | 1 | v021-ngc2603 |
-| `redhatai-122b-nvfp4-tq.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 + **TurboQuant KV** | 1 | v021-tq |
-| `gemma4-26b-a4b-tq.env` | google/gemma-4-26B-A4B-it | BF16 MoE + **TurboQuant KV** | 1 | v021-tq |
-| `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** | 2 | v021-tq |
+| 프리셋 | 모델 | 양자화 / dtype | 토폴로지 | TP | 이미지 | 비고 |
+|---|---|---|---|---|---|---|
+| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | single | 1 | v021-ngc2603 | — |
+| `gemma4-26b-a4b-tq.env` | google/gemma-4-26B-A4B-it | BF16 MoE + **TurboQuant KV** (`turboquant_k8v4`) | single | 1 | v021-tq | TQ 빌드 포함 |
+| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 (멀티모달) | dual-rdma | 2 | v021-ngc2603 | — |
+| `qwen3.5-122b-nvfp4.env` | Qwen/Qwen3.5-122B-A10B | NVFP4 (런타임, FlashInfer) | single | 1 | v021-ngc2603 | — |
+| `qwen3.5-122b-nvfp4-tp2.env` | Qwen/Qwen3.5-122B-A10B | NVFP4 (런타임, FlashInfer) | dual-rdma | 2 | v021-ngc2603 | — |
+| `qwen3.5-122b-prismaquant.env` | rdtand/Qwen3.5-122B-A10B-PrismaQuant-4.75bit-vllm | PrismaQuant 4.76bpp (NVFP4+MXFP8+BF16 혼합) | single | 1 | v021-ngc2603 | MTP `n=1` 기본 |
+| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 (사전 양자화) | single | 1 | v021-ngc2603 | — |
+| `redhatai-122b-nvfp4-tq.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 + **TurboQuant KV** | single | 1 | v021-tq | TQ 빌드 포함 |
+| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | single | 1 | v021-ngc2603 | — |
+| `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (텍스트 전용, 탈검열) | dual-rdma | 2 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1` |
+| `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (텍스트 전용, 탈검열) | single | 1 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1` |
+| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | dual-rdma | 2 | v021-ngc2603 | — |
+| `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** (`turboquant_3bit_nc` 캐스케이드) | dual-rdma | 2 | v021-tq | TQ 빌드 포함; `--compilation-config {"use_inductor_graph_partition":true}` 사용 |
+| `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 원본** (KV fp8) | single | 1 | v021-ngc2603 | 실험용 |
 
 ## 빠른 시작
 
@@ -246,33 +249,45 @@ spark01 (head)                    spark02 (worker)
 
 ```
 vllm-spark/
-├── docker-compose.yml          # 통합 compose (head + worker 프로필)
-├── entrypoint.sh               # 스마트 엔트리포인트 (TP1/TP2 자동 분기)
-├── .env.example                # 전체 설정 템플릿
-├── Dockerfile.gemma4           # v021-ngc2603 (NGC 26.03, 최신)
-├── Dockerfile.ngc2603-v3       # v018-ngc2603 (NGC 26.03, 아카이브)
-├── models/                     # 검증된 모델 프리셋
-│   ├── gemma4-26b-a4b.env      # Gemma 4 26B MoE (TP1)
-│   ├── redhatai-122b-nvfp4.env # RedHatAI NVFP4 (TP1)
-│   ├── intel-122b-int4.env     # Intel INT4 AutoRound (TP1)
-│   ├── wangzhang-122b-fp8.env  # 탈검열 FP8 (TP2)
-│   ├── wangzhang-122b-nvfp4.env # 탈검열 NVFP4 (TP1)
-│   ├── qwen3.5-397b-int4.env   # 397B INT4 (TP2)
-│   ├── qwen3.5-122b-fp8.env
-│   ├── qwen3.5-122b-nvfp4.env
-│   ├── qwen3.5-122b-nvfp4-tp2.env
-│   └── qwen3.5-122b-prismaquant.env # PrismaQuant 4.76bpp 혼합 (TP1)
-├── benchmarks/                 # llama-benchy 벤치마크 결과
-│   ├── results_intel-int4-tp1.json
-│   ├── results_wangzhang-fp8-tp2.json
-│   └── results_wangzhang-nvfp4-tp1.json
-├── patches/                    # SM121 / PyTorch 2.11 호환성 패치
-│   ├── fix_pytorch211_compat.py   # hoist=True 제거 (PyTorch 2.11)
-│   └── ...
+├── docker-compose.yml             # 통합 compose (head + worker 프로필)
+├── entrypoint.sh                  # CLUSTER_MODE 인지 entrypoint
+├── .env.example                   # 전체 설정 템플릿
+├── Dockerfile.gemma4              # v021-ngc2603 통합 빌드 (이름은 역사적)
+├── Dockerfile.ngc2603-v3          # v018-ngc2603 아카이브 빌드
+├── Dockerfile.nvfp4               # NVFP4 런타임 기본값 오버레이
+├── CHANGELOG.md                   # 릴리스별 변경 이력
+├── PATCH_STATUS.md                # 패치별 목적/상태/제거 조건
+├── models/                        # 검증된 모델 프리셋
+│   ├── gemma4-26b-a4b.env             # Gemma 4 26B MoE (single, TP1)
+│   ├── gemma4-26b-a4b-tq.env          # Gemma 4 + TurboQuant KV (single, TP1)
+│   ├── redhatai-122b-nvfp4.env        # RedHatAI NVFP4 (single, TP1)
+│   ├── redhatai-122b-nvfp4-tq.env     # RedHatAI NVFP4 + TurboQuant (single, TP1)
+│   ├── intel-122b-int4.env            # Intel INT4 AutoRound (single, TP1)
+│   ├── wangzhang-122b-fp8.env         # 탈검열 FP8 (dual-rdma, TP2)
+│   ├── wangzhang-122b-nvfp4.env       # 탈검열 NVFP4 (single, TP1)
+│   ├── qwen3.5-397b-int4.env          # 397B INT4 (dual-rdma, TP2)
+│   ├── qwen3.5-397b-int4-tq.env       # 397B INT4 + TurboQuant (dual-rdma, TP2)
+│   ├── qwen3.5-122b-fp8.env           # 122B FP8 멀티모달 (dual-rdma, TP2)
+│   ├── qwen3.5-122b-nvfp4.env         # 122B NVFP4 런타임 (single, TP1)
+│   ├── qwen3.5-122b-nvfp4-tp2.env     # 122B NVFP4 런타임 (dual-rdma, TP2)
+│   ├── qwen3.5-122b-prismaquant.env   # PrismaQuant 4.76bpp 혼합 (single, TP1)
+│   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 실험 (single, TP1)
+├── benchmarks/                    # llama-benchy 벤치마크 결과
+├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant 패치
+│   ├── fix_pytorch211_compat.py       # hoist=True 제거 (PyTorch 2.11)
+│   ├── fastsafetensors_natural_sort.patch
+│   ├── aot_cache_fix.patch
+│   ├── nogds_force.patch
+│   ├── apply_sm121_patches.py
+│   ├── moe_config_e256.json / moe_config_e512.json
+│   ├── apply_turboquant_fixes.py      # v021-tq 전용
+│   ├── patch_qwen35_moe_text.py       # APPLY_TEXT_ONLY_SHIM=1 시
+│   ├── patch_codegen_fx_repr.py       # 대기 중 핫패치 (Troubleshooting 참고)
+│   └── ...                            # 전체 목록은 PATCH_STATUS.md
 └── scripts/
-    ├── run-cluster-node.sh     # 수동 Ray 클러스터 부트스트랩
-    ├── verify_imports.py       # 빌드/런타임 검증
-    └── verify_runtime.sh       # GPU 포함 전체 런타임 검증
+    ├── run-cluster-node.sh        # 수동 Ray 클러스터 부트스트랩
+    ├── verify_imports.py          # 빌드 시점 import 검증
+    └── verify_runtime.sh          # GPU 포함 전체 런타임 검증
 ```
 
 ## 설정
@@ -299,19 +314,23 @@ vllm-spark/
 
 ## 패치
 
-Dockerfile에서 적용하는 SM121 (Blackwell) 호환성 패치:
+요약 — 패치별 목적·범위·upstream 추적·제거 조건은
+[`PATCH_STATUS.md`](PATCH_STATUS.md) 참고.
 
 | 패치 | 목적 | 상태 |
 |---|---|---|
-| `fix_pytorch211_compat` | `hoist=True` 제거 (PyTorch 2.11) | 활성 |
-| `fastsafetensors_natural_sort` | 멀티노드 가중치 로딩 순서 수정 | 활성 |
-| `aot_cache_fix` | AOT 캐시 torch.fx.Node pickling 수정 | 활성 |
-| `nogds_force` | `nogds=True` 강제 (GB10은 GDS 미지원) | 활성 |
-| `apply_sm121_patches` | `is_blackwell_class`, NVFP4 분리, TRITON_PTXAS | 활성 |
-| `moe_config_e256/e512` | GB10 튜닝 MoE 커널 설정 | 활성 |
-| ~~`fix_cuda13_memcpy_batch`~~ | `cuMemcpyBatchAsync` API 수정 | 제거 (upstream 반영) |
-| ~~`qwen3_5_moe_rope_fix`~~ | RoPE 검증 수정 | 제거 (upstream 반영) |
-| ~~`pr38423_nvfp4_spark`~~ | NVFP4 DGX Spark 수정 | 제거 (upstream 반영) |
+| `fix_pytorch211_compat` | `hoist=True` 제거 (PyTorch 2.11) | 활성 (build) |
+| `fastsafetensors_natural_sort` | 멀티노드 가중치 로딩 순서 수정 | 활성 (build) |
+| `aot_cache_fix` | AOT 캐시 torch.fx.Node pickling 수정 | 활성 (build) |
+| `nogds_force` | `nogds=True` 강제 (GB10은 GDS 미지원) | 활성 (build) |
+| `apply_sm121_patches` | `is_blackwell_class`, NVFP4 분리, TRITON_PTXAS | 활성 (build) |
+| `moe_config_e256/e512` | GB10 튜닝 MoE 커널 설정 | 활성 (build) |
+| `apply_turboquant_fixes` | TurboQuant KV 보정 (PR #40074, #39988, #39931) | 활성 (`v021-tq` 전용) |
+| `patch_qwen35_moe_text` | 탈검열 Qwen3.5 MoE text-only shim | 조건부 (`APPLY_TEXT_ONLY_SHIM=1`) |
+| `patch_codegen_fx_repr` | `compilation/codegen.py`에서 `__fx_repr__()` 인지 | 대기 중 (핫패치 — Troubleshooting 참조) |
+| ~~`fix_cuda13_memcpy_batch`~~ | `cuMemcpyBatchAsync` API 수정 | 제거 (upstream 반영 — base-refresh-20260417) |
+| ~~`qwen3_5_moe_rope_fix`~~ | RoPE 검증 수정 | 제거 (upstream 반영 — base-refresh-20260417) |
+| ~~`pr38423_nvfp4_spark`~~ | NVFP4 DGX Spark 수정 | 제거 (upstream 반영 — base-refresh-20260417) |
 
 ## 벤치마크 결과
 
@@ -549,6 +568,40 @@ ssh spark01 'cd ~/docker/vllm-spark && \
 3. `MAX_NUM_SEQS=4`
 4. 그래도 실패 시 `spark01` + `spark02` TP=2 구성을 검토 (현재 프리셋은
    TP=1 전용 — 이번 실험 프리셋 범위를 넘어섬).
+
+## 이미지 태그와 Git 태그
+
+GHCR 이미지 태그(`ghcr.io/bjk110/vllm-spark:<tag>`)와 Git 태그는 아직 1:1로
+정렬되어 있지 않습니다. 현재 Git에 존재하는 태그는 `v018-ngc2603` 한 개뿐이며,
+나머지는 GHCR 이미지로만 발행되어 있습니다. 아래 표는 각 이미지 태그가 Git
+이력의 어떤 시점에 대응하는지 정리한 것입니다. 특정 이미지를 재현하거나
+롤백할 때 참고하세요.
+
+| 이미지 태그 | Git ref (commit) | 스택 | 비고 |
+|---|---|---|---|
+| `v021-tq` (최신) | `3070f9a` | base + TurboQuant 패치 + Inductor graph partition fix | 모든 `*-tq.env` 프리셋이 사용 |
+| `v021-ngc2603` (최신) | `8623187` | vLLM `95995bbe` + FlashInfer `v0.6.9` | TQ 미사용 프리셋 전체가 사용 |
+| `v020-ngc2603` (전환기) | `8efdf0b` (base-refresh-20260417 base bump) | vLLM `978a4462` + FlashInfer `v0.6.8` | v021로 대체됨; 재현용으로만 GHCR에 유지 |
+| `v019-ngc2603` | `7736716` (Gemma 4 + vLLM 0.19.1 업그레이드) | vLLM `0.19.1` `a7d79fa` + FlashInfer `v0.6.7.post3` | v021로 대체됨 |
+| `v018-ngc2603` | `feb5993` (NGC 26.03 source build 시작) — Git 태그 `v018-ngc2603` 존재 | vLLM `0.18.3` `c494977` + FlashInfer `v0.6.7` | 현재 Git에 존재하는 유일한 릴리스 태그 |
+
+### 권장 Git 태그 (생성 가이드)
+
+현재 Git 태그는 `v018-ngc2603` 하나뿐입니다. 메인테이너가 GHCR 이미지 태그와
+Git 태그를 일치시키려면 아래 커맨드로 태그를 생성·푸시하세요. 실행 전 반드시
+SHA를 검증하세요.
+
+    git tag -a v019-ngc2603 7736716 -m "v019-ngc2603 — Gemma 4 + vLLM 0.19.1"
+    git tag -a v020-ngc2603 8efdf0b -m "v020-ngc2603 — base-refresh-20260417 (vLLM 978a4462, FlashInfer 0.6.8)"
+    git tag -a v021-ngc2603 8623187 -m "v021-ngc2603 — vLLM 95995bbe + FlashInfer v0.6.9"
+    git tag -a v021-tq      3070f9a -m "v021-tq — base + TurboQuant cherry-picks + codegen workaround"
+    git push origin v019-ngc2603 v020-ngc2603 v021-ngc2603 v021-tq
+
+**Verify commit before tagging.** 위 4개 SHA는 본 README 갱신 시점의
+`git log --oneline` 결과입니다. 이후 `main`이 재정리되었다면 다음 명령으로
+경계 커밋을 다시 찾으세요:
+
+    git log --oneline --grep='base.refresh\|bump base.*v021\|0.19.1\|use Inductor graph partition'
 
 ## 브랜치 구조
 
