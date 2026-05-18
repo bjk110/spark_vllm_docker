@@ -24,6 +24,29 @@ For release-by-release detail and patch-by-patch status, see
 
 ## Software Stack
 
+### v022-vllm021 (NGC 26.03, vLLM **v0.21.0** release-pinned)
+
+Forward-looking image built from `Dockerfile.v022`, pinned to the vLLM v0.21.0 release tag (`ad7125a4`). Three upstream-absorbed runtime patches drop out of the build (`aot_cache_fix.patch`, `fastsafetensors_natural_sort.patch`, `nogds_force.patch`). Preset overrides live alongside the base preset as `models/*-v022.env`. Use this image to validate behavior on the released v0.21.0 before bumping the default image off `95995bbe`.
+
+| Component | Version |
+|---|---|
+| Base Image | NGC PyTorch 26.03 |
+| vLLM | **0.21.0** (release tag, commit `ad7125a4`, source build) |
+| FlashInfer | v0.6.9 (same as v021-ngc2603) |
+| PyTorch | 2.11.0a0 |
+| CUDA | 13.2 (native) |
+| Transformers | 5.5.4 |
+| Image tag | `ghcr.io/bjk110/vllm-spark:v022-vllm021` |
+
+**Verified presets (v022 override env files):**
+
+| Override env | Model | Notes |
+|---|---|---|
+| `models/wangzhang-122b-abliterix-fp8-tp2-v022.env` | wangzhang/Qwen3.5-122B-A10B-abliterix (FP8) | text-only shim, dual-rdma TP=2 |
+| `models/qwen3.6-27b-prismascout-nvfp4-tp2-v022.env` | rdtand/Qwen3.6-27B-PrismaSCOUT-Blackwell-NVFP4-BF16 | NVFP4 mixed-precision, **adds `--mm-encoder-tp-mode data`** so the ViT MLP fc2 (`hidden=4304`) is not split across TP=2 (would yield K=2152, breaking NVFP4 GEMM K-align(16)); MTP `n=3`, dual-rdma TP=2 |
+
+**Caveat — AOT compile cache poisoning across config changes:** vLLM persists AOT-compiled forward functions in `./.cache/<preset>/torch_compile_cache/torch_aot_compile/`. Switching a preset's CLI args in a way that changes the encoder profile path (e.g. toggling `--mm-encoder-tp-mode` or `--limit-mm-per-prompt`) without clearing the cache can surface a `'NoneType' object has no attribute 'size'` failure deep inside the compiled forward (qwen3_next.py / qwen3_5.py). Workaround: `sudo mv .cache/<preset>/torch_compile_cache .cache/<preset>/torch_compile_cache.backup_$(date +%s)` on both nodes, then restart. Fresh compile takes ~2-3 min (vs <10s with a warm cache).
+
 ### v021-ngc2603 (latest, NGC 26.03)
 
 vLLM main bumped from 978a4462 to **95995bbe** (+236 commits incl. upstream merges of TQ backend selection #40060, FA3/FA4 prefill #40092, prior-art random-signs cleanup #40194). FlashInfer bumped **v0.6.8 → v0.6.9** with SM121 b12x FP4 GEMM (#3113) and b12x CuTe DSL fused MoE for SM120 (#3066). TurboQuant enables 2-4x KV cache capacity via `--kv-cache-dtype turboquant_k8v4`.
@@ -72,6 +95,7 @@ vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT imp
 | `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | dual-rdma | 2 | v021-ngc2603 | — |
 | `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** (`turboquant_3bit_nc` cascade) | dual-rdma | 2 | v021-tq | TQ baked-in; uses `--compilation-config {"use_inductor_graph_partition":true}` |
 | `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 original** (KV fp8) | single | 1 | v021-ngc2603 | Experimental |
+| `qwen3.6-27b-prismascout-nvfp4-tp2.env` (+ `-v022`) | rdtand/Qwen3.6-27B-PrismaSCOUT-Blackwell-NVFP4-BF16-vllm | NVFP4 mixed-precision (ViT NVFP4 + LM NVFP4 + BF16 sidecars) | dual-rdma | 2 | v022-vllm021 | MTP `n=3`; **v022 preset requires `--mm-encoder-tp-mode data`** (see Software Stack §v022) for ViT MLP K-align |
 
 ## Quick Start
 
@@ -85,6 +109,9 @@ docker pull ghcr.io/bjk110/vllm-spark:v021-ngc2603
 
 # TurboQuant image (base + upstream TQ bugfix patches for hybrid models)
 docker pull ghcr.io/bjk110/vllm-spark:v021-tq
+
+# vLLM v0.21.0 release-pinned image (Dockerfile.v022, drops 3 absorbed patches)
+docker pull ghcr.io/bjk110/vllm-spark:v022-vllm021
 ```
 
 #### Option B: Build from source
@@ -93,6 +120,11 @@ docker pull ghcr.io/bjk110/vllm-spark:v021-tq
 # NGC 26.03 source build (vLLM main, TurboQuant included)
 docker buildx build -f Dockerfile.gemma4 \
   -t vllm-spark:v021-ngc2603 --load .
+
+# vLLM v0.21.0 release-pinned source build
+# (build on spark01/spark02 only — homeserver 32GiB RAM is insufficient)
+docker buildx build -f Dockerfile.v022 \
+  -t vllm-spark:v022-vllm021 --load .
 ```
 
 Build arguments:

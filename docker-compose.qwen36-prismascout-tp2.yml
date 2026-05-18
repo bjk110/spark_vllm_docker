@@ -1,0 +1,167 @@
+# =============================================================================
+# docker-compose.qwen36-prismascout-tp2.yml
+#
+# Dedicated compose for Qwen3.6-27B PrismaSCOUT NVFP4-BF16 TP=2 deployment.
+#
+# Why a dedicated file:
+#   - The shared docker-compose.yml does NOT forward VLLM_NVFP4_GEMM_BACKEND
+#     into the container, but this preset needs flashinfer-cutlass NVFP4 GEMM.
+#   - Distinct container names (vllm-qwen36-head / vllm-qwen36-worker) prevent
+#     collisions when the shared vllm-spark-head/worker services are also in use.
+#
+# Topology: dual-rdma only. spark01=head, spark02=worker. CLUSTER_MODE=single
+# is rejected by entrypoint.sh when TP_SIZE>=2 (intended).
+#
+# Usage (per host):
+#   spark01:
+#     docker compose -f docker-compose.qwen36-prismascout-tp2.yml \
+#       --env-file models/qwen3.6-27b-prismascout-nvfp4-tp2.env \
+#       --profile head up -d
+#   spark02:
+#     docker compose -f docker-compose.qwen36-prismascout-tp2.yml \
+#       --env-file models/qwen3.6-27b-prismascout-nvfp4-tp2.env \
+#       --profile worker up -d
+#
+# scripts/start_qwen36_prismascout_tp2.sh wraps the per-host calls.
+# =============================================================================
+
+name: qwen36-prismascout-tp2
+
+services:
+  head:
+    image: ${VLLM_IMAGE}
+    container_name: vllm-qwen36-head
+    profiles: ["head"]
+    network_mode: host
+    ipc: host
+    shm_size: "16gb"
+    # env_file is parameterized so the same compose can serve PrismaSCOUT
+    # (NVFP4) or the base BF16 fallback — controlled by PRESET_ENV_FILE in
+    # the lifecycle scripts (start_qwen36_prismascout_tp2.sh).
+    env_file:
+      - ${PRESET_ENV_FILE:-models/qwen3.6-27b-prismascout-nvfp4-tp2.env}
+    environment:
+      # ---- Role + cluster mode ----
+      - ROLE=head
+      - CLUSTER_MODE=${CLUSTER_MODE:-dual-rdma}
+      - TP_SIZE=${TP_SIZE:-2}
+      # ---- Model ----
+      - MODEL_CONTAINER_PATH=${MODEL_CONTAINER_PATH}
+      - SERVED_MODEL_NAME=${SERVED_MODEL_NAME}
+      # ---- vLLM Serving ----
+      - HOST_PORT=${HOST_PORT}
+      - MAX_MODEL_LEN=${MAX_MODEL_LEN}
+      - MAX_NUM_SEQS=${MAX_NUM_SEQS}
+      - GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION}
+      - MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS}
+      - VLLM_EXTRA_ARGS=${VLLM_EXTRA_ARGS:-}
+      # ---- Runtime ----
+      - NVIDIA_VISIBLE_DEVICES=all
+      - VLLM_USAGE_SOURCE=production
+      - TORCH_MATMUL_PRECISION=high
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+      # ---- PrismaSCOUT-specific (passthrough that the shared compose lacks) ----
+      - VLLM_NVFP4_GEMM_BACKEND=${VLLM_NVFP4_GEMM_BACKEND:-flashinfer-cutlass}
+      - VLLM_USE_FLASHINFER_MOE_FP4=${VLLM_USE_FLASHINFER_MOE_FP4:-0}
+      - VLLM_NVFP4_MOE_FORCE_MARLIN=${VLLM_NVFP4_MOE_FORCE_MARLIN:-0}
+      - VLLM_MARLIN_USE_ATOMIC_ADD=${VLLM_MARLIN_USE_ATOMIC_ADD:-0}
+      # ---- Multi-node networking (RDMA 10.10.10.0/24) ----
+      - VLLM_HOST_IP=${HEAD_ROCE_IP}
+      - RAY_NODE_IP_ADDRESS=${HEAD_ROCE_IP}
+      - RAY_OVERRIDE_NODE_IP_ADDRESS=${HEAD_ROCE_IP}
+      - HEAD_ROCE_IP=${HEAD_ROCE_IP}
+      - WORKER_ROCE_IP=${WORKER_ROCE_IP}
+      - ROCE_IF_NAME=${ROCE_IF_NAME}
+      - IB_HCA_NAME=${IB_HCA_NAME}
+      - RAY_PORT=${RAY_PORT}
+      - NCCL_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - GLOO_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - UCX_NET_DEVICES=${ROCE_IF_NAME}
+      - NCCL_IB_HCA=${IB_HCA_NAME}
+      - NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}
+      - NCCL_DEBUG=${NCCL_DEBUG:-INFO}
+      - RAY_DEDUP_LOGS=0
+      - RAY_memory_monitor_refresh_ms=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      # host /home/bjk110/Documents/Models → container /models
+      - /home/bjk110/Documents/Models:/models:ro
+      - ./.cache/vllm-qwen36:/root/.cache/vllm
+      - /sys/class/infiniband:/sys/class/infiniband:ro
+      - ./entrypoint.sh:/entrypoint.sh:ro
+      - ./patches:/patches:ro
+    devices:
+      - /dev/infiniband:/dev/infiniband
+    entrypoint: ["bash", "/entrypoint.sh"]
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    restart: unless-stopped
+
+  worker:
+    image: ${VLLM_IMAGE}
+    container_name: vllm-qwen36-worker
+    profiles: ["worker"]
+    network_mode: host
+    ipc: host
+    shm_size: "16gb"
+    # env_file is parameterized so the same compose can serve PrismaSCOUT
+    # (NVFP4) or the base BF16 fallback — controlled by PRESET_ENV_FILE in
+    # the lifecycle scripts (start_qwen36_prismascout_tp2.sh).
+    env_file:
+      - ${PRESET_ENV_FILE:-models/qwen3.6-27b-prismascout-nvfp4-tp2.env}
+    environment:
+      - ROLE=worker
+      - CLUSTER_MODE=${CLUSTER_MODE:-dual-rdma}
+      - TP_SIZE=${TP_SIZE:-2}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+      # ---- PrismaSCOUT-specific ----
+      - VLLM_NVFP4_GEMM_BACKEND=${VLLM_NVFP4_GEMM_BACKEND:-flashinfer-cutlass}
+      - VLLM_USE_FLASHINFER_MOE_FP4=${VLLM_USE_FLASHINFER_MOE_FP4:-0}
+      - VLLM_NVFP4_MOE_FORCE_MARLIN=${VLLM_NVFP4_MOE_FORCE_MARLIN:-0}
+      - VLLM_MARLIN_USE_ATOMIC_ADD=${VLLM_MARLIN_USE_ATOMIC_ADD:-0}
+      # ---- Multi-node networking ----
+      - VLLM_HOST_IP=${WORKER_ROCE_IP}
+      - RAY_NODE_IP_ADDRESS=${WORKER_ROCE_IP}
+      - RAY_OVERRIDE_NODE_IP_ADDRESS=${WORKER_ROCE_IP}
+      - HEAD_ROCE_IP=${HEAD_ROCE_IP}
+      - WORKER_ROCE_IP=${WORKER_ROCE_IP}
+      - ROCE_IF_NAME=${ROCE_IF_NAME}
+      - IB_HCA_NAME=${IB_HCA_NAME}
+      - RAY_PORT=${RAY_PORT}
+      - NCCL_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - GLOO_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - UCX_NET_DEVICES=${ROCE_IF_NAME}
+      - NCCL_IB_HCA=${IB_HCA_NAME}
+      - NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}
+      - NCCL_DEBUG=${NCCL_DEBUG:-INFO}
+      - RAY_memory_monitor_refresh_ms=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - /home/bjk110/Documents/Models:/models:ro
+      - ./.cache/vllm-qwen36:/root/.cache/vllm
+      - /sys/class/infiniband:/sys/class/infiniband:ro
+      - ./entrypoint.sh:/entrypoint.sh:ro
+      - ./patches:/patches:ro
+    devices:
+      - /dev/infiniband:/dev/infiniband
+    entrypoint: ["bash", "/entrypoint.sh"]
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    restart: unless-stopped
