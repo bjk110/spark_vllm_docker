@@ -39,9 +39,9 @@ Stacked-upgrade image built 2026-05-18, the deepest in the v022 series. Each lay
 | Triton | **3.7.0** (vanilla PyPI; NGC 26.04 still bundles 3.6.0) |
 | NCCL | **2.30.4** (runtime via `nvidia-nccl-cu13` pip + `LD_LIBRARY_PATH`; NGC 26.04 system NCCL stays at 2.29.7) |
 | tokenizers | 0.22.2 (Transformers 5.8.1 pins `<=0.23.0`; PyPI has no `0.23.0` stable, so 0.22.2 is the highest compatible) |
-| Image tag | `ghcr.io/bjk110/vllm-spark:v022-d568` |
+| Image tag | `ghcr.io/bjk110/vllm-spark:v022-d568` (**on GHCR**, digest `sha256:88b544ed`) |
 
-Intermediate stacked images (kept for bisection / rollback):
+Intermediate stacked images (**local-build only**, kept for bisection / rollback — not pushed to GHCR):
 - `ghcr.io/bjk110/vllm-spark:v022-fi0611` — v022-vllm021 + FlashInfer 0.6.11.post3
 - `ghcr.io/bjk110/vllm-spark:v022-ngc2604` — v022-fi0611 + NGC 26.04 (PyTorch 2.12.0a0) + `patch_split_module_compat.py`
 - `ghcr.io/bjk110/vllm-spark:v022-tx581` — v022-ngc2604 + Transformers 5.8.1
@@ -146,17 +146,24 @@ docker pull ghcr.io/bjk110/vllm-spark:v021-ngc2603
 # TurboQuant image (base + upstream TQ bugfix patches for hybrid models)
 docker pull ghcr.io/bjk110/vllm-spark:v021-tq
 
-# vLLM v0.21.0 release-pinned image (Dockerfile.v022, drops 3 absorbed patches)
-docker pull ghcr.io/bjk110/vllm-spark:v022-vllm021
-
-# Stacked-upgrade variants (2026-05-18 forward-stack tests; see Software Stack §v022-d568)
-docker pull ghcr.io/bjk110/vllm-spark:v022-fi0611    # + FlashInfer 0.6.11.post3
-docker pull ghcr.io/bjk110/vllm-spark:v022-ngc2604   # + NGC 26.04 (PyTorch 2.12.0a0)
-docker pull ghcr.io/bjk110/vllm-spark:v022-tx581     # + Transformers 5.8.1
-docker pull ghcr.io/bjk110/vllm-spark:v022-trt37     # + Triton 3.7.0
-docker pull ghcr.io/bjk110/vllm-spark:v022-nccl234   # + NCCL 2.30.4
-docker pull ghcr.io/bjk110/vllm-spark:v022-d568      # + vLLM PR#35568 SM121 FP8 cherry-pick (final)
+# Final forward-stack image (NGC 26.04 + vLLM 0.21.0+PR#35568 + FlashInfer 0.6.11.post3
+# + Transformers 5.8.1 + Triton 3.7.0 + NCCL 2.30.4). Validated against
+# PrismaSCOUT NVFP4 TP=2 and abliterix-FP8 TP=2 on 2026-05-18.
+# Manifest digest: sha256:88b544ed69476f3785ea7ce37fc8b99f0f064cc299eef35cda1535c68e7a9501
+docker pull ghcr.io/bjk110/vllm-spark:v022-d568
 ```
+
+**Intermediate stacked variants are local-build only** (kept on spark01/spark02 for bisection / rollback). Rebuild from source via the matching `Dockerfile.v022-*` if you need to bisect:
+
+| Tag | Dockerfile | Diff from previous layer |
+|---|---|---|
+| `v022-vllm021` | `Dockerfile.v022` | vLLM v0.21.0 release pin (off `95995bbe`) |
+| `v022-fi0611` | `Dockerfile.v022-fi0611` | FlashInfer 0.6.11.post3 |
+| `v022-ngc2604` | `Dockerfile.v022-ngc2604` | NGC 26.04 (PyTorch 2.12.0a0) + `patch_split_module_compat.py` |
+| `v022-tx581` | `Dockerfile.v022-tx581` | Transformers 5.8.1 |
+| `v022-trt37` | `Dockerfile.v022-trt37` | Triton 3.7.0 |
+| `v022-nccl234` | `Dockerfile.v022-nccl234` | NCCL 2.30.4 (pip override) |
+| `v022-d568` | `Dockerfile.v022-d568` | vLLM PR #35568 cherry-pick (SM121 FP8) — **only this layer is on GHCR** |
 
 #### Option B: Build from source
 
