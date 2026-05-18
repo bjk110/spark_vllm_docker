@@ -68,6 +68,7 @@ vLLM 0.19.1 Gemma 4 지원, 비동기 스케줄링. Transformers 5.5.0. TTFT v01
 | `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | single | 1 | v021-ngc2603 | — |
 | `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (텍스트 전용, 탈검열) | dual-rdma | 2 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1` |
 | `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (텍스트 전용, 탈검열) | single | 1 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1` |
+| `wangzhang-122b-abliterix-fp8-tp2.env` | wangzhang/Qwen3.5-122B-A10B-abliterix | FP8 W8A8 (텍스트 전용, 자체 safetensors 양자화) | dual-rdma | 2 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1`; BF16→FP8 변환은 `quantize_qwen35_abliterix_fp8_direct.py` 사용 |
 | `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | dual-rdma | 2 | v021-ngc2603 | — |
 | `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** (`turboquant_3bit_nc` 캐스케이드) | dual-rdma | 2 | v021-tq | TQ 빌드 포함; `--compilation-config {"use_inductor_graph_partition":true}` 사용 |
 | `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 원본** (KV fp8) | single | 1 | v021-ngc2603 | 실험용 |
@@ -271,6 +272,7 @@ vllm-spark/
 │   ├── qwen3.5-122b-nvfp4.env         # 122B NVFP4 런타임 (single, TP1)
 │   ├── qwen3.5-122b-nvfp4-tp2.env     # 122B NVFP4 런타임 (dual-rdma, TP2)
 │   ├── qwen3.5-122b-prismaquant.env   # PrismaQuant 4.76bpp 혼합 (single, TP1)
+│   ├── wangzhang-122b-abliterix-fp8-tp2.env  # abliterix FP8 W8A8 텍스트 전용 (dual-rdma, TP2)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 실험 (single, TP1)
 ├── benchmarks/                    # llama-benchy 벤치마크 결과
 ├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant 패치

@@ -68,6 +68,7 @@ vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT imp
 | `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | single | 1 | v021-ngc2603 | — |
 | `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only, abliterated) | dual-rdma | 2 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1` |
 | `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (text-only, abliterated) | single | 1 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1` |
+| `wangzhang-122b-abliterix-fp8-tp2.env` | wangzhang/Qwen3.5-122B-A10B-abliterix | FP8 W8A8 (text-only, custom safetensors-level quant) | dual-rdma | 2 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1`; BF16→FP8 via `quantize_qwen35_abliterix_fp8_direct.py` |
 | `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | dual-rdma | 2 | v021-ngc2603 | — |
 | `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** (`turboquant_3bit_nc` cascade) | dual-rdma | 2 | v021-tq | TQ baked-in; uses `--compilation-config {"use_inductor_graph_partition":true}` |
 | `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 original** (KV fp8) | single | 1 | v021-ngc2603 | Experimental |
@@ -272,6 +273,7 @@ vllm-spark/
 │   ├── qwen3.5-122b-nvfp4.env         # 122B NVFP4 runtime (single, TP1)
 │   ├── qwen3.5-122b-nvfp4-tp2.env     # 122B NVFP4 runtime (dual-rdma, TP2)
 │   ├── qwen3.5-122b-prismaquant.env   # PrismaQuant 4.76bpp mixed (single, TP1)
+│   ├── wangzhang-122b-abliterix-fp8-tp2.env  # abliterix FP8 W8A8 text-only (dual-rdma, TP2)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 experimental (single, TP1)
 ├── benchmarks/                    # llama-benchy benchmark results
 ├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant patches

@@ -1,0 +1,148 @@
+# =============================================================================
+# docker-compose.qwen35-abliterix-tp2.yml
+#
+# Dedicated compose for wangzhang/Qwen3.5-122B-A10B-abliterix FP8 TP=2.
+#
+# Distinct container names (vllm-qwen35-abliterix-{head,worker}) so the
+# Qwen3.6 PrismaSCOUT compose and the shared docker-compose.yml can coexist.
+#
+# Usage (per host):
+#   spark01 (head):
+#     docker compose -f docker-compose.qwen35-abliterix-tp2.yml \
+#       --env-file models/wangzhang-122b-abliterix-fp8-tp2.env \
+#       --profile head up -d
+#   spark02 (worker):
+#     docker compose -f docker-compose.qwen35-abliterix-tp2.yml \
+#       --env-file models/wangzhang-122b-abliterix-fp8-tp2.env \
+#       --profile worker up -d
+#
+# scripts/start_qwen35_abliterix_tp2.sh wraps the per-host calls.
+# =============================================================================
+
+name: qwen35-abliterix-tp2
+
+services:
+  head:
+    image: ${VLLM_IMAGE}
+    container_name: vllm-qwen35-abliterix-head
+    profiles: ["head"]
+    network_mode: host
+    ipc: host
+    shm_size: "16gb"
+    env_file:
+      - ${PRESET_ENV_FILE:-models/wangzhang-122b-abliterix-fp8-tp2.env}
+    environment:
+      - ROLE=head
+      - CLUSTER_MODE=${CLUSTER_MODE:-dual-rdma}
+      - TP_SIZE=${TP_SIZE:-2}
+      - MODEL_CONTAINER_PATH=${MODEL_CONTAINER_PATH}
+      - SERVED_MODEL_NAME=${SERVED_MODEL_NAME}
+      - HOST_PORT=${HOST_PORT}
+      - MAX_MODEL_LEN=${MAX_MODEL_LEN}
+      - MAX_NUM_SEQS=${MAX_NUM_SEQS}
+      - GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION}
+      - MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS}
+      - VLLM_EXTRA_ARGS=${VLLM_EXTRA_ARGS:-}
+      - APPLY_TEXT_ONLY_SHIM=${APPLY_TEXT_ONLY_SHIM:-1}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - VLLM_USAGE_SOURCE=production
+      - TORCH_MATMUL_PRECISION=high
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+      - VLLM_NVFP4_GEMM_BACKEND=${VLLM_NVFP4_GEMM_BACKEND:-}
+      - VLLM_USE_FLASHINFER_MOE_FP4=${VLLM_USE_FLASHINFER_MOE_FP4:-0}
+      - VLLM_NVFP4_MOE_FORCE_MARLIN=${VLLM_NVFP4_MOE_FORCE_MARLIN:-0}
+      - VLLM_MARLIN_USE_ATOMIC_ADD=${VLLM_MARLIN_USE_ATOMIC_ADD:-0}
+      - VLLM_HOST_IP=${HEAD_ROCE_IP}
+      - RAY_NODE_IP_ADDRESS=${HEAD_ROCE_IP}
+      - RAY_OVERRIDE_NODE_IP_ADDRESS=${HEAD_ROCE_IP}
+      - HEAD_ROCE_IP=${HEAD_ROCE_IP}
+      - WORKER_ROCE_IP=${WORKER_ROCE_IP}
+      - ROCE_IF_NAME=${ROCE_IF_NAME}
+      - IB_HCA_NAME=${IB_HCA_NAME}
+      - RAY_PORT=${RAY_PORT}
+      - NCCL_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - GLOO_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - UCX_NET_DEVICES=${ROCE_IF_NAME}
+      - NCCL_IB_HCA=${IB_HCA_NAME}
+      - NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}
+      - NCCL_DEBUG=${NCCL_DEBUG:-INFO}
+      - RAY_DEDUP_LOGS=0
+      - RAY_memory_monitor_refresh_ms=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - /home/bjk110/Documents/Models:/models:ro
+      - ./.cache/vllm-qwen35-abliterix:/root/.cache/vllm
+      - /sys/class/infiniband:/sys/class/infiniband:ro
+      - ./entrypoint.sh:/entrypoint.sh:ro
+      - ./patches:/patches:ro
+    devices:
+      - /dev/infiniband:/dev/infiniband
+    entrypoint: ["bash", "/entrypoint.sh"]
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    restart: unless-stopped
+
+  worker:
+    image: ${VLLM_IMAGE}
+    container_name: vllm-qwen35-abliterix-worker
+    profiles: ["worker"]
+    network_mode: host
+    ipc: host
+    shm_size: "16gb"
+    env_file:
+      - ${PRESET_ENV_FILE:-models/wangzhang-122b-abliterix-fp8-tp2.env}
+    environment:
+      - ROLE=worker
+      - CLUSTER_MODE=${CLUSTER_MODE:-dual-rdma}
+      - TP_SIZE=${TP_SIZE:-2}
+      - APPLY_TEXT_ONLY_SHIM=${APPLY_TEXT_ONLY_SHIM:-1}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+      - VLLM_NVFP4_GEMM_BACKEND=${VLLM_NVFP4_GEMM_BACKEND:-}
+      - VLLM_USE_FLASHINFER_MOE_FP4=${VLLM_USE_FLASHINFER_MOE_FP4:-0}
+      - VLLM_NVFP4_MOE_FORCE_MARLIN=${VLLM_NVFP4_MOE_FORCE_MARLIN:-0}
+      - VLLM_MARLIN_USE_ATOMIC_ADD=${VLLM_MARLIN_USE_ATOMIC_ADD:-0}
+      - VLLM_HOST_IP=${WORKER_ROCE_IP}
+      - RAY_NODE_IP_ADDRESS=${WORKER_ROCE_IP}
+      - RAY_OVERRIDE_NODE_IP_ADDRESS=${WORKER_ROCE_IP}
+      - HEAD_ROCE_IP=${HEAD_ROCE_IP}
+      - WORKER_ROCE_IP=${WORKER_ROCE_IP}
+      - ROCE_IF_NAME=${ROCE_IF_NAME}
+      - IB_HCA_NAME=${IB_HCA_NAME}
+      - RAY_PORT=${RAY_PORT}
+      - NCCL_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - GLOO_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - UCX_NET_DEVICES=${ROCE_IF_NAME}
+      - NCCL_IB_HCA=${IB_HCA_NAME}
+      - NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}
+      - NCCL_DEBUG=${NCCL_DEBUG:-INFO}
+      - RAY_memory_monitor_refresh_ms=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - /home/bjk110/Documents/Models:/models:ro
+      - ./.cache/vllm-qwen35-abliterix:/root/.cache/vllm
+      - /sys/class/infiniband:/sys/class/infiniband:ro
+      - ./entrypoint.sh:/entrypoint.sh:ro
+      - ./patches:/patches:ro
+    devices:
+      - /dev/infiniband:/dev/infiniband
+    entrypoint: ["bash", "/entrypoint.sh"]
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    restart: unless-stopped
