@@ -26,7 +26,7 @@ For release-by-release detail and patch-by-patch status, see
 
 ### v022-d568 (NGC 26.04, vLLM v0.21.0+#35568, FlashInfer 0.6.11.post3, Transformers 5.8.1, Triton 3.7.0, NCCL 2.30.4) — final forward-stack
 
-Stacked-upgrade image built 2026-05-18, the deepest in the v022 series. Each layer was booted and verified against the PrismaSCOUT NVFP4 TP=2 preset (text + image inference, MTP n=3); the final `-d568` layer was additionally verified against `wangzhang-122b-abliterix-fp8-tp2` to confirm the SM121 FP8 kernel path now activates. The production default remains `v021-tq`; use `v022-d568` to validate behavior on the released v0.21.0 plus the cherry-pick.
+Stacked-upgrade image built 2026-05-18, the deepest in the v022 series. Each layer was booted and verified against the PrismaSCOUT NVFP4 TP=2 preset (text + image inference, MTP n=3); the final `-d568` layer was additionally verified against `wangzhang-122b-abliterix-fp8-tp2` to confirm the SM121 FP8 kernel path now activates, and on 2026-05-19 against `wangzhang-122b-abliterix-nvfp4-tp2` (custom BF16 → NVFP4 W4A4 with fused-group shared `weight_global_scale`) to confirm the SM121 NVFP4 path (FlashInfer-CUTLASS NVFP4 GEMM + MoE) is live end-to-end. The production default remains `v021-tq`; use `v022-d568` to validate behavior on the released v0.21.0 plus the cherry-pick.
 
 | Component | Version |
 |---|---|
@@ -55,6 +55,7 @@ Intermediate stacked images (**local-build only**, kept for bisection / rollback
 Verified preset overrides:
 - `models/qwen3.6-27b-prismascout-nvfp4-tp2-v022-{fi0611,ngc2604,tx581,trt37,nccl234,d568}.env` — PrismaSCOUT NVFP4 (text + image)
 - `models/wangzhang-122b-abliterix-fp8-tp2-v022-d568.env` — abliterix FP8 (text, confirms FP8 kernel path activation)
+- `models/wangzhang-122b-abliterix-nvfp4-tp2.env` — abliterix NVFP4 (text, **custom BF16 → NVFP4 with fused-group shared `weight_global_scale`**; confirms FlashInfer-CUTLASS NVFP4 GEMM + MoE path activation)
 
 ### v022-tx581 — intermediate (NGC 26.04, vLLM v0.21.0, FlashInfer v0.6.11.post3, Transformers 5.8.1)
 
@@ -128,6 +129,7 @@ vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT imp
 | `wangzhang-122b-fp8.env` | wangzhang/Qwen3.5-122B-A10B-abliterated | FP8 (text-only, abliterated) | dual-rdma | 2 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1` |
 | `wangzhang-122b-nvfp4.env` | wangzhang/Qwen3.5-122B-A10B-abliterated-NVFP4 | NVFP4 (text-only, abliterated) | single | 1 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1` |
 | `wangzhang-122b-abliterix-fp8-tp2.env` | wangzhang/Qwen3.5-122B-A10B-abliterix | FP8 W8A8 (text-only, custom safetensors-level quant) | dual-rdma | 2 | v021-ngc2603 | `APPLY_TEXT_ONLY_SHIM=1`; BF16→FP8 via `quantize_qwen35_abliterix_fp8_direct.py` |
+| `wangzhang-122b-abliterix-nvfp4-tp2.env` | wangzhang/Qwen3.5-122B-A10B-abliterix | NVFP4 W4A4 (text-only, custom safetensors-level quant with fused-group shared `weight_global_scale`) | dual-rdma | 2 | v022-d568 | `APPLY_TEXT_ONLY_SHIM=1`; BF16→NVFP4 via `fp8-quantizer/convert_bf16_to_nvfp4.py`. q/k/v_proj, expert gate/up, and shared_expert gate/up share one `weight_global_scale` per fused group — required to avoid the FlashInfer NVFP4 fused-Linear precision-loss warning and corresponding garbage outputs. `model_type=qwen3_5_moe_text` (flat config) to avoid the wrapper config's default `text_config.hidden_size=2048` |
 | `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | dual-rdma | 2 | v021-ngc2603 | — |
 | `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** (`turboquant_3bit_nc` cascade) | dual-rdma | 2 | v021-tq | TQ baked-in; uses `--compilation-config {"use_inductor_graph_partition":true}` |
 | `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 original** (KV fp8) | single | 1 | v021-ngc2603 | Experimental |
@@ -148,7 +150,9 @@ docker pull ghcr.io/bjk110/vllm-spark:v021-tq
 
 # Final forward-stack image (NGC 26.04 + vLLM 0.21.0+PR#35568 + FlashInfer 0.6.11.post3
 # + Transformers 5.8.1 + Triton 3.7.0 + NCCL 2.30.4). Validated against
-# PrismaSCOUT NVFP4 TP=2 and abliterix-FP8 TP=2 on 2026-05-18.
+# PrismaSCOUT NVFP4 TP=2 and abliterix-FP8 TP=2 on 2026-05-18, plus
+# abliterix-NVFP4 TP=2 (custom BF16 → NVFP4 W4A4 with fused-group shared
+# weight_global_scale) on 2026-05-19.
 # Manifest digest: sha256:88b544ed69476f3785ea7ce37fc8b99f0f064cc299eef35cda1535c68e7a9501
 docker pull ghcr.io/bjk110/vllm-spark:v022-d568
 ```
