@@ -35,7 +35,16 @@ ARG BUILD_JOBS=16
 # Forum-pinned vLLM commit (GB10 validated)
 ARG VLLM_REPO_URL=https://github.com/jasl/vllm.git
 ARG VLLM_BRANCH=codex/ds4-sm120-min-enable
-ARG VLLM_COMMIT=dda4668b59567416f86956cfe7bbc1eab371a61e
+# Bumped from dda4668b (2026-05-13, forum-pinned) to edc82b614f51 (2026-05-19,
+# branch HEAD, +249 commits). Key MTP fixes:
+#   - 662b07732d3e Fix DeepSeek V4 MTP small-batch graph hangs
+#   - beb72fe2f050 Fix DeepSeek V4 MTP sparse SWA reordering
+#   - 296b5bff3aff [Bugfix] Fix SWA cache block mask breaking prefix caching with Eagle/MTP
+#   - 0e9bc3702e32 Remove ineffective DeepSeek V4 mHC warmup
+# Plus extensive SM120/SM12x kernel tuning (FP8 MQA logits, sparse MLA accumulate
+# autotune, fp8_einsum/indexer num_warps tune, C128A KV gather overlap).
+# Not GB10-validated by jasl (his RTX PRO 6000 only); revalidate end-to-end.
+ARG VLLM_COMMIT=edc82b614f51f4f9ce16c7010e879571e5c46136
 
 ARG TORCH_CUDA_ARCH="12.1a"
 
@@ -141,6 +150,21 @@ RUN --mount=type=cache,id=uv-dsv4-d568,target=/root/.cache/uv \
     echo "[deps] instanttensor not available on pypi — falling back to git" && \
     uv pip install --system "instanttensor @ git+https://github.com/instantai/instanttensor.git" 2>/dev/null || \
     echo "[deps] instanttensor unavailable — recipe may still work via fastsafetensors"
+
+# PyTorch 2.12.0a0 compat: vLLM's `is_torch_equal_or_newer("2.12.0.dev")` returns True
+# on NGC 26.04 PyTorch alpha, but that alpha predates the upstream `split_module(tuple_return=...)`
+# commit. This patch swaps the static version check for a runtime signature probe.
+# The v022-d568 base had this applied to its bundled vLLM, but we just replaced vLLM
+# with the jasl wheel — re-apply to the new install.
+COPY patches/patch_split_module_compat.py /tmp/patch_split_module_compat.py
+RUN python3 /tmp/patch_split_module_compat.py
+
+# Restore the GB10-tuned fused-MoE configs that were placed by the base image's
+# vLLM install (the path now points at the freshly installed jasl wheel).
+COPY patches/moe_config_e256.json \
+     /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=256,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
+COPY patches/moe_config_e512.json \
+     /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=512,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
 
 # Confirm DSV4 architecture registration after install (transformers + vllm).
 RUN python3 -c "from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES; \

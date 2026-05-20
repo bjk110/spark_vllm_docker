@@ -59,6 +59,22 @@ Verified preset overrides:
 - `models/gemma4-31b-it.env` — Gemma 4 31B IT (dense BF16 multimodal, single TP=1; confirms dense Gemma 4 path on the forward stack)
 - `models/qwen3.6-35b-a3b.env` — Qwen3.6-35B-A3B (hybrid Mamba/Attention MoE BF16, single TP=1; confirms `--reasoning-parser qwen3` + Inductor graph-partition path)
 
+### dsv4-d568 (derivative on v022-d568 — DeepSeek-V4-Flash on GB10)
+
+Layered on top of `v022-d568` for the DeepSeek-V4-Flash (official FP8) recipe. Replaces v022-d568's vLLM (v0.21.0+PR#35568) with **jasl/vllm @ `edc82b614f51`** (branch `codex/ds4-sm120-min-enable` HEAD, 2026-05-19, +249 commits over the forum-pinned `dda4668b`) which adds SM12x DSV4 support (sparse MLA, Lightning Indexer, fp8_ds_mla KV cache, MTP heads). Everything else inherited from `v022-d568` (NGC 26.04 / PyTorch 2.12.0a0 / FlashInfer 0.6.11.post3 / Triton 3.7.0 / NCCL 2.30.4 / Transformers 5.8.1).
+
+| Component | Version |
+|---|---|
+| Base Image | `ghcr.io/bjk110/vllm-spark:v022-d568` |
+| vLLM | **jasl/vllm @ `edc82b614f51`** (source rebuild, v0.20.0.dev) |
+| Other layers | unchanged from v022-d568 |
+| Additional patches | `apply_dsv4_packed_mapping.py`, `patch_split_module_compat.py` (re-applied), `moe_config_e256/e512.json` (re-staged), `instanttensor` pip dep |
+| Image tag | `ghcr.io/bjk110/vllm-spark:dsv4-d568` (**on GHCR**, digest `sha256:b18da2a0`) |
+
+Verified preset: `models/dsv4-flash-fp8-tp2.env` — DeepSeek-V4-Flash dual-rdma TP=2, 200K ctx, fp8 KV cache + Lightning Indexer.
+
+**Full guide + 9-way benchmark sweep + MTP/backend analysis**: [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md).
+
 ### v022-tx581 — intermediate (NGC 26.04, vLLM v0.21.0, FlashInfer v0.6.11.post3, Transformers 5.8.1)
 
 Intermediate image in the stacked-upgrade chain; superseded by `v022-trt37` → `v022-nccl234` → `v022-d568` above. Kept for bisection. Triton 3.6.0 / NCCL 2.29.7 here.
@@ -138,6 +154,7 @@ vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT imp
 | `qwen3.6-35b-a3b.env` | Qwen/Qwen3.6-35B-A3B | BF16 hybrid Mamba/Attention MoE (KV fp8) | single | 1 | v022-d568 | `--reasoning-parser qwen3` + `--compilation-config {"use_inductor_graph_partition":true}` for hybrid arch |
 | `gemma4-31b-it.env` | google/gemma-4-31B-it | BF16 dense multimodal | single | 1 | v022-d568 | `--limit-mm-per-prompt {"image":1,"audio":0,"video":0}` (audio still beta in vLLM 0.21) |
 | `qwen3.6-27b-prismascout-nvfp4-tp2.env` (+ `-v022`) | rdtand/Qwen3.6-27B-PrismaSCOUT-Blackwell-NVFP4-BF16-vllm | NVFP4 mixed-precision (ViT NVFP4 + LM NVFP4 + BF16 sidecars) | dual-rdma | 2 | v022-vllm021 | MTP `n=3`; **v022 preset requires `--mm-encoder-tp-mode data`** (see Software Stack §v022) for ViT MLP K-align |
+| `dsv4-flash-fp8-tp2.env` | deepseek-ai/DeepSeek-V4-Flash | FP8 (E4M3 128×128 block, official) | dual-rdma | 2 | **dsv4-d568** | DSV4 sparse MLA + Lightning Indexer + fp8_ds_mla KV + MTP heads. Full guide + 9-way benchmark sweep in [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md). Operational best: `MAX_NUM_SEQS=4`, MTP off, Ray (peak 69 t/s decode, 800 t/s prefill at c=4). |
 
 ## Quick Start
 
@@ -251,6 +268,25 @@ The head waits for the worker to join the Ray cluster, then launches vLLM
 with `--distributed-executor-backend ray`. Requires `HEAD_ROCE_IP`,
 `WORKER_ROCE_IP`, `ROCE_IF_NAME`, `IB_HCA_NAME`, `RAY_PORT` in `.env`
 (uncomment the block in any preset shipped with `CLUSTER_MODE=dual-rdma`).
+
+#### Backend selection — `DISTRIBUTED_BACKEND=ray | mp`
+
+For `dual-rdma` deployments, the entrypoint chooses how the two nodes coordinate based on the `DISTRIBUTED_BACKEND` env var (default `ray`):
+
+| Mode | How it works | When to use |
+|---|---|---|
+| `ray` (default) | head starts `ray start --head`, worker joins via `ray start --address=…`, vLLM serves with `--distributed-executor-backend ray` | Existing validated path for all multi-node presets; matches established behavior |
+| `mp` | head + worker both run `vllm serve` simultaneously (SPMD); head uses `--nnodes N --node-rank 0 --master-addr <head> --master-port <port>`; worker adds `--headless`. No Ray. Matches the eugr/spark-vllm-docker `--no-ray` path. | Avoids Ray Compiled DAG cross-node bug [#36237](https://github.com/vllm-project/vllm/issues/36237) when it surfaces; required by some forum-published recipes (e.g. DeepSeek-V4-Flash) |
+
+Switching is a single env line — same image, same compose, just restart:
+
+```
+# in models/<preset>.env
+DISTRIBUTED_BACKEND=mp   # or ray (default)
+MASTER_PORT=29501        # only used in mp mode
+```
+
+For DSV4 measurements showing Ray vs mp parity (±2% on our GB10 setup), see [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md) §5.
 
 ### 3. Verify
 
@@ -376,7 +412,11 @@ vllm-spark/
 │   ├── wangzhang-122b-abliterix-nvfp4-tp2.env # abliterix NVFP4 W4A4 text-only (dual-rdma, TP2; v022-d568)
 │   ├── gemma4-31b-it.env             # Gemma 4 31B IT BF16 dense multimodal (single, TP1; v022-d568)
 │   ├── qwen3.6-35b-a3b.env           # Qwen3.6-35B-A3B BF16 hybrid MoE (single, TP1; v022-d568)
+│   ├── dsv4-flash-fp8-tp2.env        # DeepSeek-V4-Flash official FP8 (dual-rdma, TP2; dsv4-d568)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 experimental (single, TP1)
+├── docs/                          # Per-model deep-dive guides
+│   ├── qwen36-prismascout-tp2.md     # PrismaSCOUT NVFP4 dual-rdma walkthrough
+│   └── dsv4-flash-tp2.md             # DSV4-Flash: build, recipe, 9-way benchmark sweep
 ├── benchmarks/                    # llama-benchy benchmark results
 ├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant patches
 │   ├── fix_pytorch211_compat.py       # hoist=True removal (PyTorch 2.11)
@@ -413,7 +453,9 @@ All configuration is via `.env`. See [`.env.example`](.env.example) for full doc
 | `WORKER_ROCE_IP` | (`dual-rdma` only) worker node RoCE IP | `10.10.10.2` |
 | `ROCE_IF_NAME` | (`dual-rdma` only) RoCE interface name | `enp1s0f0np0` |
 | `IB_HCA_NAME` | (`dual-rdma` only) InfiniBand HCA name | `rocep1s0f0` |
-| `RAY_PORT` | (`dual-rdma` only) Ray head port | `6379` |
+| `RAY_PORT` | (`dual-rdma` + `ray` backend only) Ray head port | `6379` |
+| `DISTRIBUTED_BACKEND` | (`dual-rdma` only) `ray` (default) or `mp` (SPMD no-Ray) | `ray` |
+| `MASTER_PORT` | (`mp` backend only) torch.distributed master port | `29501` |
 | `VLLM_EXTRA_ARGS` | Model-specific vllm serve flags | `--kv-cache-dtype fp8 --reasoning-parser qwen3` |
 | `VLLM_MARLIN_USE_ATOMIC_ADD` | Enable for INT4 AutoRound | `1` (or empty to disable) |
 

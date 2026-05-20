@@ -75,6 +75,7 @@ vLLM 0.19.1 Gemma 4 지원, 비동기 스케줄링. Transformers 5.5.0. TTFT v01
 | `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 원본** (KV fp8) | single | 1 | v021-ngc2603 | 실험용 |
 | `qwen3.6-35b-a3b.env` | Qwen/Qwen3.6-35B-A3B | BF16 하이브리드 Mamba/Attention MoE (KV fp8) | single | 1 | v022-d568 | `--reasoning-parser qwen3` + 하이브리드 아키텍처용 `--compilation-config {"use_inductor_graph_partition":true}` |
 | `gemma4-31b-it.env` | google/gemma-4-31B-it | BF16 dense 멀티모달 | single | 1 | v022-d568 | `--limit-mm-per-prompt {"image":1,"audio":0,"video":0}` (audio는 vLLM 0.21에서 아직 beta) |
+| `dsv4-flash-fp8-tp2.env` | deepseek-ai/DeepSeek-V4-Flash | FP8 (E4M3 128×128 block, 공식) | dual-rdma | 2 | **dsv4-d568** | DSV4 sparse MLA + Lightning Indexer + fp8_ds_mla KV + MTP heads. 빌드/레시피/9-way 벤치마크 상세는 [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md). 운영 best: `MAX_NUM_SEQS=4`, MTP off, Ray (peak 69 t/s decode, 800 t/s prefill at c=4). |
 
 ## 빠른 시작
 
@@ -155,6 +156,25 @@ Head는 Worker가 Ray 클러스터에 참여할 때까지 대기한 후
 `--distributed-executor-backend ray`로 vLLM을 시작합니다. `.env`에 `HEAD_ROCE_IP`,
 `WORKER_ROCE_IP`, `ROCE_IF_NAME`, `IB_HCA_NAME`, `RAY_PORT`가 필요합니다
 (`CLUSTER_MODE=dual-rdma` 프리셋은 해당 블록을 활성화한 상태로 출고됩니다).
+
+#### 백엔드 선택 — `DISTRIBUTED_BACKEND=ray | mp`
+
+`dual-rdma` 배포에서 두 노드 간 조율 방식을 `DISTRIBUTED_BACKEND` 환경변수로 선택 (기본 `ray`):
+
+| 모드 | 동작 방식 | 사용 시점 |
+|---|---|---|
+| `ray` (기본) | head 가 `ray start --head` 실행, worker 가 `ray start --address=…` 로 join, vLLM 이 `--distributed-executor-backend ray` 로 서빙 | 기존 모든 멀티노드 프리셋의 검증된 경로 |
+| `mp` | head + worker 모두 `vllm serve` 동시 실행 (SPMD); head 는 `--nnodes N --node-rank 0 --master-addr <head> --master-port <port>`; worker 는 추가로 `--headless`. Ray 없음. eugr/spark-vllm-docker `--no-ray` 경로와 동일. | Ray Compiled DAG 멀티노드 버그 [#36237](https://github.com/vllm-project/vllm/issues/36237) 회피 필요 시; 일부 forum recipe (예: DeepSeek-V4-Flash) 가 요구 |
+
+전환은 env 한 줄 — 이미지 / compose 동일, 재기동만 하면 됨:
+
+```
+# models/<preset>.env 에서
+DISTRIBUTED_BACKEND=mp   # 또는 ray (기본)
+MASTER_PORT=29501        # mp 모드에서만 사용
+```
+
+DSV4 측정에서 GB10 환경 Ray vs mp 성능 차이 ±2% — 자세한 비교는 [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md) §5 참조.
 
 ### 3. 동작 확인
 
@@ -279,7 +299,11 @@ vllm-spark/
 │   ├── wangzhang-122b-abliterix-nvfp4-tp2.env # abliterix NVFP4 W4A4 텍스트 전용 (dual-rdma, TP2; v022-d568)
 │   ├── gemma4-31b-it.env             # Gemma 4 31B IT BF16 dense 멀티모달 (single, TP1; v022-d568)
 │   ├── qwen3.6-35b-a3b.env           # Qwen3.6-35B-A3B BF16 하이브리드 MoE (single, TP1; v022-d568)
+│   ├── dsv4-flash-fp8-tp2.env        # DeepSeek-V4-Flash 공식 FP8 (dual-rdma, TP2; dsv4-d568)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 실험 (single, TP1)
+├── docs/                          # 모델별 상세 가이드
+│   ├── qwen36-prismascout-tp2.md     # PrismaSCOUT NVFP4 dual-rdma 가이드
+│   └── dsv4-flash-tp2.md             # DSV4-Flash 빌드/레시피/9-way 벤치마크 sweep
 ├── benchmarks/                    # llama-benchy 벤치마크 결과
 ├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant 패치
 │   ├── fix_pytorch211_compat.py       # hoist=True 제거 (PyTorch 2.11)
@@ -316,7 +340,9 @@ vllm-spark/
 | `WORKER_ROCE_IP` | (`dual-rdma` 전용) worker 노드 RoCE IP | `10.10.10.2` |
 | `ROCE_IF_NAME` | (`dual-rdma` 전용) RoCE 인터페이스 이름 | `enp1s0f0np0` |
 | `IB_HCA_NAME` | (`dual-rdma` 전용) InfiniBand HCA 이름 | `rocep1s0f0` |
-| `RAY_PORT` | (`dual-rdma` 전용) Ray head 포트 | `6379` |
+| `RAY_PORT` | (`dual-rdma` + `ray` 백엔드 전용) Ray head 포트 | `6379` |
+| `DISTRIBUTED_BACKEND` | (`dual-rdma` 전용) `ray` (기본) 또는 `mp` (Ray 없는 SPMD) | `ray` |
+| `MASTER_PORT` | (`mp` 백엔드 전용) torch.distributed master 포트 | `29501` |
 | `VLLM_EXTRA_ARGS` | 모델별 vllm serve 추가 플래그 | `--kv-cache-dtype fp8 --reasoning-parser qwen3` |
 | `VLLM_MARLIN_USE_ATOMIC_ADD` | INT4 AutoRound 활성화 | `1` (비활성화: 빈 값) |
 

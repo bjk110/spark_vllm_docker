@@ -40,6 +40,13 @@ fi
 : "${ROLE:?ROLE must be set to 'head' or 'worker'}"
 : "${TP_SIZE:=1}"
 : "${CLUSTER_MODE:=single}"
+# DISTRIBUTED_BACKEND controls multi-node TP coordination when TP_SIZE>=2:
+#   ray (default) — Ray actors, head waits for workers via `ray status`
+#   mp            — vLLM SPMD: each node runs `vllm serve` with
+#                   --nnodes/--node-rank/--master-addr/--master-port,
+#                   workers add --headless. Matches forum/eugr no-ray path.
+: "${DISTRIBUTED_BACKEND:=ray}"
+: "${MASTER_PORT:=29501}"
 
 # ---------------------------------------------------------------------------
 # Cluster mode normalization
@@ -95,16 +102,54 @@ case "${CLUSTER_MODE}" in
         ;;
 esac
 
-# ---- Worker: just join Ray and block (dual-rdma only) ----
+# ---- Worker dispatch (dual-rdma only) ----
 if [ "${ROLE}" = "worker" ]; then
-    # Clean any leftover Ray state
-    ray stop --force 2>/dev/null || true
-    rm -rf /tmp/ray 2>/dev/null || true
-    echo "[entrypoint] Starting Ray WORKER → ${HEAD_ROCE_IP}:${RAY_PORT}"
-    exec ray start \
-        --address="${HEAD_ROCE_IP}:${RAY_PORT}" \
-        --node-ip-address="${WORKER_ROCE_IP}" \
-        --block
+    case "${DISTRIBUTED_BACKEND}" in
+        ray)
+            # Join Ray cluster and block
+            ray stop --force 2>/dev/null || true
+            rm -rf /tmp/ray 2>/dev/null || true
+            echo "[entrypoint] Starting Ray WORKER → ${HEAD_ROCE_IP}:${RAY_PORT}"
+            exec ray start \
+                --address="${HEAD_ROCE_IP}:${RAY_PORT}" \
+                --node-ip-address="${WORKER_ROCE_IP}" \
+                --block
+            ;;
+        mp)
+            # SPMD: run vllm serve --headless on worker
+            # Flags from eugr/spark-vllm-docker launch-cluster.sh no-ray mode.
+            echo "[entrypoint] Starting vLLM MP WORKER (rank ${NODE_RANK:-1}) → ${HEAD_ROCE_IP}:${MASTER_PORT}"
+            VLLM_CMD=(
+                vllm serve "${MODEL_CONTAINER_PATH}"
+                --served-model-name "${SERVED_MODEL_NAME}"
+                --max-model-len "${MAX_MODEL_LEN:-32768}"
+                --max-num-seqs "${MAX_NUM_SEQS:-8}"
+                --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION:-0.90}"
+                --max-num-batched-tokens "${MAX_NUM_BATCHED_TOKENS:-16384}"
+                --trust-remote-code
+                --host 0.0.0.0
+                --port "${HOST_PORT:-8000}"
+                --dtype auto
+                --enable-prefix-caching
+                --tensor-parallel-size "${TP_SIZE}"
+                --nnodes "${TP_SIZE}"
+                --node-rank "${NODE_RANK:-1}"
+                --master-addr "${HEAD_ROCE_IP}"
+                --master-port "${MASTER_PORT}"
+                --headless
+            )
+            if [ -n "${VLLM_EXTRA_ARGS:-}" ]; then
+                # shellcheck disable=SC2206
+                VLLM_CMD+=(${VLLM_EXTRA_ARGS})
+            fi
+            echo "[entrypoint] Running (mp worker): ${VLLM_CMD[*]}"
+            exec "${VLLM_CMD[@]}"
+            ;;
+        *)
+            echo "[entrypoint] ERROR: unknown DISTRIBUTED_BACKEND=${DISTRIBUTED_BACKEND}"
+            exit 1
+            ;;
+    esac
 fi
 
 # ---- Head: standalone or multi-node ----
@@ -129,27 +174,46 @@ VLLM_CMD=(
 )
 
 if [ "${TP_SIZE}" -ge 2 ]; then
-    # ---- Multi-node: start Ray head, wait for workers, then serve ----
-    echo "[entrypoint] Starting Ray HEAD (TP_SIZE=${TP_SIZE})..."
-    ray start --head --port="${RAY_PORT}" \
-        --node-ip-address="${HEAD_ROCE_IP}" \
-        --dashboard-host=0.0.0.0 \
-        --disable-usage-stats
+    case "${DISTRIBUTED_BACKEND}" in
+        ray)
+            # ---- Ray: start head, wait for workers, then serve ----
+            echo "[entrypoint] Starting Ray HEAD (TP_SIZE=${TP_SIZE})..."
+            ray start --head --port="${RAY_PORT}" \
+                --node-ip-address="${HEAD_ROCE_IP}" \
+                --dashboard-host=0.0.0.0 \
+                --disable-usage-stats
 
-    echo "[entrypoint] Waiting for ${TP_SIZE} node(s) to join Ray cluster..."
-    while true; do
-        NODE_COUNT=$(ray status 2>/dev/null | grep -c 'node_' || echo 0)
-        if [ "${NODE_COUNT}" -ge "${TP_SIZE}" ]; then
-            echo "[entrypoint] All ${TP_SIZE} nodes joined! Starting vLLM..."
-            break
-        fi
-        sleep 5
-    done
+            echo "[entrypoint] Waiting for ${TP_SIZE} node(s) to join Ray cluster..."
+            while true; do
+                NODE_COUNT=$(ray status 2>/dev/null | grep -c 'node_' || echo 0)
+                if [ "${NODE_COUNT}" -ge "${TP_SIZE}" ]; then
+                    echo "[entrypoint] All ${TP_SIZE} nodes joined! Starting vLLM..."
+                    break
+                fi
+                sleep 5
+            done
 
-    VLLM_CMD+=(
-        --tensor-parallel-size "${TP_SIZE}"
-        --distributed-executor-backend ray
-    )
+            VLLM_CMD+=(
+                --tensor-parallel-size "${TP_SIZE}"
+                --distributed-executor-backend ray
+            )
+            ;;
+        mp)
+            # ---- MP SPMD head: torch.distributed rendezvous on MASTER_ADDR:MASTER_PORT ----
+            echo "[entrypoint] Starting vLLM MP HEAD (rank 0) ${HEAD_ROCE_IP}:${MASTER_PORT} (TP_SIZE=${TP_SIZE})"
+            VLLM_CMD+=(
+                --tensor-parallel-size "${TP_SIZE}"
+                --nnodes "${TP_SIZE}"
+                --node-rank 0
+                --master-addr "${HEAD_ROCE_IP}"
+                --master-port "${MASTER_PORT}"
+            )
+            ;;
+        *)
+            echo "[entrypoint] ERROR: unknown DISTRIBUTED_BACKEND=${DISTRIBUTED_BACKEND}"
+            exit 1
+            ;;
+    esac
 else
     # ---- Standalone: direct serve, no Ray ----
     echo "[entrypoint] Starting vLLM standalone (TP_SIZE=1, CLUSTER_MODE=${CLUSTER_MODE})..."
