@@ -26,7 +26,7 @@ For release-by-release detail and patch-by-patch status, see
 
 ### v022-d568 (NGC 26.04, vLLM v0.21.0+#35568, FlashInfer 0.6.11.post3, Transformers 5.8.1, Triton 3.7.0, NCCL 2.30.4) — final forward-stack
 
-Stacked-upgrade image built 2026-05-18, the deepest in the v022 series. Each layer was booted and verified against the PrismaSCOUT NVFP4 TP=2 preset (text + image inference, MTP n=3); the final `-d568` layer was additionally verified against `wangzhang-122b-abliterix-fp8-tp2` to confirm the SM121 FP8 kernel path now activates, and on 2026-05-19 against `wangzhang-122b-abliterix-nvfp4-tp2` (custom BF16 → NVFP4 W4A4 with fused-group shared `weight_global_scale`) to confirm the SM121 NVFP4 path (FlashInfer-CUTLASS NVFP4 GEMM + MoE) is live end-to-end. The production default remains `v021-tq`; use `v022-d568` to validate behavior on the released v0.21.0 plus the cherry-pick.
+Stacked-upgrade image built 2026-05-18, the deepest in the v022 series. Each layer was booted and verified against the PrismaSCOUT NVFP4 TP=2 preset (text + image inference, MTP n=3); the final `-d568` layer was additionally verified against `wangzhang-122b-abliterix-fp8-tp2` to confirm the SM121 FP8 kernel path now activates, on 2026-05-19 against `wangzhang-122b-abliterix-nvfp4-tp2` (custom BF16 → NVFP4 W4A4 with fused-group shared `weight_global_scale`) to confirm the SM121 NVFP4 path (FlashInfer-CUTLASS NVFP4 GEMM + MoE) is live end-to-end, and on 2026-05-20 against `gemma4-31b-it` (dense BF16 multimodal, TP=1) and `qwen3.6-35b-a3b` (hybrid Mamba/Attention MoE BF16 with `--reasoning-parser qwen3` + `--compilation-config use_inductor_graph_partition=true`, TP=1) to confirm dense/hybrid single-node paths. The production default remains `v021-tq`; use `v022-d568` to validate behavior on the released v0.21.0 plus the cherry-pick.
 
 | Component | Version |
 |---|---|
@@ -56,6 +56,8 @@ Verified preset overrides:
 - `models/qwen3.6-27b-prismascout-nvfp4-tp2-v022-{fi0611,ngc2604,tx581,trt37,nccl234,d568}.env` — PrismaSCOUT NVFP4 (text + image)
 - `models/wangzhang-122b-abliterix-fp8-tp2-v022-d568.env` — abliterix FP8 (text, confirms FP8 kernel path activation)
 - `models/wangzhang-122b-abliterix-nvfp4-tp2.env` — abliterix NVFP4 (text, **custom BF16 → NVFP4 with fused-group shared `weight_global_scale`**; confirms FlashInfer-CUTLASS NVFP4 GEMM + MoE path activation)
+- `models/gemma4-31b-it.env` — Gemma 4 31B IT (dense BF16 multimodal, single TP=1; confirms dense Gemma 4 path on the forward stack)
+- `models/qwen3.6-35b-a3b.env` — Qwen3.6-35B-A3B (hybrid Mamba/Attention MoE BF16, single TP=1; confirms `--reasoning-parser qwen3` + Inductor graph-partition path)
 
 ### v022-tx581 — intermediate (NGC 26.04, vLLM v0.21.0, FlashInfer v0.6.11.post3, Transformers 5.8.1)
 
@@ -133,6 +135,8 @@ vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT imp
 | `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | dual-rdma | 2 | v021-ngc2603 | — |
 | `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** (`turboquant_3bit_nc` cascade) | dual-rdma | 2 | v021-tq | TQ baked-in; uses `--compilation-config {"use_inductor_graph_partition":true}` |
 | `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 original** (KV fp8) | single | 1 | v021-ngc2603 | Experimental |
+| `qwen3.6-35b-a3b.env` | Qwen/Qwen3.6-35B-A3B | BF16 hybrid Mamba/Attention MoE (KV fp8) | single | 1 | v022-d568 | `--reasoning-parser qwen3` + `--compilation-config {"use_inductor_graph_partition":true}` for hybrid arch |
+| `gemma4-31b-it.env` | google/gemma-4-31B-it | BF16 dense multimodal | single | 1 | v022-d568 | `--limit-mm-per-prompt {"image":1,"audio":0,"video":0}` (audio still beta in vLLM 0.21) |
 | `qwen3.6-27b-prismascout-nvfp4-tp2.env` (+ `-v022`) | rdtand/Qwen3.6-27B-PrismaSCOUT-Blackwell-NVFP4-BF16-vllm | NVFP4 mixed-precision (ViT NVFP4 + LM NVFP4 + BF16 sidecars) | dual-rdma | 2 | v022-vllm021 | MTP `n=3`; **v022 preset requires `--mm-encoder-tp-mode data`** (see Software Stack §v022) for ViT MLP K-align |
 
 ## Quick Start
@@ -369,6 +373,9 @@ vllm-spark/
 │   ├── qwen3.5-122b-nvfp4-tp2.env     # 122B NVFP4 runtime (dual-rdma, TP2)
 │   ├── qwen3.5-122b-prismaquant.env   # PrismaQuant 4.76bpp mixed (single, TP1)
 │   ├── wangzhang-122b-abliterix-fp8-tp2.env  # abliterix FP8 W8A8 text-only (dual-rdma, TP2)
+│   ├── wangzhang-122b-abliterix-nvfp4-tp2.env # abliterix NVFP4 W4A4 text-only (dual-rdma, TP2; v022-d568)
+│   ├── gemma4-31b-it.env             # Gemma 4 31B IT BF16 dense multimodal (single, TP1; v022-d568)
+│   ├── qwen3.6-35b-a3b.env           # Qwen3.6-35B-A3B BF16 hybrid MoE (single, TP1; v022-d568)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 experimental (single, TP1)
 ├── benchmarks/                    # llama-benchy benchmark results
 ├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant patches

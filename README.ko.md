@@ -73,6 +73,8 @@ vLLM 0.19.1 Gemma 4 지원, 비동기 스케줄링. Transformers 5.5.0. TTFT v01
 | `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound (Marlin) | dual-rdma | 2 | v021-ngc2603 | — |
 | `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound + **TurboQuant KV** (`turboquant_3bit_nc` 캐스케이드) | dual-rdma | 2 | v021-tq | TQ 빌드 포함; `--compilation-config {"use_inductor_graph_partition":true}` 사용 |
 | `qwen3.6-35b-fp16.env` ⚗️ | Qwen/Qwen3.6-35B-A3B | **FP16 원본** (KV fp8) | single | 1 | v021-ngc2603 | 실험용 |
+| `qwen3.6-35b-a3b.env` | Qwen/Qwen3.6-35B-A3B | BF16 하이브리드 Mamba/Attention MoE (KV fp8) | single | 1 | v022-d568 | `--reasoning-parser qwen3` + 하이브리드 아키텍처용 `--compilation-config {"use_inductor_graph_partition":true}` |
+| `gemma4-31b-it.env` | google/gemma-4-31B-it | BF16 dense 멀티모달 | single | 1 | v022-d568 | `--limit-mm-per-prompt {"image":1,"audio":0,"video":0}` (audio는 vLLM 0.21에서 아직 beta) |
 
 ## 빠른 시작
 
@@ -274,6 +276,9 @@ vllm-spark/
 │   ├── qwen3.5-122b-nvfp4-tp2.env     # 122B NVFP4 런타임 (dual-rdma, TP2)
 │   ├── qwen3.5-122b-prismaquant.env   # PrismaQuant 4.76bpp 혼합 (single, TP1)
 │   ├── wangzhang-122b-abliterix-fp8-tp2.env  # abliterix FP8 W8A8 텍스트 전용 (dual-rdma, TP2)
+│   ├── wangzhang-122b-abliterix-nvfp4-tp2.env # abliterix NVFP4 W4A4 텍스트 전용 (dual-rdma, TP2; v022-d568)
+│   ├── gemma4-31b-it.env             # Gemma 4 31B IT BF16 dense 멀티모달 (single, TP1; v022-d568)
+│   ├── qwen3.6-35b-a3b.env           # Qwen3.6-35B-A3B BF16 하이브리드 MoE (single, TP1; v022-d568)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 실험 (single, TP1)
 ├── benchmarks/                    # llama-benchy 벤치마크 결과
 ├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant 패치
