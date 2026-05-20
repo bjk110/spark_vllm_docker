@@ -64,99 +64,61 @@ ghcr.io/bjk110/vllm-spark:dsv4-d568
 
 **예상 효과 (벤치마크 결과로 확인):** Prefill +50-77%, Decode peak +6-7%.
 
-### 1.3. 빌드 명령
+### 1.3. 빌드 요구사항
 
-> **모든 빌드는 spark01 또는 spark02 에서.** homeserver (32 GiB RAM) 에서 빌드 시
-> OOM cascade + freeze 가능 (2026-05-07 사례).
-
-```bash
-ssh spark01 'docker buildx build --progress=plain \
-  -f <repo>/Dockerfile.dsv4-d568 \
-  -t vllm-spark:dsv4-d568 --load \
-  <repo>'
-```
-
-빌드 시간 ~22 분 (vLLM C++/CUDA 휠 빌드 1344s + runner stage 50s).
-ccache 가 비어 있으면 휠 빌드 풀 컴파일, ccache hit 시 ~3 분.
+- 빌드는 충분한 RAM(≥48 GiB 권장) 이 있는 호스트에서. 저메모리 호스트는 vLLM C++/CUDA 컴파일 중 OOM 위험.
+- 빌드 시간 ~22 분 (vLLM 휠 빌드 ~1344s + runner stage ~50s, ccache miss 기준). ccache hit 시 ~3 분.
+- 명령은 [`README`](../README.md#소스에서-빌드) 의 일반 패턴과 동일 — `docker buildx build -f Dockerfile.dsv4-d568 ...`.
 
 ### 1.4. 양 노드 배포
 
-GHCR 매개로 레이어 dedup (v022-d568 공통 레이어 재사용, 신규 ~1.5 GB 만 전송):
+같은 이미지를 양 spark 노드에 배포해야 함. 권장 경로: GHCR 매개로 레이어 dedup (v022-d568 공통 레이어 재사용, 신규 ~1.5 GB 만 전송):
 
-```bash
-# spark01 에서
-docker tag vllm-spark:dsv4-d568 ghcr.io/bjk110/vllm-spark:dsv4-d568
-docker push ghcr.io/bjk110/vllm-spark:dsv4-d568
+1. 빌드 호스트에서 `docker tag` → `docker push ghcr.io/<account>/vllm-spark:dsv4-d568`
+2. 두 spark 노드에서 `docker pull ghcr.io/<account>/vllm-spark:dsv4-d568`
 
-# spark02 에서
-docker pull ghcr.io/bjk110/vllm-spark:dsv4-d568
-```
+(또는 `docker save | ssh ... docker load` 로도 가능 — GHCR 미사용 환경.)
 
 ## 2. 모델 배포
 
-### 2.1. 경로
+### 2.1. 컨테이너 내부 경로
 
 | 위치 | 경로 |
 |---|---|
-| homeserver | `<source_dir>/deepseek-ai/deepseek-ai_DeepSeek-V4-Flash` |
-| spark01 / spark02 host | `<spark_model_dir>/deepseek-ai/DeepSeek-V4-Flash` |
-| 컨테이너 내부 | `/models/DeepSeek-V4-Flash` |
+| 호스트 (양 spark) | `${MODEL_PATH}` 환경변수가 가리키는 디렉토리 |
+| 컨테이너 내부 | `/models/DeepSeek-V4-Flash` (`${MODEL_CONTAINER_PATH}`) |
+
+호스트 경로는 [`models/dsv4-flash-fp8-tp2.env`](../models/dsv4-flash-fp8-tp2.env) 의 `MODEL_PATH` 로 지정. compose 가 그 디렉토리를 컨테이너의 `/models/DeepSeek-V4-Flash` 에 read-only 바인드.
 
 ### 2.2. 디스크 요구사항
 
 - 모델 149 GB × 2 노드 = ~300 GB
-- 이미지 ~31 GB × 2 노드 = ~62 GB (v022-d568 와 레이어 공유로 실제는 ~32 GB)
-- 빌드 임시 + ccache: ~15 GB
+- 이미지 ~31 GB × 2 노드 = ~62 GB (v022-d568 와 레이어 공유로 실제 증분은 ~1.5 GB)
+- 빌드 임시 + ccache: ~15 GB (빌드 노드에만)
 - 권장 free disk: 노드당 200 GB+
 
-### 2.3. 양 노드 동시 동기화 (homeserver → 각 spark)
+### 2.3. 양 노드 모델 동기화
 
-```bash
-# spark01 으로
-rsync -av --info=progress2 --no-i-r \
-  <source_dir>/deepseek-ai/deepseek-ai_DeepSeek-V4-Flash/ \
-  spark01:<spark_model_dir>/deepseek-ai/DeepSeek-V4-Flash/ &
-
-# spark02 으로 (병렬)
-rsync -av --info=progress2 --no-i-r \
-  <source_dir>/deepseek-ai/deepseek-ai_DeepSeek-V4-Flash/ \
-  spark02:<spark_model_dir>/deepseek-ai/DeepSeek-V4-Flash/ &
-wait
-```
-
-전송 시간 ~20 분 (128 MB/s).
+DSV4-Flash 체크포인트는 각 노드에 (TP=2 라도) 전체 가중치가 필요. 사용자 환경에 맞는 방법으로 동기화 (rsync over 관리 LAN, HF Hub 직접 다운로드, NFS 등). 전송량 ~149 GB / 노드.
 
 ## 3. 부팅 절차
 
 ### 3.1. Page cache 비우기 (GB10 unified memory 함정 회피)
 
-모델 149 GB rsync 후 OS page cache 에 잔존 → GPU 메모리 풀 가용량 산정에 영향.
-부팅 전 반드시 drop_caches:
+모델 149 GB 동기화 후 OS page cache 에 잔존 → GPU 메모리 풀 가용량 산정에 영향. 부팅 전 반드시 양 노드에서 drop_caches:
 
 ```bash
-ssh spark01 'sudo sync && sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"'
-ssh spark02 'sudo sync && sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"'
+sudo sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
 ```
 
 확인: `free -h` 의 `available` 이 ~117 GiB 가 되어야 정상.
 
 ### 3.2. Ray 모드 (운영 권장)
 
-```bash
-# spark01 (head 먼저)
-ssh spark01 'docker compose \
-  --project-directory <repo> \
-  -f <repo>/docker-compose.yml \
-  --env-file <repo>/models/dsv4-flash-fp8-tp2.env \
-  --profile head up -d'
+기동 명령은 [`README`](../README.md#dual-spark--tp2-ray--roce) 의 일반 패턴과 동일:
 
-# head 의 Ray runtime 이 뜰 때까지 대기 후 worker
-ssh spark02 'docker compose \
-  --project-directory <repo> \
-  -f <repo>/docker-compose.yml \
-  --env-file <repo>/models/dsv4-flash-fp8-tp2.env \
-  --profile worker up -d'
-```
+1. spark head 노드에서 `docker compose ... --profile head up -d`
+2. head 의 Ray runtime 이 뜨면 spark worker 노드에서 `docker compose ... --profile worker up -d`
 
 `entrypoint.sh` 가 `ray start --head` → 노드 join 대기 → `vllm serve --distributed-executor-backend ray` 진행.
 
@@ -253,8 +215,8 @@ This may lead to suboptimal performance. Consider increasing max_num_batched_tok
 | 항목 | 값 |
 |---|---|
 | 도구 | [llama-benchy](https://github.com/eugr/llama-benchy) v0.3.4 |
-| 클라이언트 | homeserver (관리 LAN) |
-| 서버 | spark01 head 컨테이너 (`HOST_PORT=8000`, 호스트 네트워크) |
+| 클라이언트 | 외부 호스트, 관리 LAN 으로 접속 |
+| 서버 | spark head 컨테이너 (`HOST_PORT=8000`, 호스트 네트워크) |
 | 토크나이저 | `deepseek-ai/DeepSeek-V4-Flash` (필요시 명시) |
 | 측정 항목 | `pp 512/1024/2048` × `tg 32/128` × `concurrency 1/2/3/4` × 3 runs |
 | 결과 위치 | `benchmarks/llama-benchy/results_dsv4-flash-fp8-tp2-*.md` |
