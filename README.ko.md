@@ -592,34 +592,37 @@ echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 ### 기동 전: 현재 구동 중인 397B TP=2 스택 중지
 
 ```bash
-ssh spark01 'cd ~/docker/vllm-spark && docker compose --profile head down'
-ssh spark02 'cd ~/docker/vllm-spark && docker compose --profile worker down'
-# GB10 unified memory 잔여 정리 (모델 전환 시 필수)
-ssh spark01 'sync && sudo sysctl -w vm.drop_caches=3'
+# <head_node>에서:
+docker compose --profile head down
+# <worker_node>에서:
+docker compose --profile worker down
+# GB10 unified memory 잔여 정리 (모델 전환 시 필수, 각 노드에서):
+sync && sudo sysctl -w vm.drop_caches=3
 ```
 
 ### 모델 위치
 
-homeserver의 `<source_dir>/Qwen/Qwen_Qwen3.6-35B-A3B`에 다운로드되어
-있다는 전제입니다. 테스트 대상 Spark 노드(권장: `spark01`, 기존 397B head와
-동일)로 복사 후 `MODEL_PATH`를 로컬 경로로 지정해 사용합니다.
+테스트 대상 Spark 노드로 모델을 복사 후 `MODEL_PATH`를 로컬 경로로 지정해
+사용합니다.
 
 ```bash
-# homeserver에서 (~67 GB, RoCE 링크로 ~6분)
+# 빌드/소스 호스트에서 (~67 GB, RoCE 링크로 ~6분):
 rsync -av <source_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/ \
-    spark01:<spark_model_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/
+    <head_node>:<spark_model_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/
 
-# spark01: 프리셋 복사 + 로컬 경로 치환
-ssh spark01 'cd ~/docker/vllm-spark && \
-    cp models/qwen3.6-35b-fp16.env .env && \
-    sed -i "s|\[model_path\]|<spark_model_dir>/Qwen|" .env'
+# <head_node>: 프리셋 복사 + 로컬 경로 치환
+cd <repo>
+cp models/qwen3.6-35b-fp16.env .env
+sed -i "s|\[model_path\]|<spark_model_dir>/Qwen|" .env
 ```
 
 ### 기동 (단일 Spark, TP=1)
 
+`<head_node>` 에서:
+
 ```bash
-ssh spark01 'cd ~/docker/vllm-spark && \
-    docker compose --env-file .env --profile head up -d'
+cd <repo>
+docker compose --env-file .env --profile head up -d
 ```
 
 ### 초기 기동 실패 시 조정 순서
@@ -629,8 +632,8 @@ ssh spark01 'cd ~/docker/vllm-spark && \
 1. `GPU_MEMORY_UTILIZATION=0.80`
 2. `MAX_MODEL_LEN=16384`
 3. `MAX_NUM_SEQS=4`
-4. 그래도 실패 시 `spark01` + `spark02` TP=2 구성을 검토 (현재 프리셋은
-   TP=1 전용 — 이번 실험 프리셋 범위를 넘어섬).
+4. 그래도 실패 시 두 Spark 노드 TP=2 구성을 검토 (현재 프리셋은 TP=1 전용
+   — 이번 실험 프리셋 범위를 넘어섬).
 
 ## 이미지 태그와 Git 태그
 

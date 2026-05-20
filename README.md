@@ -154,7 +154,7 @@ docker buildx build -f dockerfiles/Dockerfile.gemma4 \
   -t vllm-spark:v021-ngc2603 --load .
 
 # vLLM v0.21.0 release-pinned source build
-# (build on spark01/spark02 only — homeserver 32GiB RAM is insufficient)
+# (build on a Spark node only — low-RAM hosts can OOM during vLLM C++/CUDA compile)
 docker buildx build -f dockerfiles/Dockerfile.v022 \
   -t vllm-spark:v022-vllm021 --load .
 
@@ -636,35 +636,37 @@ echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 ### Before launching: stop the running 397B TP=2 stack
 
 ```bash
-ssh spark01 'cd ~/docker/vllm-spark && docker compose --profile head down'
-ssh spark02 'cd ~/docker/vllm-spark && docker compose --profile worker down'
-# Clear unified-memory residue between model switches (GB10)
-ssh spark01 'sync && sudo sysctl -w vm.drop_caches=3'
+# On <head_node>:
+docker compose --profile head down
+# On <worker_node>:
+docker compose --profile worker down
+# Clear unified-memory residue between model switches (GB10) — on each node:
+sync && sudo sysctl -w vm.drop_caches=3
 ```
 
 ### Model placement
 
-The model is assumed to exist at
-`<source_dir>/Qwen/Qwen_Qwen3.6-35B-A3B` on the homeserver. Transfer it to
-the chosen Spark node (recommended: `spark01`, same node as the 397B head) before
-launch, then point `MODEL_PATH` at the local copy:
+Transfer the model to your chosen Spark node before launch, then point
+`MODEL_PATH` at the local copy:
 
 ```bash
-# From homeserver (~67 GB, ~6 min over the RoCE link)
+# From the build/source host (~67 GB, ~6 min over the RoCE link):
 rsync -av <source_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/ \
-    spark01:<spark_model_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/
+    <head_node>:<spark_model_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/
 
-# On spark01: materialize the preset and substitute the local model root
-ssh spark01 'cd ~/docker/vllm-spark && \
-    cp models/qwen3.6-35b-fp16.env .env && \
-    sed -i "s|\[model_path\]|<spark_model_dir>/Qwen|" .env'
+# On <head_node>: materialize the preset and substitute the local model root
+cd <repo>
+cp models/qwen3.6-35b-fp16.env .env
+sed -i "s|\[model_path\]|<spark_model_dir>/Qwen|" .env
 ```
 
 ### Launch (single Spark, TP=1)
 
+On `<head_node>`:
+
 ```bash
-ssh spark01 'cd ~/docker/vllm-spark && \
-    docker compose --env-file .env --profile head up -d'
+cd <repo>
+docker compose --env-file .env --profile head up -d
 ```
 
 ### If the first boot fails
@@ -675,8 +677,8 @@ memory pressure):
 1. `GPU_MEMORY_UTILIZATION=0.80`
 2. `MAX_MODEL_LEN=16384`
 3. `MAX_NUM_SEQS=4`
-4. Only if the above still fails: consider a TP=2 variant across `spark01` +
-   `spark02` (no preset ships for this — this experimental preset is TP=1 only).
+4. Only if the above still fails: consider a TP=2 variant across both Spark
+   nodes (no preset ships for this — this experimental preset is TP=1 only).
 
 ## Image tags & Git tags
 
