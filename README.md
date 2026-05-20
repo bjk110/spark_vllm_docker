@@ -75,61 +75,17 @@ Verified preset: `models/dsv4-flash-fp8-tp2.env` — DeepSeek-V4-Flash dual-rdma
 
 **Full guide + 9-way benchmark sweep + MTP/backend analysis**: [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md).
 
-### v022-tx581 — intermediate (NGC 26.04, vLLM v0.21.0, FlashInfer v0.6.11.post3, Transformers 5.8.1)
+### Older / legacy stacks
 
-Intermediate image in the stacked-upgrade chain; superseded by `v022-trt37` → `v022-nccl234` → `v022-d568` above. Kept for bisection. Triton 3.6.0 / NCCL 2.29.7 here.
+Earlier images and the v022 intermediate layers are documented separately:
 
-### v022-vllm021 (NGC 26.03, vLLM **v0.21.0** release-pinned)
-
-Forward-looking image built from `Dockerfile.v022`, pinned to the vLLM v0.21.0 release tag (`ad7125a4`). Three upstream-absorbed runtime patches drop out of the build (`aot_cache_fix.patch`, `fastsafetensors_natural_sort.patch`, `nogds_force.patch`). Preset overrides live alongside the base preset as `models/*-v022.env`. Use this image to validate behavior on the released v0.21.0 before bumping the default image off `95995bbe`.
-
-| Component | Version |
-|---|---|
-| Base Image | NGC PyTorch 26.03 |
-| vLLM | **0.21.0** (release tag, commit `ad7125a4`, source build) |
-| FlashInfer | v0.6.9 (same as v021-ngc2603) |
-| PyTorch | 2.11.0a0 |
-| CUDA | 13.2 (native) |
-| Transformers | 5.5.4 |
-| Image tag | `ghcr.io/bjk110/vllm-spark:v022-vllm021` |
-
-**Verified presets (v022 override env files):**
-
-| Override env | Model | Notes |
+| Stack | When to use | Details |
 |---|---|---|
-| `models/wangzhang-122b-abliterix-fp8-tp2-v022.env` | wangzhang/Qwen3.5-122B-A10B-abliterix (FP8) | text-only shim, dual-rdma TP=2 |
-| `models/qwen3.6-27b-prismascout-nvfp4-tp2-v022.env` | rdtand/Qwen3.6-27B-PrismaSCOUT-Blackwell-NVFP4-BF16 | NVFP4 mixed-precision, **adds `--mm-encoder-tp-mode data`** so the ViT MLP fc2 (`hidden=4304`) is not split across TP=2 (would yield K=2152, breaking NVFP4 GEMM K-align(16)); MTP `n=3`, dual-rdma TP=2 |
+| `v021-ngc2603` / `v021-tq` | Production default for most presets (`models/*.env` images column = `v021-ngc2603`); required for `*-tq` (TurboQuant) presets | [`docs/stack-v021.md`](docs/stack-v021.md) |
+| `v022-vllm021` / `v022-tx581` / `v022-{fi0611,ngc2604,trt37,nccl234}` | v022 stack intermediates (local-build only, kept for bisection / rollback against `v022-d568`) | [`docs/stack-v022.md`](docs/stack-v022.md) |
+| `v019-ngc2603` | Archived (vLLM 0.19.1 + Gemma 4 + async scheduling). Historical reproduction only. | [`docs/stack-v019.md`](docs/stack-v019.md) |
 
-**Caveat — AOT compile cache poisoning across config changes:** vLLM persists AOT-compiled forward functions in `./.cache/<preset>/torch_compile_cache/torch_aot_compile/`. Switching a preset's CLI args in a way that changes the encoder profile path (e.g. toggling `--mm-encoder-tp-mode` or `--limit-mm-per-prompt`) without clearing the cache can surface a `'NoneType' object has no attribute 'size'` failure deep inside the compiled forward (qwen3_next.py / qwen3_5.py). Workaround: `sudo mv .cache/<preset>/torch_compile_cache .cache/<preset>/torch_compile_cache.backup_$(date +%s)` on both nodes, then restart. Fresh compile takes ~2-3 min (vs <10s with a warm cache).
-
-### v021-ngc2603 (latest, NGC 26.03)
-
-vLLM main bumped from 978a4462 to **95995bbe** (+236 commits incl. upstream merges of TQ backend selection #40060, FA3/FA4 prefill #40092, prior-art random-signs cleanup #40194). FlashInfer bumped **v0.6.8 → v0.6.9** with SM121 b12x FP4 GEMM (#3113) and b12x CuTe DSL fused MoE for SM120 (#3066). TurboQuant enables 2-4x KV cache capacity via `--kv-cache-dtype turboquant_k8v4`.
-
-| Component | Version |
-|---|---|
-| Base Image | NGC PyTorch 26.03 |
-| vLLM | 0.20.0.dev (main 95995bbe, source build, TurboQuant included) |
-| FlashInfer | v0.6.9 (SM121 b12x FP4 GEMM, b12x CuTe DSL MoE, source build) |
-| PyTorch | 2.11.0a0 |
-| CUDA | 13.2 (native) |
-| NCCL | 2.29.7 |
-| Python | 3.12 |
-| Transformers | 5.5.4 |
-| `_C_stable_libtorch` | Included (NVFP4/FP8/CUTLASS full ops) |
-
-### v019-ngc2603 (previous, NGC 26.03)
-
-vLLM 0.19.1 with Gemma 4 support, async scheduling. Transformers 5.5.0. TTFT improved ~2x over v018. Superseded by v021-ngc2603 (vLLM main 95995bbe + TurboQuant + FlashInfer v0.6.9).
-
-| Component | Version |
-|---|---|
-| Base Image | NGC PyTorch 26.03 |
-| vLLM | 0.19.1 (main a7d79fa, source build) |
-| FlashInfer | v0.6.7.post3 (CUTLASS 4.4.2, SM121 source build) |
-| PyTorch | 2.11.0a0 |
-| CUDA | 13.2 (native) |
-| Transformers | 5.5.0 |
+See [`CHANGELOG.md`](CHANGELOG.md) for release-by-release detail and [`PATCH_STATUS.md`](PATCH_STATUS.md) for the per-patch upstream tracking matrix.
 
 ## Supported Models
 
@@ -182,32 +138,32 @@ docker pull ghcr.io/bjk110/vllm-spark:v022-d568
 
 | Tag | Dockerfile | Diff from previous layer |
 |---|---|---|
-| `v022-vllm021` | `Dockerfile.v022` | vLLM v0.21.0 release pin (off `95995bbe`) |
-| `v022-fi0611` | `Dockerfile.v022-fi0611` | FlashInfer 0.6.11.post3 |
-| `v022-ngc2604` | `Dockerfile.v022-ngc2604` | NGC 26.04 (PyTorch 2.12.0a0) + `patch_split_module_compat.py` |
-| `v022-tx581` | `Dockerfile.v022-tx581` | Transformers 5.8.1 |
-| `v022-trt37` | `Dockerfile.v022-trt37` | Triton 3.7.0 |
-| `v022-nccl234` | `Dockerfile.v022-nccl234` | NCCL 2.30.4 (pip override) |
+| `v022-vllm021` | `dockerfiles/Dockerfile.v022` | vLLM v0.21.0 release pin (off `95995bbe`) |
+| `v022-fi0611` | `dockerfiles/Dockerfile.v022-fi0611` | FlashInfer 0.6.11.post3 |
+| `v022-ngc2604` | `dockerfiles/Dockerfile.v022-ngc2604` | NGC 26.04 (PyTorch 2.12.0a0) + `patch_split_module_compat.py` |
+| `v022-tx581` | `dockerfiles/Dockerfile.v022-tx581` | Transformers 5.8.1 |
+| `v022-trt37` | `dockerfiles/Dockerfile.v022-trt37` | Triton 3.7.0 |
+| `v022-nccl234` | `dockerfiles/Dockerfile.v022-nccl234` | NCCL 2.30.4 (pip override) |
 | `v022-d568` | `Dockerfile.v022-d568` | vLLM PR #35568 cherry-pick (SM121 FP8) — **only this layer is on GHCR** |
 
 #### Option B: Build from source
 
 ```bash
 # NGC 26.03 source build (vLLM main, TurboQuant included)
-docker buildx build -f Dockerfile.gemma4 \
+docker buildx build -f dockerfiles/Dockerfile.gemma4 \
   -t vllm-spark:v021-ngc2603 --load .
 
 # vLLM v0.21.0 release-pinned source build
 # (build on spark01/spark02 only — homeserver 32GiB RAM is insufficient)
-docker buildx build -f Dockerfile.v022 \
+docker buildx build -f dockerfiles/Dockerfile.v022 \
   -t vllm-spark:v022-vllm021 --load .
 
 # Stacked-upgrade builds (each cached layer-by-layer; rebuild only the diff)
-docker buildx build -f Dockerfile.v022-fi0611  -t vllm-spark:v022-fi0611  --load .
-docker buildx build -f Dockerfile.v022-ngc2604 -t vllm-spark:v022-ngc2604 --load .
-docker buildx build -f Dockerfile.v022-tx581   -t vllm-spark:v022-tx581   --load .
-docker buildx build -f Dockerfile.v022-trt37   -t vllm-spark:v022-trt37   --load .
-docker buildx build -f Dockerfile.v022-nccl234 -t vllm-spark:v022-nccl234 --load .
+docker buildx build -f dockerfiles/Dockerfile.v022-fi0611  -t vllm-spark:v022-fi0611  --load .
+docker buildx build -f dockerfiles/Dockerfile.v022-ngc2604 -t vllm-spark:v022-ngc2604 --load .
+docker buildx build -f dockerfiles/Dockerfile.v022-tx581   -t vllm-spark:v022-tx581   --load .
+docker buildx build -f dockerfiles/Dockerfile.v022-trt37   -t vllm-spark:v022-trt37   --load .
+docker buildx build -f dockerfiles/Dockerfile.v022-nccl234 -t vllm-spark:v022-nccl234 --load .
 docker buildx build -f Dockerfile.v022-d568    -t vllm-spark:v022-d568    --load .
 ```
 
@@ -389,9 +345,14 @@ vllm-spark/
 ├── docker-compose.yml             # Unified compose (head + worker profiles)
 ├── entrypoint.sh                  # CLUSTER_MODE-aware entrypoint
 ├── .env.example                   # Full configuration template
-├── Dockerfile.gemma4              # v021-ngc2603 unified build (historical name)
-├── Dockerfile.ngc2603-v3          # v018-ngc2603 archived build
-├── Dockerfile.nvfp4               # NVFP4 runtime defaults overlay
+├── Dockerfile.v022-d568           # Current base image build (NGC 26.04 stack)
+├── Dockerfile.dsv4-d568           # DeepSeek-V4-Flash derivative (FROM v022-d568)
+├── dockerfiles/                   # Legacy / intermediate builds (kept for bisection)
+│   ├── Dockerfile                     # NGC 26.01 era (vLLM 0.18.x, historical)
+│   ├── Dockerfile.gemma4              # v021-ngc2603 unified build
+│   ├── Dockerfile.ngc2603-v3          # v018-ngc2603 archived build
+│   ├── Dockerfile.nvfp4               # NVFP4 runtime defaults overlay
+│   └── Dockerfile.v022(-fi0611/-ngc2604/-tx581/-trt37/-nccl234)  # v022 stack intermediates
 ├── CHANGELOG.md                   # Release-by-release history
 ├── PATCH_STATUS.md                # Per-patch purpose / status / removal condition
 ├── models/                        # Validated model presets
@@ -415,7 +376,6 @@ vllm-spark/
 │   ├── dsv4-flash-fp8-tp2.env        # DeepSeek-V4-Flash official FP8 (dual-rdma, TP2; dsv4-d568)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 experimental (single, TP1)
 ├── docs/                          # Per-model deep-dive guides
-│   ├── qwen36-prismascout-tp2.md     # PrismaSCOUT NVFP4 dual-rdma walkthrough
 │   └── dsv4-flash-tp2.md             # DSV4-Flash: build, recipe, 9-way benchmark sweep
 ├── benchmarks/                    # llama-benchy benchmark results
 ├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant patches
@@ -685,19 +645,19 @@ ssh spark01 'sync && sudo sysctl -w vm.drop_caches=3'
 ### Model placement
 
 The model is assumed to exist at
-`/mnt/data/llm-models/Qwen/Qwen_Qwen3.6-35B-A3B` on the homeserver. Transfer it to
+`<source_dir>/Qwen/Qwen_Qwen3.6-35B-A3B` on the homeserver. Transfer it to
 the chosen Spark node (recommended: `spark01`, same node as the 397B head) before
 launch, then point `MODEL_PATH` at the local copy:
 
 ```bash
 # From homeserver (~67 GB, ~6 min over the RoCE link)
-rsync -av /mnt/data/llm-models/Qwen/Qwen_Qwen3.6-35B-A3B/ \
-    spark01:/home/bjk110/Documents/Models/Qwen/Qwen_Qwen3.6-35B-A3B/
+rsync -av <source_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/ \
+    spark01:<spark_model_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/
 
 # On spark01: materialize the preset and substitute the local model root
 ssh spark01 'cd ~/docker/vllm-spark && \
     cp models/qwen3.6-35b-fp16.env .env && \
-    sed -i "s|\[model_path\]|/home/bjk110/Documents/Models/Qwen|" .env'
+    sed -i "s|\[model_path\]|<spark_model_dir>/Qwen|" .env'
 ```
 
 ### Launch (single Spark, TP=1)

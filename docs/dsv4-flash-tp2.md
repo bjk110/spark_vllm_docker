@@ -71,9 +71,9 @@ ghcr.io/bjk110/vllm-spark:dsv4-d568
 
 ```bash
 ssh spark01 'docker buildx build --progress=plain \
-  -f /home/bjk110/docker/vllm-spark/Dockerfile.dsv4-d568 \
+  -f <repo>/Dockerfile.dsv4-d568 \
   -t vllm-spark:dsv4-d568 --load \
-  /home/bjk110/docker/vllm-spark'
+  <repo>'
 ```
 
 빌드 시간 ~22 분 (vLLM C++/CUDA 휠 빌드 1344s + runner stage 50s).
@@ -98,8 +98,8 @@ docker pull ghcr.io/bjk110/vllm-spark:dsv4-d568
 
 | 위치 | 경로 |
 |---|---|
-| homeserver | `/mnt/data/llm-models/deepseek-ai/deepseek-ai_DeepSeek-V4-Flash` |
-| spark01 / spark02 host | `/home/bjk110/Documents/Models/deepseek-ai/DeepSeek-V4-Flash` |
+| homeserver | `<source_dir>/deepseek-ai/deepseek-ai_DeepSeek-V4-Flash` |
+| spark01 / spark02 host | `<spark_model_dir>/deepseek-ai/DeepSeek-V4-Flash` |
 | 컨테이너 내부 | `/models/DeepSeek-V4-Flash` |
 
 ### 2.2. 디스크 요구사항
@@ -114,13 +114,13 @@ docker pull ghcr.io/bjk110/vllm-spark:dsv4-d568
 ```bash
 # spark01 으로
 rsync -av --info=progress2 --no-i-r \
-  /mnt/data/llm-models/deepseek-ai/deepseek-ai_DeepSeek-V4-Flash/ \
-  spark01:/home/bjk110/Documents/Models/deepseek-ai/DeepSeek-V4-Flash/ &
+  <source_dir>/deepseek-ai/deepseek-ai_DeepSeek-V4-Flash/ \
+  spark01:<spark_model_dir>/deepseek-ai/DeepSeek-V4-Flash/ &
 
 # spark02 으로 (병렬)
 rsync -av --info=progress2 --no-i-r \
-  /mnt/data/llm-models/deepseek-ai/deepseek-ai_DeepSeek-V4-Flash/ \
-  spark02:/home/bjk110/Documents/Models/deepseek-ai/DeepSeek-V4-Flash/ &
+  <source_dir>/deepseek-ai/deepseek-ai_DeepSeek-V4-Flash/ \
+  spark02:<spark_model_dir>/deepseek-ai/DeepSeek-V4-Flash/ &
 wait
 ```
 
@@ -145,16 +145,16 @@ ssh spark02 'sudo sync && sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"'
 ```bash
 # spark01 (head 먼저)
 ssh spark01 'docker compose \
-  --project-directory /home/bjk110/docker/vllm-spark \
-  -f /home/bjk110/docker/vllm-spark/docker-compose.yml \
-  --env-file /home/bjk110/docker/vllm-spark/models/dsv4-flash-fp8-tp2.env \
+  --project-directory <repo> \
+  -f <repo>/docker-compose.yml \
+  --env-file <repo>/models/dsv4-flash-fp8-tp2.env \
   --profile head up -d'
 
 # head 의 Ray runtime 이 뜰 때까지 대기 후 worker
 ssh spark02 'docker compose \
-  --project-directory /home/bjk110/docker/vllm-spark \
-  -f /home/bjk110/docker/vllm-spark/docker-compose.yml \
-  --env-file /home/bjk110/docker/vllm-spark/models/dsv4-flash-fp8-tp2.env \
+  --project-directory <repo> \
+  -f <repo>/docker-compose.yml \
+  --env-file <repo>/models/dsv4-flash-fp8-tp2.env \
   --profile worker up -d'
 ```
 
@@ -169,7 +169,7 @@ MASTER_PORT=29501
 ```
 
 기동 순서는 동일. `entrypoint.sh` 가 양 노드에서 `vllm serve` 를 SPMD 로 실행:
-- head: `--nnodes 2 --node-rank 0 --master-addr 10.10.10.1 --master-port 29501`
+- head: `--nnodes 2 --node-rank 0 --master-addr <HEAD_ROCE_IP> --master-port <MASTER_PORT>`
 - worker: 위에 `--headless` 추가
 
 eugr/spark-vllm-docker `launch-cluster.sh` 의 `--no-ray` 모드와 동일 패턴.
@@ -253,8 +253,8 @@ This may lead to suboptimal performance. Consider increasing max_num_batched_tok
 | 항목 | 값 |
 |---|---|
 | 도구 | [llama-benchy](https://github.com/eugr/llama-benchy) v0.3.4 |
-| 클라이언트 | homeserver (192.168.0.8) |
-| 서버 | spark01 (192.168.0.200:8000) |
+| 클라이언트 | homeserver (관리 LAN) |
+| 서버 | spark01 head 컨테이너 (`HOST_PORT=8000`, 호스트 네트워크) |
 | 토크나이저 | `deepseek-ai/DeepSeek-V4-Flash` (필요시 명시) |
 | 측정 항목 | `pp 512/1024/2048` × `tg 32/128` × `concurrency 1/2/3/4` × 3 runs |
 | 결과 위치 | `benchmarks/llama-benchy/results_dsv4-flash-fp8-tp2-*.md` |

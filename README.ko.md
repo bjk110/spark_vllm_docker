@@ -24,34 +24,59 @@ compose 파일로 두 가지 토폴로지를 지원합니다:
 
 ## 소프트웨어 스택
 
-### v021-ngc2603 (최신, NGC 26.03)
+### v022-d568 (현재 메인 — NGC 26.04, vLLM v0.21.0+#35568, FlashInfer 0.6.11.post3, Transformers 5.8.1, Triton 3.7.0, NCCL 2.30.4)
 
-vLLM main 978a4462 → **95995bbe** (+236 commits, TQ backend selection #40060 / FA3/FA4 prefill #40092 / random-signs cleanup #40194 upstream 머지 포함). FlashInfer **v0.6.8 → v0.6.9** (SM121 b12x FP4 GEMM #3113, b12x CuTe DSL fused MoE #3066). `--kv-cache-dtype turboquant_k8v4`로 KV 캐시 용량 2-4배 확장 가능.
-
-| 구성요소 | 버전 |
-|---|---|
-| 베이스 이미지 | NGC PyTorch 26.03 |
-| vLLM | 0.20.0.dev (main 95995bbe, 소스 빌드, TurboQuant 포함) |
-| FlashInfer | v0.6.9 (SM121 b12x FP4 GEMM, b12x CuTe DSL MoE, 소스 빌드) |
-| PyTorch | 2.11.0a0 |
-| CUDA | 13.2 (네이티브) |
-| NCCL | 2.29.7 |
-| Python | 3.12 |
-| Transformers | 5.5.4 |
-| `_C_stable_libtorch` | 포함 (NVFP4/FP8/CUTLASS 전체 op) |
-
-### v019-ngc2603 (이전, NGC 26.03)
-
-vLLM 0.19.1 Gemma 4 지원, 비동기 스케줄링. Transformers 5.5.0. TTFT v018 대비 ~2배 향상. v021-ngc2603 (vLLM main 95995bbe + TurboQuant + FlashInfer v0.6.9)으로 대체됨.
+v022 forward-stack 의 최종층 (2026-05-18 빌드). PrismaSCOUT NVFP4 TP=2 (텍스트 + 이미지, MTP n=3) 로 각 중간 단계 검증, 최종 `-d568` 층에서 `wangzhang-122b-abliterix-fp8-tp2` (SM121 FP8 커널 경로 활성 확인) + `wangzhang-122b-abliterix-nvfp4-tp2` (FlashInfer-CUTLASS NVFP4 GEMM + MoE 경로) + `gemma4-31b-it` (dense BF16 멀티모달) + `qwen3.6-35b-a3b` (하이브리드 Mamba/Attention MoE) 검증 완료.
 
 | 구성요소 | 버전 |
 |---|---|
-| 베이스 이미지 | NGC PyTorch 26.03 |
-| vLLM | 0.19.1 (main a7d79fa, 소스 빌드) |
-| FlashInfer | v0.6.7.post3 (CUTLASS 4.4.2, SM121 소스 빌드) |
-| PyTorch | 2.11.0a0 |
+| 베이스 이미지 | NGC PyTorch **26.04-py3** |
+| vLLM | **0.21.0 + PR #35568** (릴리스 태그 `ad7125a4` + commit `06d020bb6` cherry-pick, 소스 재빌드) |
+| FlashInfer | **v0.6.11.post3** (SM120/121 XQA MLA 버그픽스 #2689, CUTLASS Small Tile N #3152, Blackwell GDN 정확도 #3156, SM120 cuDNN NaN #3192, NVFP4 KV prefill #3097) |
+| PyTorch | **2.12.0a0** |
 | CUDA | 13.2 (네이티브) |
-| Transformers | 5.5.0 |
+| Transformers | **5.8.1** |
+| Triton | **3.7.0** (vanilla PyPI; NGC 26.04 번들은 3.6.0) |
+| NCCL | **2.30.4** (`nvidia-nccl-cu13` pip + `LD_LIBRARY_PATH` 런타임 override; NGC 26.04 시스템 NCCL 은 2.29.7 유지) |
+| 이미지 태그 | `ghcr.io/bjk110/vllm-spark:v022-d568` (**GHCR**, digest `sha256:88b544ed`) |
+
+**런타임 패치:**
+- `patches/patch_split_module_compat.py`: vLLM 의 정적 `is_torch_equal_or_newer("2.12.0.dev")` gate 를 런타임 signature probe 로 교체 (NGC 26.04 PyTorch 2.12 alpha 가 `tuple_return` kwarg 부재)
+- `patches/apply_sm121_fp8_pr35568.py` (`-d568` 전용): vLLM PR #35568 빌드 타임 cherry-pick. Marlin / CUTLASS FP8 codepath 의 SM120-only / `[89, 120]` gate 를 SM12x family 로 확장하여 GB10 (SM121) 포함
+
+**검증된 preset overrides:**
+- `models/qwen3.6-27b-prismascout-nvfp4-tp2-v022-{fi0611,ngc2604,tx581,trt37,nccl234,d568}.env` — PrismaSCOUT NVFP4 (텍스트 + 이미지)
+- `models/wangzhang-122b-abliterix-fp8-tp2-v022-d568.env` — abliterix FP8 (FP8 커널 경로 활성 확인)
+- `models/wangzhang-122b-abliterix-nvfp4-tp2.env` — abliterix NVFP4 (fused-group 공유 `weight_global_scale`)
+- `models/gemma4-31b-it.env` — Gemma 4 31B IT (dense BF16 멀티모달, single TP=1)
+- `models/qwen3.6-35b-a3b.env` — Qwen3.6-35B-A3B (하이브리드 Mamba/Attention MoE)
+
+### dsv4-d568 (v022-d568 파생 — GB10 의 DeepSeek-V4-Flash)
+
+v022-d568 의 vLLM 을 **jasl/vllm @ `edc82b614f51`** (branch `codex/ds4-sm120-min-enable` HEAD, 2026-05-19) 로 교체. SM12x DSV4 지원 (sparse MLA, Lightning Indexer, fp8_ds_mla KV cache, MTP heads). 나머지 레이어는 v022-d568 동일.
+
+| 구성요소 | 버전 |
+|---|---|
+| 베이스 이미지 | `ghcr.io/bjk110/vllm-spark:v022-d568` |
+| vLLM | **jasl/vllm @ `edc82b614f51`** (소스 재빌드, v0.20.0.dev) |
+| 추가 패치 | `apply_dsv4_packed_mapping.py`, `patch_split_module_compat.py` (재적용), `moe_config_e256/e512.json` (재배치), `instanttensor` pip dep |
+| 이미지 태그 | `ghcr.io/bjk110/vllm-spark:dsv4-d568` (**GHCR**, digest `sha256:b18da2a0`) |
+
+검증된 preset: `models/dsv4-flash-fp8-tp2.env` — DeepSeek-V4-Flash dual-rdma TP=2, 200K ctx, fp8 KV cache + Lightning Indexer.
+
+**전체 가이드 + 9-way 벤치마크 sweep + MTP/backend 분석**: [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md).
+
+### 이전 / 레거시 스택
+
+이전 이미지와 v022 중간 단계는 별도 문서로 분리되어 있습니다:
+
+| 스택 | 사용 시점 | 상세 |
+|---|---|---|
+| `v021-ngc2603` / `v021-tq` | 대부분 프리셋의 운영 기본값 (`models/*.env` 의 이미지 컬럼 = `v021-ngc2603`); `*-tq` (TurboQuant) 프리셋 필수 | [`docs/stack-v021.md`](docs/stack-v021.md) |
+| `v022-vllm021` / `v022-tx581` / `v022-{fi0611,ngc2604,trt37,nccl234}` | v022 스택 중간 단계 (local-build only, `v022-d568` 와의 bisection / rollback 용도로 보존) | [`docs/stack-v022.md`](docs/stack-v022.md) |
+| `v019-ngc2603` | 아카이브 (vLLM 0.19.1 + Gemma 4 + async scheduling). 역사적 재현용. | [`docs/stack-v019.md`](docs/stack-v019.md) |
+
+릴리스별 변경 이력은 [`CHANGELOG.md`](CHANGELOG.md), 패치별 upstream 추적은 [`PATCH_STATUS.md`](PATCH_STATUS.md) 참고.
 
 ## 지원 모델
 
@@ -95,7 +120,7 @@ docker pull ghcr.io/bjk110/vllm-spark:v021-tq
 
 ```bash
 # NGC 26.03 소스 빌드 (vLLM main, TurboQuant 포함)
-docker buildx build -f Dockerfile.gemma4 \
+docker buildx build -f dockerfiles/Dockerfile.gemma4 \
   -t vllm-spark:v021-ngc2603 --load .
 ```
 
@@ -276,9 +301,14 @@ vllm-spark/
 ├── docker-compose.yml             # 통합 compose (head + worker 프로필)
 ├── entrypoint.sh                  # CLUSTER_MODE 인지 entrypoint
 ├── .env.example                   # 전체 설정 템플릿
-├── Dockerfile.gemma4              # v021-ngc2603 통합 빌드 (이름은 역사적)
-├── Dockerfile.ngc2603-v3          # v018-ngc2603 아카이브 빌드
-├── Dockerfile.nvfp4               # NVFP4 런타임 기본값 오버레이
+├── Dockerfile.v022-d568           # 현재 베이스 이미지 빌드 (NGC 26.04 스택)
+├── Dockerfile.dsv4-d568           # DeepSeek-V4-Flash 파생 (FROM v022-d568)
+├── dockerfiles/                   # 레거시 / 중간 빌드 (bisection 보존용)
+│   ├── Dockerfile                     # NGC 26.01 시대 (vLLM 0.18.x, 역사적)
+│   ├── Dockerfile.gemma4              # v021-ngc2603 통합 빌드
+│   ├── Dockerfile.ngc2603-v3          # v018-ngc2603 아카이브 빌드
+│   ├── Dockerfile.nvfp4               # NVFP4 런타임 기본값 오버레이
+│   └── Dockerfile.v022(-fi0611/-ngc2604/-tx581/-trt37/-nccl234)  # v022 스택 중간 단계
 ├── CHANGELOG.md                   # 릴리스별 변경 이력
 ├── PATCH_STATUS.md                # 패치별 목적/상태/제거 조건
 ├── models/                        # 검증된 모델 프리셋
@@ -302,7 +332,6 @@ vllm-spark/
 │   ├── dsv4-flash-fp8-tp2.env        # DeepSeek-V4-Flash 공식 FP8 (dual-rdma, TP2; dsv4-d568)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 실험 (single, TP1)
 ├── docs/                          # 모델별 상세 가이드
-│   ├── qwen36-prismascout-tp2.md     # PrismaSCOUT NVFP4 dual-rdma 가이드
 │   └── dsv4-flash-tp2.md             # DSV4-Flash 빌드/레시피/9-way 벤치마크 sweep
 ├── benchmarks/                    # llama-benchy 벤치마크 결과
 ├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant 패치
@@ -571,19 +600,19 @@ ssh spark01 'sync && sudo sysctl -w vm.drop_caches=3'
 
 ### 모델 위치
 
-homeserver의 `/mnt/data/llm-models/Qwen/Qwen_Qwen3.6-35B-A3B`에 다운로드되어
+homeserver의 `<source_dir>/Qwen/Qwen_Qwen3.6-35B-A3B`에 다운로드되어
 있다는 전제입니다. 테스트 대상 Spark 노드(권장: `spark01`, 기존 397B head와
 동일)로 복사 후 `MODEL_PATH`를 로컬 경로로 지정해 사용합니다.
 
 ```bash
 # homeserver에서 (~67 GB, RoCE 링크로 ~6분)
-rsync -av /mnt/data/llm-models/Qwen/Qwen_Qwen3.6-35B-A3B/ \
-    spark01:/home/bjk110/Documents/Models/Qwen/Qwen_Qwen3.6-35B-A3B/
+rsync -av <source_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/ \
+    spark01:<spark_model_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/
 
 # spark01: 프리셋 복사 + 로컬 경로 치환
 ssh spark01 'cd ~/docker/vllm-spark && \
     cp models/qwen3.6-35b-fp16.env .env && \
-    sed -i "s|\[model_path\]|/home/bjk110/Documents/Models/Qwen|" .env'
+    sed -i "s|\[model_path\]|<spark_model_dir>/Qwen|" .env'
 ```
 
 ### 기동 (단일 Spark, TP=1)
