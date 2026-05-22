@@ -327,41 +327,86 @@ DSV4-Flash 는 MTP heads (Multi-Token Prediction) 를 공식 체크포인트에 
 
 | 운영 시나리오 | 권장 |
 |---|---|
-| 일반 대화/응답 (decode 중심) | **설정 #7** (peak 66 t/s decode) |
+| 일반 대화/응답 (decode 중심, 1-4 동시) | **설정 #7** (peak 66 t/s decode @ c=4) |
+| 대화 + 다중 동시 사용자 (5-8 동시) | **설정 #10** (peak 61 t/s decode @ c=8, +54% vs #9) |
 | 긴 컨텍스트 prefill 빈도 높음 | **설정 #9** (peak 1100 t/s prefill, decode 40 t/s) |
-| 다중 동시 사용자 + 짧은 답변 | 설정 #7 (max_seq 더 올릴 여지) |
+| 다중 동시 사용자 + 짧은 답변 | **설정 #10** 또는 #7 |
 
-## 9. Tier-1 env tuning evaluation (negative finding, 2026-05-22)
+## 9. Decode 최고 기록 (설정 #10) — max_num_seqs=8 (2026-05-22)
 
-NVIDIA 개발자 포럼 [post #53 Serapis](https://forums.developer.nvidia.com/t/deepseek-v4-flash-official-fp8-running-across-2x-dgx-spark-tp-2-mtp-200k-ctx-recipe-numbers/370309/53) 의 2× DGX Spark TP=2 recipe 에서 권장된 두 env 변수를 우리 환경(jasl/vllm @ `edc82b614f51`, 설정 #9 baseline) 에 적용 후 A/B 측정. **두 변수 모두 운영 best 에 추가하지 않음.**
+**Config**: 설정 #9 동일 + `MAX_NUM_SEQS=4 → 8` (admission queue 확장)
 
-### 9.1. 시험 대상
+| pp2048 c=8 tg32 peak | **61.67 ± 3.30 t/s** (Run A c=4 의 40 대비 +54%) |
+|---|---|
+| pp2048 c=8 tg128 peak | 58.67 ± 3.77 t/s (+47%) |
+| pp2048 c=7 tg128 prefill | 1085.20 ± 77 t/s (설정 #9 peak 1099 와 동등) |
 
-| 변수 | forum 권장값 | 효과 가설 |
+### 9.1. 측정 결과 (server-reported peak, pp2048)
+
+| c | 설정 #9 tg32 peak | 설정 #10 tg32 peak | Δ | 설정 #9 tg128 peak | 설정 #10 tg128 peak | Δ |
+|---|---:|---:|---:|---:|---:|---:|
+| 4 | 38.33 ± 0 | 40.00 ± 0 | +4.4% | 40.00 ± 0 | 40.00 ± 0 | 0% |
+| 5 | — | 45.00 ± 0 | new | — | 45.00 ± 0 | new |
+| 6 | — | 49.33 ± 3.68 | new | — | 48.67 ± 0.47 | new |
+| 7 | — | 56.00 ± 0 | new | — | 53.33 ± 2.49 | new |
+| **8** | — | **61.67 ± 3.30** | **+61% vs c=4** | — | **58.67 ± 3.77** | **+47%** |
+
+### 9.2. KV pool 영향
+
+- pool: 1.04M tokens (설정 #9 와 동일, bt=8192 변경 없음)
+- max concurrency @ 200K: **5.48x** (c=6+ 는 admission queue 의 부분 직렬화 시작)
+- 실효 효과: c=4 이상 동시 요청이 있을 때 decode token 처리량이 거의 선형 스케일링
+
+### 9.3. Trade-off
+
+| 측면 | 설정 #9 (c=4) | 설정 #10 (c=8) |
 |---|---|---|
-| `OMP_NUM_THREADS=8` | 8 | PyTorch CPU thread pool 캡으로 GPU dispatch 와의 contention 감소 |
-| `VLLM_USE_FLASHINFER_SAMPLER=1` | 1 | sampling 단계를 FlashInfer 로 라우팅 (PyTorch native 대체) |
-| `--disable-custom-all-reduce` | enable | vLLM custom all-reduce kernel 비활성, NCCL 기본 경로 사용 |
+| Decode peak | 40 t/s | **62 t/s** (+54%) |
+| Prefill peak @ c=4 | **1099 ± 4 t/s (안정)** | 949 ± 190 t/s (σ ×47, 회귀) |
+| Prefill peak @ c=7 | — | 1085 ± 77 t/s |
+| TTFT (pp2048 c=8 tg128) | — | 11066 ms ± 4210 (높음) |
+| 어떤 워크로드 | 단일·소규모 prefill 중심 | **다중 동시 decode 중심** |
 
-### 9.2. 측정 (server-reported peak/prefill, pp2048, Test #9 baseline)
+설정 #10 의 prefill 은 c=4 단일 측정에서 회귀 (variance 폭증) 하지만 admission 확장으로 인한 스케줄러 동작 변화 부수효과. **c=7 영역의 prefill (1085 t/s) 은 설정 #9 peak 와 거의 동일**. 
+
+### 9.4. 결과 파일
+
+`benchmarks/llama-benchy/results_dsv4-flash-fp8-tp2-edc82b6-ray-maxseq8-mtp2-bt8192-c1to8.md`
+
+## 10. Tier-1 env tuning evaluation (negative findings, 2026-05-22)
+
+NVIDIA 개발자 포럼 [post #53 Serapis](https://forums.developer.nvidia.com/t/deepseek-v4-flash-official-fp8-running-across-2x-dgx-spark-tp-2-mtp-200k-ctx-recipe-numbers/370309/53) 의 2× DGX Spark TP=2 recipe 에서 권장된 env 변수와 자체 후보 한 항목을 우리 환경(jasl/vllm @ `edc82b614f51`, 설정 #9 baseline) 에 적용 후 A/B 측정. **모두 운영 best 에 추가하지 않음.**
+
+### 10.1. 시험 대상
+
+| 변수 | 출처 / 권장값 | 효과 가설 |
+|---|---|---|
+| `OMP_NUM_THREADS=8` | forum #53 / 8 | PyTorch CPU thread pool 캡으로 GPU dispatch 와의 contention 감소 |
+| `VLLM_USE_FLASHINFER_SAMPLER=1` | forum #53 / 1 | sampling 단계를 FlashInfer 로 라우팅 (PyTorch native 대체) |
+| `--disable-custom-all-reduce` | forum #53 / enable | vLLM custom all-reduce kernel 비활성, NCCL 기본 경로 사용 |
+| `MAX_NUM_BATCHED_TOKENS=12288` | 자체 (vLLM 부팅 hint) | bt 8192 → 12288 로 더 큰 prefill 배치 |
+
+### 10.2. 측정 (server-reported peak/prefill, pp2048, Test #9 baseline)
 
 | Run | Config | Decode peak (c4 tg128) | Prefill (c4 tg128) | Δ vs A |
 |---|---|---:|---:|---:|
-| A | baseline (Test #9, no env tweak) | 40.00 ± 0 | **1099.94 ± 4** | — |
+| A | baseline (Test #9, 변경 없음) | 40.00 ± 0 | **1099.94 ± 4** | — |
 | B | + OMP=8 + SAMPLER=1 | 40.00 | 987.69 ± 123 | **−10.2%** prefill |
 | C | + OMP=8 only (SAMPLER=0) | 40.00 | 999.36 ± 102 | **−9.1%** prefill |
 | D | + `--disable-custom-all-reduce` | 41.33 ± 1.89 | 868.37 ± 157 | **−21.1%** prefill, σ ×40 |
+| E | + `bt=12288` (KV pool 0.73M, max c=3.67x) | 39.67 ± 0.47 | 1077.87 ± 30 | -2.0% (σ 범위, **flat**) |
 
-### 9.3. 결론
+### 10.3. 결론
 
 - **`OMP_NUM_THREADS=8` 이 prefill 회귀의 주범** (run C). GB10 의 20-core CPU 를 8 thread 로 축소하면 chunked-prefill admission path 가 CPU 병목. forum #53 의 RTX PRO 6000 (다른 코어 구조) 권장값이 GB10 에 부적합.
-- **`VLLM_USE_FLASHINFER_SAMPLER=1` 은 거의 중립** (B vs C 차이 ~1%, σ 범위). 본 벤치는 temperature=0 기본 → sampler 경로가 가벼움. greedy 워크로드에서 의미 없음.
+- **`VLLM_USE_FLASHINFER_SAMPLER=1` 은 거의 중립** (B vs C 차이 ~1%, σ 범위). 본 벤치는 temperature=0 기본 → sampler 경로가 가벼움. greedy 워크로드에서 의미 없음. 또한 jasl/vllm 에서 **이 옵션은 기본 ON** 이므로 명시 `=1` 은 no-op.
 - **`--disable-custom-all-reduce` 는 prefill peak (c=4) 손상** (run D). σ 4 → 157 로 variance 40배 증가. vLLM custom all-reduce kernel 이 우리 GB10 + 200 Gbps RoCE + TP=2 cross-node 구성에 잘 최적화되어 있음. forum #53 의 권장은 다른 토폴로지 기준.
-- **Decode peak 는 모든 run 에서 ≈40 t/s** — GPU-bound 영역이라 CPU/통신 측 env 변경에 무영향.
+- **`bt=12288` 은 평형 (saturation 도달)** (run E). 4192 → 8192 단계의 +29% 와 달리 8192 → 12288 은 -2% (σ 범위). vLLM 의 "Consider increasing" hint 는 bt=4192 시점 경고였고 8192 가 이미 sweet spot.
+- **Decode peak 는 모든 run 에서 ≈40 t/s** (GPU-bound 영역). 본 섹션의 변경 후보들은 모두 c=4 admission ceiling 자체를 깰 수 없음 — admission 자체를 확장한 [설정 #10](#9-decode-최고-기록-설정-10--max_num_seqs8-2026-05-22) 만이 decode 60+ t/s 영역을 열었음.
 
-→ 세 변경 모두 `models/dsv4-flash-fp8-tp2.env` 와 `docker-compose.yml` 에 적용하지 않음. 본 negative finding 은 동일 시도 재발 방지용 기록.
+→ 네 변경 모두 `models/dsv4-flash-fp8-tp2.env` 와 `docker-compose.yml` 에 적용하지 않음. 본 negative finding 은 동일 시도 재발 방지용 기록.
 
-### 9.4. 결과 파일
+### 10.4. 결과 파일
 
 | 설정 | 파일 |
 |---|---|
@@ -369,8 +414,9 @@ NVIDIA 개발자 포럼 [post #53 Serapis](https://forums.developer.nvidia.com/t
 | Run B (OMP+SAMPLER) | `benchmarks/llama-benchy/results_dsv4-flash-fp8-tp2-edc82b6-ray-maxseq4-mtp2-bt8192-OMP8-flashsampler-c1to4.md` |
 | Run C (OMP only) | `benchmarks/llama-benchy/results_dsv4-flash-fp8-tp2-edc82b6-ray-maxseq4-mtp2-bt8192-OMP8-only-c1to4.md` |
 | Run D (no-custom-allreduce) | `benchmarks/llama-benchy/results_dsv4-flash-fp8-tp2-edc82b6-ray-maxseq4-mtp2-bt8192-no-custom-allreduce-c1to4.md` |
+| Run E (bt=12288) | `benchmarks/llama-benchy/results_dsv4-flash-fp8-tp2-edc82b6-ray-maxseq4-mtp2-bt12288-c1to4.md` |
 
-## 10. 참고 링크
+## 11. 참고 링크
 
 - NVIDIA 개발자 포럼 [post #43](https://forums.developer.nvidia.com/t/deepseek-v4-flash-official-fp8-running-across-2x-dgx-spark-tp-2-mtp-200k-ctx-recipe-numbers/370309/43)
 - eugr/spark-vllm-docker [PR #219 (DeepSeek V4 Flash recipe)](https://github.com/eugr/spark-vllm-docker/pull/219)
