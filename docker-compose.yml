@@ -84,10 +84,12 @@ services:
       memlock:
         soft: -1
         hard: -1
-    # eugr/spark-vllm-docker#257 권고 반영: EngineCore init failure 가 무한 재시작
-    # 루프를 만들어 host RAM thrashing/sshd-storm 을 유발한 사례가 있어 max
-    # retries 를 2 로 제한. 그 이상은 외부 supervisor 위임.
-    restart: "on-failure:2"
+    # eugr/spark-vllm-docker#257 권고 반영 + 자체 재검증 (2026-05-23 G6):
+    # docker compose v2 일반 deploy 에서 `on-failure:N` 의 max-retries 부분이
+    # 무시되어 결과적으로 무한 재시작 → host RAM thrashing → sshd-storm 재발.
+    # zero retries 로 강화: EngineCore init failure 는 운영자에게 surface,
+    # 외부 supervisor 위임. 재시작이 필요하면 `docker compose up -d` 수동 호출.
+    restart: "no"
 
   worker:
     image: ${VLLM_IMAGE}
@@ -166,7 +168,9 @@ services:
       memlock:
         soft: -1
         hard: -1
-    # eugr/spark-vllm-docker#257 권고 반영: EngineCore init failure 가 무한 재시작
-    # 루프를 만들어 host RAM thrashing/sshd-storm 을 유발한 사례가 있어 max
-    # retries 를 2 로 제한. 그 이상은 외부 supervisor 위임.
-    restart: "on-failure:2"
+    # eugr/spark-vllm-docker#257 권고 반영 + 자체 재검증 (2026-05-23 G6):
+    # docker compose v2 일반 deploy 에서 `on-failure:N` 의 max-retries 부분이
+    # 무시되어 결과적으로 무한 재시작 → host RAM thrashing → sshd-storm 재발.
+    # zero retries 로 강화: EngineCore init failure 는 운영자에게 surface,
+    # 외부 supervisor 위임. 재시작이 필요하면 `docker compose up -d` 수동 호출.
+    restart: "no"
