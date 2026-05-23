@@ -84,7 +84,10 @@ services:
       memlock:
         soft: -1
         hard: -1
-    restart: unless-stopped
+    # eugr/spark-vllm-docker#257 권고 반영: EngineCore init failure 가 무한 재시작
+    # 루프를 만들어 host RAM thrashing/sshd-storm 을 유발한 사례가 있어 max
+    # retries 를 2 로 제한. 그 이상은 외부 supervisor 위임.
+    restart: "on-failure:2"
 
   worker:
     image: ${VLLM_IMAGE}
@@ -163,4 +166,7 @@ services:
       memlock:
         soft: -1
         hard: -1
-    restart: unless-stopped
+    # eugr/spark-vllm-docker#257 권고 반영: EngineCore init failure 가 무한 재시작
+    # 루프를 만들어 host RAM thrashing/sshd-storm 을 유발한 사례가 있어 max
+    # retries 를 2 로 제한. 그 이상은 외부 supervisor 위임.
+    restart: "on-failure:2"
