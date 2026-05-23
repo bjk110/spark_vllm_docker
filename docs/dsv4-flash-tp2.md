@@ -463,6 +463,12 @@ desired GPU memory utilization (0.85, 103.38 GiB).
   3. 운영 정책으로 reboot 직후 즉시 시작 (workaround, 현재 채택).
 - §11.1-11.5 의 dad6ff8 거부 사례는 위 동일 원인. dad6ff8 코드 자체는 문제 없음 — 재시도 시 reboot 직후 즉시 시작하면 통과 가능성 큼.
 
+**G9 검증 (mp backend 도 거부, 2026-05-23):**
+- ray 운영 stop → DISTRIBUTED_BACKEND=mp 변경 → reboot 없이 즉시 시도 (host RAM 누적 상태) → 동일 `ValueError: Free memory 14.11/121.63 GiB` 거부.
+- Path: ray `RayWorkerProc.initialize_worker()` vs mp `multiproc_executor.py:870 (Worker pid=...)` — 다른 path 로 같은 `request_memory()` 호출.
+- 측정값: ray 36.85 GiB > mp 14.11 GiB → **mp 가 더 비관적**. Ray object store ~70 GiB 점유가 host RAM 측정에 영향 주는 게 아님. **backend 무관 host RAM 누적이 진짜 원인 최종 확정.**
+- 컨테이너 stop 후 host RAM 회수: used 110 → 104 GiB (단 ~7 GiB만 회수) → GB10 UMA quirk [[gb10-uma-memory-needs-reboot-to-reclaim]] 재확인. reboot 만이 유일한 회수 방법.
+
 ## 12. 참고 링크
 
 - NVIDIA 개발자 포럼 [post #43](https://forums.developer.nvidia.com/t/deepseek-v4-flash-official-fp8-running-across-2x-dgx-spark-tp-2-mtp-200k-ctx-recipe-numbers/370309/43)
