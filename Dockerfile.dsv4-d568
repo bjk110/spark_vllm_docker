@@ -79,13 +79,15 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git ninja-build ccache && \
     rm -rf /var/lib/apt/lists/*
 
-# Clone jasl/vllm and pin to exact commit.
+# Clone jasl/vllm and pin to exact commit. Fetch SHA directly (not branch)
+# so the build is robust to upstream branch rebases — historical commits
+# remain reachable via direct SHA fetch even after force-push.
 RUN git clone ${VLLM_REPO_URL} /workspace/vllm-src && \
     cd /workspace/vllm-src && \
-    git fetch origin ${VLLM_BRANCH} && \
+    git fetch origin ${VLLM_COMMIT} && \
     git checkout ${VLLM_COMMIT} && \
     ACTUAL=$(git rev-parse HEAD) && \
-    echo "vLLM pinned to: ${ACTUAL} (jasl fork @ ${VLLM_BRANCH})" && \
+    echo "vLLM pinned to: ${ACTUAL} (jasl fork, branch-of-record: ${VLLM_BRANCH})" && \
     echo "${ACTUAL}" | grep -q "^${VLLM_COMMIT}" || \
       (echo "FATAL: commit mismatch — expected ${VLLM_COMMIT}*, got ${ACTUAL}" && exit 1) && \
     git config user.email "build@vllm-spark.local" && \

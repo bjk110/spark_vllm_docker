@@ -416,7 +416,36 @@ NVIDIA 개발자 포럼 [post #53 Serapis](https://forums.developer.nvidia.com/t
 | Run D (no-custom-allreduce) | `benchmarks/llama-benchy/results_dsv4-flash-fp8-tp2-edc82b6-ray-maxseq4-mtp2-bt8192-no-custom-allreduce-c1to4.md` |
 | Run E (bt=12288) | `benchmarks/llama-benchy/results_dsv4-flash-fp8-tp2-edc82b6-ray-maxseq4-mtp2-bt12288-c1to4.md` |
 
-## 11. 참고 링크
+## 11. vLLM commit bump 시도 (negative, 2026-05-23)
+
+`edc82b614f51` → `dad6ff885838` (branch HEAD 시점, "Limit long prefill chunks behind active decode" 안정성 fix 등 포함) 시도. 결과: **GB10 UMA 사전 점유와 vLLM strict free-memory check 비호환으로 채택 보류.**
+
+### 11.1. 빌드/배포
+- spark02 빌드 → 이미지 `vllm-spark:dsv4-d568-dad6ff8` (31.6 GB), spark01 로 docker save | ssh docker load 전송 (~27분)
+- Dockerfile 변경: `git fetch origin ${VLLM_BRANCH}` → `git fetch origin ${VLLM_COMMIT}` (jasl 브랜치 force-rebase 대응)
+- 양 노드 `.env` 및 `models/dsv4-flash-fp8-tp2.env` 의 `VLLM_IMAGE` 갱신
+- Dry-run import 검증 (`docker run --rm` 안에서 `import vllm` + `DeepseekV4ForCausalLM` + `EngineCoreProc` + MTP + FlashInfer) 모두 통과 → 빌드 결함 아님
+
+### 11.2. 실패 모드
+양 노드 깨끗한 리부팅 후 컨테이너 시작 → vLLM `request_memory()` (`vllm/v1/worker/utils.py:413`) 가 init 시점에 거부:
+```
+ValueError: Free memory on device cuda:0 (36.75/121.63 GiB) on startup is less than
+desired GPU memory utilization (0.85, 103.38 GiB).
+```
+2회 시도 모두 동일 — 양 노드 host RAM 의 `used` 가 idle 상태에서 ~78 GiB (`free -h`), nvidia driver/UVM 이 컨테이너 시작 직후 host RAM 의 ~85 GiB 를 pre-reserve. vLLM의 init 시점 free-memory 사전체크는 가중치 로드/UMA commit 이전 시점이므로, 이 reserve를 "사용 중"으로 인식.
+
+### 11.3. Root cause
+- GB10 UMA의 nvidia driver는 컨테이너 spawn 직후 host RAM 의 큰 영역(~85 GiB)을 미리 잡고, 가중치 로드 단계에서 GPU 메모리로 commit. vLLM이 init 시점에 검사하는 `free` 값은 이 reserve 이후의 수치다.
+- 동일 환경에서 `edc82b614f51` 는 정상 작동 (Run F 검증) — `dad6ff885838` 의 변경 어딘가에서 init 시점 free-memory 사전체크 path가 추가/강화돼 GB10 UMA pre-reserve 와 비호환이 된 것으로 추정. upstream vLLM `request_memory()` 의 SM12x/UMA 특수 케이스 처리 부재.
+
+### 11.4. 부수 피해
+- compose `restart: unless-stopped` 가 EngineCore fail 후 자동 재시작 → 첫 시도 1회차에 누적 RestartCount=35 → host RAM thrashing 발생 → 양 노드 sshd banner exchange timeout (TCP accept 는 됨, 커널은 살아있으나 userspace 부하). 물리적 reset 필요.
+- 추후 비슷한 commit bump 테스트 시 임시 `restart: no` 권장 + `docker logs -f | grep -m 1 'EngineCore failed|Uvicorn running'` 단일 ssh stream 으로 첫 fail/ready 신호 즉시 감지하여 stop 권장.
+
+### 11.5. 결정
+`edc82b614f51` 유지. 이미지 `vllm-spark:dsv4-d568-dad6ff8` 는 spark01/02 로컬에 남겨두되 `.env` 미참조. dad6ff8 단독 디버깅(또는 `request_memory()` 우회 패치)은 별도 세션.
+
+## 12. 참고 링크
 
 - NVIDIA 개발자 포럼 [post #43](https://forums.developer.nvidia.com/t/deepseek-v4-flash-official-fp8-running-across-2x-dgx-spark-tp-2-mtp-200k-ctx-recipe-numbers/370309/43)
 - eugr/spark-vllm-docker [PR #219 (DeepSeek V4 Flash recipe)](https://github.com/eugr/spark-vllm-docker/pull/219)
