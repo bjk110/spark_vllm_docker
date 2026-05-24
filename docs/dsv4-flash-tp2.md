@@ -469,6 +469,55 @@ desired GPU memory utilization (0.85, 103.38 GiB).
 - 측정값: ray 36.85 GiB > mp 14.11 GiB → **mp 가 더 비관적**. Ray object store ~70 GiB 점유가 host RAM 측정에 영향 주는 게 아님. **backend 무관 host RAM 누적이 진짜 원인 최종 확정.**
 - 컨테이너 stop 후 host RAM 회수: used 110 → 104 GiB (단 ~7 GiB만 회수) → GB10 UMA quirk [[gb10-uma-memory-needs-reboot-to-reclaim]] 재확인. reboot 만이 유일한 회수 방법.
 
+### 11.7. G8 — `VLLM_SKIP_INIT_MEMORY_CHECK` 패치 검증 (✅ 통과, 2026-05-24)
+
+§11.6 의 운영 5분 제약을 영구 해소하기 위한 escape-hatch 패치 검증.
+
+**패치 디자인** (`patches/patch_skip_init_memory_check.py`, commit `82d013a`):
+- `vllm/v1/worker/utils.py:413` `request_memory()` 함수에 env-var anchor 추가
+- `VLLM_SKIP_INIT_MEMORY_CHECK=1` 설정 시 pre-check 건너뛰고 경고 로그 + 정상 진행
+- 진짜 OOM 은 weight load 단계에서 natural failure site 로 surface
+- Dockerfile.dsv4-d568 STAGE 2 에 idempotent 적용 (env-var 미설정 시 동작 동일)
+- vLLM `envs.py` 미등록 var 라서 시작 시 `Unknown vLLM environment variable detected` 경고 출력 (무해, 향후 vLLM 패치로 등록 가능)
+
+**빌드 및 배포**:
+- 이미지: `vllm-spark:dsv4-d568-skipmem` (image ID `de4c3ba4661e`, VLLM_COMMIT `edc82b614f51` 유지)
+- spark02 빌드 ~50분 (NGC 26.04 base + 패치 line 추가 → STAGE 2 영향만)
+- spark02 → spark01 transfer 6분 15초 (대부분 layer 가 기존 dsv4-d568 와 공유)
+- `docker-compose.yml` head + worker `environment` 에 `VLLM_SKIP_INIT_MEMORY_CHECK=${VLLM_SKIP_INIT_MEMORY_CHECK:-0}` passthrough 추가
+
+**검증 조건** (host RAM 누적 상태):
+- spark01 head: uptime 21h 16m, used 82 GiB, **available 39 GiB** ≪ 요구 103 GiB → 패치 없으면 거부될 정확한 조건
+- spark02 worker: uptime 1h 08m, available 115 GiB (빌드 후 회수) → 자연 통과 가능
+
+**핵심 검증 결과**:
+1. **패치 활성화 로그 양 노드 출현** @ 13:16:52:
+   ```
+   WARNING [utils.py:419] VLLM_SKIP_INIT_MEMORY_CHECK=1 — skipping startup
+     free-memory check (free_memory=35785916416, requested=111006700749 on cuda:0).
+   ```
+   spark01: free 33.3 GiB ≪ requested 103.4 GiB → **패치 효과 결정적 입증**
+   spark02: free 115.1 GiB > requested 103.4 GiB → patch 무관 통과
+2. **가중치 46/46 shards 로드 완료** — TP=2 분산이 실제 가중치를 적절히 분배해 weight load 단계 OOM 없음
+3. **API server `Application startup complete`** + `/v1/models` 정상 응답 (deepseek-v4-flash, max_len=200000)
+4. **Token gen sanity**: `"What is 2+2?"` → content `'4'`, finish_reason=stop, completion_tokens=26
+
+**운영 변경 (영구)**:
+- `.env` 양 노드: `VLLM_IMAGE=ghcr.io/bjk110/vllm-spark:dsv4-d568-skipmem` + `VLLM_SKIP_INIT_MEMORY_CHECK=1`
+- 백업 자동 생성: `.env.bak-pre-g8-skipmem-*`
+- **운영 5분 제약 해제** — reboot 후 시간 경과 무관 안전한 컨테이너 시작 가능
+
+**Rollback 절차** (필요 시):
+1. `.env` 의 `VLLM_IMAGE` 를 `ghcr.io/bjk110/vllm-spark:dsv4-d568` 로 복원 (양 노드 dsv4-d568 이미지 보존됨)
+2. `VLLM_SKIP_INIT_MEMORY_CHECK=0` 또는 제거
+3. 또는 `.env.bak-pre-g8-skipmem-*` 직접 복원
+4. `docker compose --profile head/worker up -d` 재시작 → 5분 제약 운영 복귀
+
+**Follow-up 후보** (관련 메모: [[upstream-updates-2026-05-24]]):
+- vLLM `envs.py` 에 `VLLM_SKIP_INIT_MEMORY_CHECK` registration 추가 → "Unknown env var" 경고 제거
+- PR #35929 (`posix_fadvise(POSIX_FADV_DONTNEED)`) 자체 패치 이식 → 운영 중 host RAM page cache 회수
+- jasl `c4fc1d2` (SM120 sparse MLA → DSV4) commit bump 재도전 — 이제 host RAM 누적 변수 없이 공정 A/B 가능
+
 ## 12. 참고 링크
 
 - NVIDIA 개발자 포럼 [post #43](https://forums.developer.nvidia.com/t/deepseek-v4-flash-official-fp8-running-across-2x-dgx-spark-tp-2-mtp-200k-ctx-recipe-numbers/370309/43)

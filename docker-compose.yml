@@ -42,6 +42,9 @@ services:
       - TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST:-}
       # ---- Patches (0 = disabled) ----
       - APPLY_TEXT_ONLY_SHIM=${APPLY_TEXT_ONLY_SHIM:-0}
+      # GB10 UMA: bypass request_memory() startup pre-check (patch_skip_init_memory_check.py).
+      # 1 = skip (any real OOM still surfaces at weight load). See docs/dsv4-flash-tp2.md §11.6.
+      - VLLM_SKIP_INIT_MEMORY_CHECK=${VLLM_SKIP_INIT_MEMORY_CHECK:-0}
       # ---- Multi-node networking (200Gbps RoCE) ----
       # All RDMA vars use empty defaults so single-Spark users do not need
       # to set them. entrypoint.sh normalizes for CLUSTER_MODE=single by
@@ -148,6 +151,9 @@ services:
       - TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST:-}
       # ---- Patches (0 = disabled) ----
       - APPLY_TEXT_ONLY_SHIM=${APPLY_TEXT_ONLY_SHIM:-0}
+      # GB10 UMA: bypass request_memory() startup pre-check (patch_skip_init_memory_check.py).
+      # 1 = skip (any real OOM still surfaces at weight load). See docs/dsv4-flash-tp2.md §11.6.
+      - VLLM_SKIP_INIT_MEMORY_CHECK=${VLLM_SKIP_INIT_MEMORY_CHECK:-0}
     deploy:
       resources:
         reservations:
