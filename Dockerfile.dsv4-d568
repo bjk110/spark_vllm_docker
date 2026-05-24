@@ -179,12 +179,21 @@ RUN python3 /tmp/patch_skip_init_memory_check.py
 COPY patches/patch_envs_register_skip_memcheck.py /tmp/patch_envs_register_skip_memcheck.py
 RUN python3 /tmp/patch_envs_register_skip_memcheck.py
 
-# GB10 UMA supply-side: drop OS page cache after each safetensors file is
-# read (port of upstream PR vllm-project/vllm#35929). Reduces the host
-# RAM accumulation pattern that VLLM_SKIP_INIT_MEMORY_CHECK papers over,
-# attacking the root cause rather than the symptom. See docs §11.7.
-COPY patches/patch_fadvise_safetensors.py /tmp/patch_fadvise_safetensors.py
-RUN python3 /tmp/patch_fadvise_safetensors.py
+# GB10 UMA: extend VLLM_SKIP_INIT_MEMORY_CHECK=1 to also relax the
+# post-profile assertion in determine_available_memory(). The Linux
+# kernel can reclaim page cache during profiling, raising the UMA free
+# metric above the init snapshot and tripping vLLM's "other process
+# released GPU memory" check. See docs/dsv4-flash-tp2.md §11.9.
+COPY patches/patch_relax_profile_assertion.py /tmp/patch_relax_profile_assertion.py
+RUN python3 /tmp/patch_relax_profile_assertion.py
+
+# NOTE: patch_fadvise_safetensors.py (PR #35929 port) was tried and
+# reverted (see docs §11.8). It legitimately changed the UMA free metric
+# during profiling, which tripped the assertion we now relax above — but
+# it also broke the safetensors zero-copy mmap flow (~5x slower load).
+# A correct port requires the companion mem_utils.py changes from
+# PR #35929 plus moving the fadvise call out of the per-shard loop. Until
+# then we attack the assertion symptom, not the cache-pressure root cause.
 
 # Restore the GB10-tuned fused-MoE configs that were placed by the base image's
 # vLLM install (the path now points at the freshly installed jasl wheel).

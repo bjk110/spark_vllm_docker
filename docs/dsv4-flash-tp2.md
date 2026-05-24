@@ -514,9 +514,66 @@ desired GPU memory utilization (0.85, 103.38 GiB).
 4. `docker compose --profile head/worker up -d` 재시작 → 5분 제약 운영 복귀
 
 **Follow-up 후보** (관련 메모: [[upstream-updates-2026-05-24]]):
-- vLLM `envs.py` 에 `VLLM_SKIP_INIT_MEMORY_CHECK` registration 추가 → "Unknown env var" 경고 제거
-- PR #35929 (`posix_fadvise(POSIX_FADV_DONTNEED)`) 자체 패치 이식 → 운영 중 host RAM page cache 회수
+- vLLM `envs.py` 에 `VLLM_SKIP_INIT_MEMORY_CHECK` registration 추가 → "Unknown env var" 경고 제거 — **§11.8 시도, 패치 자체는 작동 확인. fadvise 와 분리한 별도 빌드 가치.**
+- PR #35929 (`posix_fadvise(POSIX_FADV_DONTNEED)`) 자체 패치 이식 → 운영 중 host RAM page cache 회수 — **§11.8 negative: 단독 이식은 profiling assertion 과 비호환.**
 - jasl `c4fc1d2` (SM120 sparse MLA → DSV4) commit bump 재도전 — 이제 host RAM 누적 변수 없이 공정 A/B 가능
+
+### 11.8. envs.py registration + fadvise port 시도 (mixed, 2026-05-24)
+
+§11.7 G8 통과 후 보강 시도. 두 패치 묶음 (이미지 `dsv4-d568-fadvise`):
+1. `patches/patch_envs_register_skip_memcheck.py` — vllm/envs.py `environment_variables` dict 에 `VLLM_SKIP_INIT_MEMORY_CHECK` 등록 → 시작 시 "Unknown vLLM environment variable" 경고 제거.
+2. `patches/patch_fadvise_safetensors.py` — upstream PR #35929 port. `safetensors_weights_iterator` 의 외부 루프 끝에 `posix_fadvise(POSIX_FADV_DONTNEED)` 호출 추가하여 가중치 로드 후 page cache 회수.
+
+**빌드**: `vllm-spark:dsv4-d568-fadvise` (image `35e137059410`). STAGE 1/2 대부분 cache hit, 빌드 ~2-3분.
+
+**검증 결과**:
+- ✅ envs.py registration 패치 정상 작동: `VLLM_SKIP_INIT_MEMORY_CHECK` warning 부재 확인 (다른 미등록 var `VLLM_EXTRA_ARGS` `VLLM_BASE_DIR` 는 여전히 warning — 우리 entrypoint internal var, vLLM 외 범위).
+- ❌ **fadvise 패치 단독 이식 실패** — `EngineCore failed to start` (`vllm/v1/worker/gpu_worker.py:434`):
+  ```
+  AssertionError: Error in memory profiling. Initial free memory 27.09 GiB,
+    current free memory 31.67 GiB. This happens when other processes sharing
+    the same container release GPU memory while vLLM is profiling during
+    initialization.
+  ```
+  - 메커니즘: vLLM `determine_available_memory()` 가 "init 시점 free ≥ profile 후 free" 를 전제 (다른 프로세스가 GPU 풀어주면 줄어든다고 가정).
+  - 우리 path: fadvise 가 가중치 로드 후 page cache 회수 → UMA branch 의 free metric (= `psutil.virtual_memory().available`) **늘어남** → 27.09 GiB → 31.67 GiB → 가정 위반 → assertion fail.
+  - 부수 관찰: fadvise 가 mmap zero-copy 흐름을 깨뜨려 가중치 로드 자체도 ~5배 느림 (이전 16초 → 약 80초+ 단계 도달 못 함).
+
+**근본 원인**: PR #35929 가 의도한 동작은 가중치 로드 *전체* 가 끝나고 *profiling 시작 전* 에 page cache 회수. 우리 patch 는 *각 shard 마다* fadvise 호출하여 mmap 흐름 깨뜨림 + profiling 중 (또는 직전) 에 free metric 변동 발생. 또한 PR #35929 는 weight_utils.py 변경과 함께 `vllm/core/memory_manager.py` (우리 버전의 `vllm/utils/mem_utils.py`) 의 UMA branch 에 `non_torch_increase=0` 하드코드를 동반함 — 우리는 fadvise 만 가져옴.
+
+**즉시 조치**: `.env` `VLLM_IMAGE` 를 `dsv4-d568-skipmem` 으로 rollback. 양 노드 immediate. 운영 안정성 회복. envs.py registration 패치는 살아있지만 fadvise 와 함께 묶여서 무력화 — **별도 envs-only 빌드 가치**.
+
+**Skipmem rollback 도 실패 — 더 깊은 발견 (2026-05-24)**:
+fadvise 이미지에서 `dsv4-d568-skipmem` 으로 rollback 했더니 **동일 assertion 실패**: `Initial free memory 31.21 GiB, current free memory 32.66 GiB`. fadvise 없이도 같은 패턴.
+
+→ 결론: vLLM 의 `determine_available_memory()` post-profile assertion (`init_free >= current_free`) 는 GB10 UMA 환경에서 **vllm 외부 OS reclaim** 만으로도 깨질 수 있다. 가중치 로드는 ~75 GB 의 disk I/O 를 일으키고, 호스트 RAM 압력 변동 시 OS 가 자체 reclaim → free 일시적 증가 → assertion fail. **G8 첫 검증 통과는 운 좋게 그 순간 OS 가 reclaim 안 한 것**이었을 가능성.
+
+### 11.9. Relax post-profile assertion 패치 (✅ 통과, 2026-05-24)
+
+§11.8 의 실패 진단 후 더 근본적 패치 도입:
+
+**패치 디자인** (`patches/patch_relax_profile_assertion.py`):
+- `vllm/v1/worker/gpu_worker.py` 의 `determine_available_memory()` 내 assertion 변경
+- `VLLM_SKIP_INIT_MEMORY_CHECK=1` 환경 변수 시 `init_snapshot.free_memory < free_gpu_memory` 발견하면 ValueError 대신 warning + 정상 진행
+- 즉 기존 G8 escape hatch 재사용 — 단일 env-var 로 GB10/UMA 전체 quirk 커버 (pre-init + post-profile 둘 다)
+- Downstream KV-cache budget 계산은 assertion 결과에 의존하지 않으므로 안전
+
+**빌드**: `vllm-spark:dsv4-d568-relax` (image `f484b9fdaaae`). 대부분 cache hit, 빌드 ~1-2분. fadvise 패치는 제외 (Dockerfile NOTE 로 history 보존).
+
+**검증** (fresh state, spark01 uptime 2분, available 117 GiB):
+- ✅ `Application startup complete`
+- ✅ token gen: `"What is 2+2?"` → `'2+2 equals 4.'` (finish=stop, completion_tokens=54)
+- 양 노드 안정 운영 회복
+- relax patch 자체는 fresh state 라 트리거 안 됨 — 시간 누적 후 자연 검증 (24시간 운영 관찰)
+
+**운영 현황 (2026-05-24 14:57+)**:
+- 이미지: `ghcr.io/bjk110/vllm-spark:dsv4-d568-relax` (양 노드)
+- 패치 스택: skip-init-memcheck + envs-register + relax-profile-assertion (fadvise 제외)
+- `VLLM_SKIP_INIT_MEMORY_CHECK=1` 단일 env-var 가 init pre-check + post-profile assertion 양쪽 escape hatch
+
+**재시도 절차 (follow-up)**:
+1. fadvise 재이식 시 PR #35929 의 weight_utils + mem_utils 두 변경 모두 cherry-pick 필수. 또는 fadvise 호출 시점을 외부 루프 끝이 아닌 *전체 safetensors_weights_iterator 종료 후* (즉 profiling 시작 전) 로 변경.
+2. envs.py 의 다른 미등록 var (`VLLM_EXTRA_ARGS`, `VLLM_BASE_DIR` 등) 도 정리하려면 envs.py 에 다중 registration 추가 가치 (low priority).
 
 ## 12. 참고 링크
 
