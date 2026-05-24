@@ -173,6 +173,19 @@ RUN python3 /tmp/patch_split_module_compat.py
 COPY patches/patch_skip_init_memory_check.py /tmp/patch_skip_init_memory_check.py
 RUN python3 /tmp/patch_skip_init_memory_check.py
 
+# GB10 UMA cleanup: register VLLM_SKIP_INIT_MEMORY_CHECK in vllm/envs.py's
+# environment_variables dict so the "Unknown vLLM environment variable
+# detected" warning goes away on startup. See docs/dsv4-flash-tp2.md §11.7.
+COPY patches/patch_envs_register_skip_memcheck.py /tmp/patch_envs_register_skip_memcheck.py
+RUN python3 /tmp/patch_envs_register_skip_memcheck.py
+
+# GB10 UMA supply-side: drop OS page cache after each safetensors file is
+# read (port of upstream PR vllm-project/vllm#35929). Reduces the host
+# RAM accumulation pattern that VLLM_SKIP_INIT_MEMORY_CHECK papers over,
+# attacking the root cause rather than the symptom. See docs §11.7.
+COPY patches/patch_fadvise_safetensors.py /tmp/patch_fadvise_safetensors.py
+RUN python3 /tmp/patch_fadvise_safetensors.py
+
 # Restore the GB10-tuned fused-MoE configs that were placed by the base image's
 # vLLM install (the path now points at the freshly installed jasl wheel).
 COPY patches/moe_config_e256.json \
