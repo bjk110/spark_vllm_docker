@@ -93,6 +93,22 @@ RUN git clone ${VLLM_REPO_URL} /workspace/vllm-src && \
     git config user.email "build@vllm-spark.local" && \
     git config user.name "vllm-spark builder"
 
+# Cherry-pick A-group scheduler/decode-protection commits on top of the relax
+# base (edc82b614f51). These 4 commits touch only scheduler.py + sm12x_mqa.py
+# (pure Python, no C++/CUDA) and verified to apply cleanly (2026-05-27). They
+# add long-prefill-vs-active-decode scheduling protection valuable for 200k-ctx
+# serving, while deliberately EXCLUDING the sparse-MLA-split / SM120-cleanup
+# commits suspected of the 5d64798 bump load-time thrash. If this image boots
+# clean at operational config, the thrash culprit is narrowed to those excluded
+# commits. See memory jasl_bump_2026_05_25_eval (2026-05-27 cherry-pick eval).
+ARG VLLM_CHERRY_PICKS="e1334312f4c67b5502ffc61438f9c559b73b5d1e 5dcd086fd1d58b74bd5849623a9e95dc32836a32 65da3607d70e08d399960795984efd2a9d52a4dd e9c364bf93347f31b4a882cec815691194531b8c"
+RUN cd /workspace/vllm-src && \
+    git fetch origin ${VLLM_BRANCH} && \
+    for c in ${VLLM_CHERRY_PICKS}; do \
+      git cherry-pick -x $c || (echo "FATAL: cherry-pick failed on $c" && git cherry-pick --abort && exit 1); \
+    done && \
+    echo "[cherry-pick] applied A-group (scheduler decode-protection): ${VLLM_CHERRY_PICKS}"
+
 # Apply packed_modules_mapping patch — defensive (skips if already present in jasl branch).
 COPY patches/apply_dsv4_packed_mapping.py /tmp/apply_dsv4_packed_mapping.py
 RUN python3 /tmp/apply_dsv4_packed_mapping.py \
@@ -123,7 +139,7 @@ RUN --mount=type=cache,id=ccache-dsv4-d568,target=/root/.ccache \
 FROM ghcr.io/bjk110/vllm-spark:v022-d568 AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
-LABEL org.opencontainers.image.description="vLLM jasl@edc82b614f51 (DeepSeek-V4-Flash) on v022-d568 (NGC 26.04 / FlashInfer 0.6.11.post3 / Triton 3.7.0 / NCCL 2.30.4 / Transformers 5.8.1) for DGX Spark GB10"
+LABEL org.opencontainers.image.description="vLLM jasl@edc82b614f51 +A-group cherry-picks (e1334312/5dcd086f/65da3607/e9c364bf scheduler decode-protection) (DeepSeek-V4-Flash) on v022-d568 (NGC 26.04 / FlashInfer 0.6.11.post3 / Triton 3.7.0 / NCCL 2.30.4 / Transformers 5.8.1) for DGX Spark GB10"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 ARG TORCH_CUDA_ARCH=12.1a
