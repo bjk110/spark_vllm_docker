@@ -72,13 +72,13 @@
 #     /opt/scripts/verify_runtime.sh
 # =========================================================================
 
-ARG NGC_TAG=26.04-py3
+ARG NGC_TAG=26.05-py3
 ARG BUILD_JOBS=16
 
 # Pinned versions — change these to update
 ARG VLLM_COMMIT=ad7125a431e176d4161099480a66f0169609a690
 ARG FLASHINFER_REF=v0.6.12
-ARG TRANSFORMERS_VER=5.8.1
+ARG TRANSFORMERS_VER=5.9.0
 ARG TORCH_CUDA_ARCH="12.1a"
 
 # =========================================================================
@@ -211,7 +211,7 @@ RUN --mount=type=cache,id=ccache-v022,target=/root/.ccache \
 # =========================================================================
 # STAGE 3: Runner
 # =========================================================================
-ARG NGC_TAG=26.04-py3
+ARG NGC_TAG=26.05-py3
 FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"

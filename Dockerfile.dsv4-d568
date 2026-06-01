@@ -40,14 +40,14 @@
 #   - eugr/spark-vllm-docker PR #219 (DSV4 recipe)
 # =========================================================================
 
-ARG NGC_TAG=26.04-py3
+ARG NGC_TAG=26.05-py3
 ARG BUILD_JOBS=16
 
 # jasl/vllm fork pinned by full SHA. See header for rationale on choosing
 # edc82b614f51 over the forum-pinned dda4668b.
 ARG VLLM_REPO_URL=https://github.com/jasl/vllm.git
 ARG VLLM_BRANCH=codex/ds4-sm120-min-enable
-ARG VLLM_COMMIT=edc82b614f51f4f9ce16c7010e879571e5c46136
+ARG VLLM_COMMIT=0440ee5c22103b4e658ee087968261c36ede13d2
 
 ARG TORCH_CUDA_ARCH="12.1a"
 
@@ -101,7 +101,7 @@ RUN git clone ${VLLM_REPO_URL} /workspace/vllm-src && \
 # commits suspected of the 5d64798 bump load-time thrash. If this image boots
 # clean at operational config, the thrash culprit is narrowed to those excluded
 # commits. See memory jasl_bump_2026_05_25_eval (2026-05-27 cherry-pick eval).
-ARG VLLM_CHERRY_PICKS="e1334312f4c67b5502ffc61438f9c559b73b5d1e 5dcd086fd1d58b74bd5849623a9e95dc32836a32 65da3607d70e08d399960795984efd2a9d52a4dd e9c364bf93347f31b4a882cec815691194531b8c"
+ARG VLLM_CHERRY_PICKS=""
 RUN cd /workspace/vllm-src && \
     git fetch origin ${VLLM_BRANCH} && \
     for c in ${VLLM_CHERRY_PICKS}; do \
@@ -136,10 +136,10 @@ RUN --mount=type=cache,id=ccache-dsv4-d568,target=/root/.ccache \
 # STAGE 2: Runner (inherit v022-d568 — FlashInfer / Triton / NCCL / Transformers
 # all preinstalled). Only swap vLLM and add DSV4-specific bits.
 # =========================================================================
-FROM ghcr.io/bjk110/vllm-spark:v022-d568-fi0612 AS runner
+FROM ghcr.io/bjk110/vllm-spark:v022-d568-bump-0601 AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
-LABEL org.opencontainers.image.description="vLLM jasl@edc82b614f51 +A-group cherry-picks (e1334312/5dcd086f/65da3607/e9c364bf scheduler decode-protection) (DeepSeek-V4-Flash) on v022-d568 (NGC 26.04 / FlashInfer 0.6.12 / Triton 3.7.0 / NCCL 2.30.4 / Transformers 5.8.1) for DGX Spark GB10"
+LABEL org.opencontainers.image.description="vLLM jasl@0440ee5c22 (HEAD 2026-06-01, scheduler decode/prefill protection series included in base) (DeepSeek-V4-Flash) on v022-d568-bump-0601 (NGC 26.05 / FlashInfer 0.6.12 / Triton 3.7.0+ / NCCL 2.30.4+ / Transformers 5.9.0) for DGX Spark GB10"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 ARG TORCH_CUDA_ARCH=12.1a
