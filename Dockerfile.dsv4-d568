@@ -40,7 +40,7 @@
 #   - eugr/spark-vllm-docker PR #219 (DSV4 recipe)
 # =========================================================================
 
-ARG NGC_TAG=26.05-py3
+ARG NGC_TAG=26.04-py3
 ARG BUILD_JOBS=16
 
 # jasl/vllm fork pinned by full SHA. See header for rationale on choosing
@@ -139,7 +139,7 @@ RUN --mount=type=cache,id=ccache-dsv4-d568,target=/root/.ccache \
 FROM ghcr.io/bjk110/vllm-spark:v022-d568-bump-0601 AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
-LABEL org.opencontainers.image.description="vLLM jasl@0440ee5c22 (HEAD 2026-06-01, scheduler decode/prefill protection series included in base) (DeepSeek-V4-Flash) on v022-d568-bump-0601 (NGC 26.05 / FlashInfer 0.6.12 / Triton 3.7.0+ / NCCL 2.30.4+ / Transformers 5.9.0) for DGX Spark GB10"
+LABEL org.opencontainers.image.description="vLLM jasl@0440ee5c22 (HEAD 2026-06-01, scheduler decode/prefill protection series included in base) (DeepSeek-V4-Flash) on v022-d568-bump-0601 (NGC 26.04 [26.05 not yet on nvcr.io] / FlashInfer 0.6.12 / Triton 3.7.0 / NCCL 2.30.4 / Transformers 5.9.0) for DGX Spark GB10"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 ARG TORCH_CUDA_ARCH=12.1a
