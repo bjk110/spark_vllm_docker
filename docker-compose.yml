@@ -66,6 +66,7 @@ services:
       - NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}
       - NCCL_DEBUG=${NCCL_DEBUG:-WARN}
       - NCCL_NVLS_ENABLE=${NCCL_NVLS_ENABLE:-1}
+      - VLLM_USE_BREAKABLE_CUDAGRAPH=${VLLM_USE_BREAKABLE_CUDAGRAPH:-}
       - RAY_DEDUP_LOGS=0
       - RAY_memory_monitor_refresh_ms=0
     deploy:
@@ -138,6 +139,7 @@ services:
       - NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-0}
       - NCCL_DEBUG=${NCCL_DEBUG:-WARN}
       - NCCL_NVLS_ENABLE=${NCCL_NVLS_ENABLE:-1}
+      - VLLM_USE_BREAKABLE_CUDAGRAPH=${VLLM_USE_BREAKABLE_CUDAGRAPH:-}
       - RAY_memory_monitor_refresh_ms=0
       # ---- Model-specific env vars (0 = disabled) ----
       - VLLM_MARLIN_USE_ATOMIC_ADD=${VLLM_MARLIN_USE_ATOMIC_ADD:-0}

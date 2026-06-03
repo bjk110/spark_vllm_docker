@@ -47,7 +47,7 @@ ARG BUILD_JOBS=16
 # edc82b614f51 over the forum-pinned dda4668b.
 ARG VLLM_REPO_URL=https://github.com/jasl/vllm.git
 ARG VLLM_BRANCH=codex/ds4-sm120-min-enable
-ARG VLLM_COMMIT=0440ee5c22103b4e658ee087968261c36ede13d2
+ARG VLLM_COMMIT=ecb7466bade2ea3f2889e8dbb0f61ffc31e2e4ce
 
 ARG TORCH_CUDA_ARCH="12.1a"
 
@@ -120,7 +120,7 @@ COPY patches/fix_pytorch211_compat.py /tmp/fix_pytorch211_compat.py
 RUN cd /workspace/vllm-src && python3 /tmp/fix_pytorch211_compat.py || \
     echo "[patch] fix_pytorch211_compat not applicable on jasl branch"
 
-RUN pip install -q setuptools setuptools-scm ninja cmake wheel packaging
+RUN pip install -q setuptools setuptools-scm setuptools-rust ninja cmake wheel packaging
 
 # Build vLLM wheel
 RUN --mount=type=cache,id=ccache-dsv4-d568,target=/root/.ccache \
@@ -136,10 +136,10 @@ RUN --mount=type=cache,id=ccache-dsv4-d568,target=/root/.ccache \
 # STAGE 2: Runner (inherit v022-d568 — FlashInfer / Triton / NCCL / Transformers
 # all preinstalled). Only swap vLLM and add DSV4-specific bits.
 # =========================================================================
-FROM ghcr.io/bjk110/vllm-spark:v022-d568-bump-0601 AS runner
+FROM ghcr.io/bjk110/vllm-spark:v022-d568-tx590 AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
-LABEL org.opencontainers.image.description="vLLM jasl@0440ee5c22 (HEAD 2026-06-01, scheduler decode/prefill protection series included in base) (DeepSeek-V4-Flash) on v022-d568-bump-0601 (NGC 26.04 [26.05 not yet on nvcr.io] / FlashInfer 0.6.12 / Triton 3.7.0 / NCCL 2.30.4 / Transformers 5.9.0) for DGX Spark GB10"
+LABEL org.opencontainers.image.description="vLLM jasl@ecb7466bade2 HEAD 2026-06-01 (+25 commits over edc82b, A-group absorbed) on v022-d568-tx590 (NGC 26.04 / FlashInfer 0.6.12 / Transformers 5.9.0) — requires VLLM_USE_BREAKABLE_CUDAGRAPH=0 to avoid garble on GB10"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 ARG TORCH_CUDA_ARCH=12.1a
