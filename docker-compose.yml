@@ -75,6 +75,17 @@ services:
       - VLLM_USE_B12X_WO_PROJECTION=${VLLM_USE_B12X_WO_PROJECTION:-}
       - RAY_DEDUP_LOGS=0
       - RAY_memory_monitor_refresh_ms=0
+      # ---- unholy-fusion: NCCL / RoCE tuning ----
+      - NCCL_NET=${NCCL_NET:-}
+      - NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-}
+      - NCCL_CROSS_NIC=${NCCL_CROSS_NIC:-}
+      - NCCL_IGNORE_CPU_AFFINITY=${NCCL_IGNORE_CPU_AFFINITY:-}
+      # ---- unholy-fusion: NCCL SO + JIT cache root + sparse indexer ----
+      - VLLM_NCCL_SO_PATH=${VLLM_NCCL_SO_PATH:-}
+      - VLLM_CACHE_ROOT=${VLLM_CACHE_ROOT:-}
+      - FLASHINFER_CUDA_ARCH_LIST=${FLASHINFER_CUDA_ARCH_LIST:-}
+      - VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=${VLLM_SPARSE_INDEXER_MAX_LOGITS_MB:-256}
+      - MTP_NUM_TOKENS=${MTP_NUM_TOKENS:-1}
     deploy:
       resources:
         reservations:
@@ -82,9 +93,12 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    shm_size: "10gb"
     volumes:
       - ${MODEL_PATH}:${MODEL_CONTAINER_PATH}:ro
       - ./.cache/vllm:/root/.cache/vllm
+      - ./cache/unholy-jit:/cache/jit
+      - ./cache/unholy-hf:/cache/huggingface
       - /sys/class/infiniband:/sys/class/infiniband:ro
       - ./entrypoint.unholy.sh:/entrypoint.sh:ro
       - ./patches:/patches:ro
@@ -170,6 +184,17 @@ services:
       # GB10 UMA: bypass request_memory() startup pre-check (patch_skip_init_memory_check.py).
       # 1 = skip (any real OOM still surfaces at weight load). See docs/dsv4-flash-tp2.md §11.6.
       - VLLM_SKIP_INIT_MEMORY_CHECK=${VLLM_SKIP_INIT_MEMORY_CHECK:-0}
+      # ---- unholy-fusion: NCCL / RoCE tuning ----
+      - NCCL_NET=${NCCL_NET:-}
+      - NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-}
+      - NCCL_CROSS_NIC=${NCCL_CROSS_NIC:-}
+      - NCCL_IGNORE_CPU_AFFINITY=${NCCL_IGNORE_CPU_AFFINITY:-}
+      # ---- unholy-fusion: NCCL SO + JIT cache root + sparse indexer ----
+      - VLLM_NCCL_SO_PATH=${VLLM_NCCL_SO_PATH:-}
+      - VLLM_CACHE_ROOT=${VLLM_CACHE_ROOT:-}
+      - FLASHINFER_CUDA_ARCH_LIST=${FLASHINFER_CUDA_ARCH_LIST:-}
+      - VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=${VLLM_SPARSE_INDEXER_MAX_LOGITS_MB:-256}
+      - MTP_NUM_TOKENS=${MTP_NUM_TOKENS:-1}
     deploy:
       resources:
         reservations:
@@ -177,9 +202,12 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    shm_size: "10gb"
     volumes:
       - ${MODEL_PATH}:${MODEL_CONTAINER_PATH}:ro
       - ./.cache/vllm:/root/.cache/vllm
+      - ./cache/unholy-jit:/cache/jit
+      - ./cache/unholy-hf:/cache/huggingface
       - /sys/class/infiniband:/sys/class/infiniband:ro
       - ./entrypoint.unholy.sh:/entrypoint.sh:ro
       - ./patches:/patches:ro
