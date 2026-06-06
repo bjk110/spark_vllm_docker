@@ -30,7 +30,7 @@ from pathlib import Path
 TARGET = Path("/usr/local/lib/python3.12/dist-packages/vllm/envs.py")
 
 # New entry to insert (idempotent — MARKER short-circuits re-runs).
-NEW_ENTRY = '''    # vllm-spark patch: see patches/patch_skip_init_memory_check.py —
+NEW_ENTRY = '''    # vllm-spark patch: see patches/common/patch_skip_init_memory_check.py —
     # bypasses request_memory() startup pre-check on GB10 UMA where host
     # RAM accumulation makes the static budget check fire spuriously.
     "VLLM_SKIP_INIT_MEMORY_CHECK": lambda: bool(int(os.getenv("VLLM_SKIP_INIT_MEMORY_CHECK", "0"))),

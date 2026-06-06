@@ -43,7 +43,7 @@ ghcr.io/bjk110/vllm-spark:dsv4-d568
 2. **runner stage**: v022-d568 의 기존 vLLM (v0.21.0+PR#35568) 제거 → jasl 휠 설치
 3. `patches/dsv4/apply_dsv4_packed_mapping.py` 적용 (defensive, jasl branch 가 자체 정의 시 skip)
 4. `patches/common/patch_split_module_compat.py` 재적용 (jasl 휠은 base 의 패치를 상속 못 함)
-5. `patches/moe_config_e256/e512.json` 재배치 (GB10 튜닝, vLLM 재설치로 사라진 것 복원)
+5. `patches/dsv4/moe_config_e256.json` 및 `patches/dsv4/moe_config_e512.json` 재배치 (GB10 튜닝, vLLM 재설치로 사라진 것 복원)
 6. `instanttensor` 설치 (eugr PR #219 recipe 요구사항)
 
 ### 1.2. jasl/vllm @ edc82b614f51 의 핵심 변경 (vs dda4668b)
