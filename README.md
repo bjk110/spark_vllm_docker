@@ -415,7 +415,9 @@ dispatches on `ROLE` × `TP_SIZE` × `DISTRIBUTED_BACKEND` (dual-rdma only):
 ```
 vllm-spark/
 ├── docker-compose.yml             # Unified compose (head + worker profiles)
-├── entrypoint.sh                  # CLUSTER_MODE-aware entrypoint
+├── entrypoints/                   # Container entrypoint scripts (selected via ENTRYPOINT_FILE — see entrypoints/README.md)
+│   ├── entrypoint.sh                  # CLUSTER_MODE-aware entrypoint (standard dsv4-d568 path)
+│   └── entrypoint.unholy.sh           # mp-only entrypoint for the unholy-fusion path
 ├── .env.example                   # Full configuration template
 ├── Dockerfile.v022-d568           # Current base image build (NGC 26.04 stack)
 ├── Dockerfile.dsv4-d568           # DeepSeek-V4-Flash derivative (FROM v022-d568)
@@ -447,7 +449,6 @@ vllm-spark/
 │   ├── qwen3.6-35b-a3b.env           # Qwen3.6-35B-A3B BF16 hybrid MoE (single, TP1; v022-d568)
 │   ├── dsv4-flash-fp8-tp2.env        # DeepSeek-V4-Flash official FP8 (dual-rdma, TP2; dsv4-d568)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 experimental (single, TP1)
-├── entrypoint.unholy.sh           # unholy-fusion image entrypoint (used via compose/docker-compose.unholy.yml)
 ├── .env.unholy-fusion             # unholy-fusion config (MAX_NUM_SEQS=4, mp backend, B12X_MOE=1)
 ├── docs/                          # Technical notes, stack guides, and status documents
 │   ├── repository-status.md          # Current recommended paths + cleanup roadmap
@@ -685,9 +686,9 @@ Use `k8v4` only if highest answer fidelity is required and KV capacity is not th
 
 ## Applying unholy-fusion for DSV4
 
-unholy-fusion uses its own entrypoint (`entrypoint.unholy.sh`) and config
+unholy-fusion uses its own entrypoint (`entrypoints/entrypoint.unholy.sh`) and config
 (`.env.unholy-fusion`). The entrypoint hardcodes the `mp` (SPMD) backend —
-Ray is not used. Switching from `dsv4-d568` is a file-swap.
+Ray is not used. Switching from `dsv4-d568` requires no file overwriting.
 
 **Safe defaults** (documented in `.env.unholy-fusion`):
 
@@ -707,8 +708,8 @@ Ray is not used. Switching from `dsv4-d568` is a file-swap.
 > `rmmod nvidia_uvm` does **not** free it — a full reboot is required. Stop first, then reboot.
 
 The compose override uses `compose/docker-compose.unholy.yml` and `--env-file .env.unholy-fusion`.
-No files need to be copied or overwritten. The override sets `ENTRYPOINT_FILE=./entrypoint.unholy.sh`
-which the base compose resolves without touching `entrypoint.sh` or `.env`.
+No files need to be copied or overwritten. The override sets `ENTRYPOINT_FILE=./entrypoints/entrypoint.unholy.sh`
+which the base compose resolves without touching `entrypoints/entrypoint.sh` or `.env`.
 
 ```bash
 # 1. Stop existing containers on both nodes
@@ -752,16 +753,14 @@ docker logs vllm-spark-worker 2>&1 | grep -E "startup|ready|error" | tail -5
 #### Manual fallback only
 
 If your Docker Compose version does not support the `${ENTRYPOINT_FILE:-}` variable in volume specs,
-use the older copy-based method. Back up your files first.
+set `ENTRYPOINT_FILE` explicitly in your shell before running compose, or export it in `.env`:
 
-```bash
-# On each node — back up and swap
-cp .env .env.dsv4.bak
-cp entrypoint.sh entrypoint.dsv4.bak
-cp .env.unholy-fusion .env
-cp entrypoint.unholy.sh entrypoint.sh
-# Then: sudo reboot, then docker compose --profile worker|head up -d
+```env
+ENTRYPOINT_FILE=./entrypoints/entrypoint.unholy.sh
 ```
+
+Do not overwrite entrypoint files. If a copy-based workaround is unavoidable, use the new paths
+and restore immediately after testing (see "Switching back" below).
 
 ### Switching back to dsv4-d568
 
@@ -788,14 +787,8 @@ docker compose \
 
 #### Manual fallback path
 
-If the manual fallback was used, restore the backed-up files before restarting:
-
-```bash
-# On each node
-cp .env.dsv4.bak .env
-cp entrypoint.dsv4.bak entrypoint.sh
-# Reboot + restart containers (same GB10 UMA rule applies)
-```
+If the compose override path was used (no files were modified), no restore is needed — just start
+the normal dsv4-d568 containers as shown above.
 
 ### Key differences: dsv4-d568 vs unholy-fusion
 

@@ -21,7 +21,7 @@ See the top-level `README.md` and `docs/dsv4-flash-tp2.md` for the full guide.
 Image: `aidendle94/sparkrun-vllm-ds4-gb10:production-ready`  
 Mirrored: `ghcr.io/bjk110/vllm-spark:unholy-fusion-prod-ready`
 
-Run with the compose override so `.env` and `entrypoint.sh` are not overwritten:
+Run with the compose override so `.env` and `entrypoints/entrypoint.sh` are not overwritten:
 
 ```bash
 # worker node (spark02):
@@ -42,7 +42,7 @@ docker compose \
 This image is `mp` backend only (Ray is not available in its conda environment).
 See `README.md §Applying unholy-fusion for DSV4` and `docs/unholy-fusion-benchmark.md`.
 
-**Safe defaults** (aligned across `.env.unholy-fusion`, `entrypoint.unholy.sh`, and `README.md`):
+**Safe defaults** (aligned across `.env.unholy-fusion`, `entrypoints/entrypoint.unholy.sh`, and `README.md`):
 
 | Variable | Safe default | Notes |
 |---|---|---|
@@ -70,6 +70,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | `models/` | `.env` model-serving preset files only — **not** actual model weights; see `models/README.md` |
 | `patches/` | Build/runtime patch scripts and compatibility shims; see `patches/README.md` |
 | `benchmarks/` | Raw benchmark artifacts and experiment outputs; see `benchmarks/README.md` |
+| `entrypoints/` | Container entrypoint scripts; selected via `ENTRYPOINT_FILE` in `docker-compose.yml`; see `entrypoints/README.md` |
 | `compose/` | Compose overrides (`docker-compose.unholy.yml`); referenced via `-f` flag |
 | `docs/` | Interpreted technical notes, stack guides, and status documents |
 
@@ -86,6 +87,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | **Stage 2-D** | All 25 patch files classified (Active / Conditional / Standby / Historical / Unknown); `patches/README.md` added with cleanup policy and future-split plan |
 | **Stage 2-E** | Benchmark artifacts documented; `benchmarks/README.md` and `benchmarks/llama-benchy/README.md` added with filename legend and 21-file inventory |
 | **Stage 2-F** | This document |
+| **Stage 3-A** | Entrypoint scripts moved from repo root to `entrypoints/`; `docker-compose.yml` default updated to `./entrypoints/entrypoint.sh`; `.env.unholy-fusion` updated to `./entrypoints/entrypoint.unholy.sh`; `entrypoints/README.md` added |
 
 ---
 
@@ -101,7 +103,6 @@ README links in the same change.
 | Move Dockerfiles into `dockerfiles/active/` and `dockerfiles/legacy/` | Requires updating build commands in README and any CI scripts |
 | Split `patches/` into subdirectories (`common/`, `sm121/`, `dsv4/`, `qwen/`, `turboquant/`, `archive/`) | Requires updating all `COPY patches/…` lines in Dockerfiles simultaneously |
 | Reorganize benchmark outputs into `benchmarks/summary/` and `benchmarks/raw/` | Documentation-level impact only |
-| Move entrypoint scripts into an `entrypoints/` directory | Requires updating compose volume mounts and README run commands |
 | Add CI checks for compose config syntax and shell script syntax | Low-risk addition; `bash -n` for scripts, `docker compose config` for compose |
 
 ---

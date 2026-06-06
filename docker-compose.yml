@@ -101,7 +101,7 @@ services:
       - ./cache/unholy-jit:/cache/jit
       - ./cache/unholy-hf:/cache/huggingface
       - /sys/class/infiniband:/sys/class/infiniband:ro
-      - ${ENTRYPOINT_FILE:-./entrypoint.sh}:/entrypoint.sh:ro
+      - ${ENTRYPOINT_FILE:-./entrypoints/entrypoint.sh}:/entrypoint.sh:ro
       - ./patches:/patches:ro
     devices:
       - /dev/infiniband:/dev/infiniband
@@ -211,7 +211,7 @@ services:
       - ./cache/unholy-jit:/cache/jit
       - ./cache/unholy-hf:/cache/huggingface
       - /sys/class/infiniband:/sys/class/infiniband:ro
-      - ${ENTRYPOINT_FILE:-./entrypoint.sh}:/entrypoint.sh:ro
+      - ${ENTRYPOINT_FILE:-./entrypoints/entrypoint.sh}:/entrypoint.sh:ro
       - ./patches:/patches:ro
     devices:
       - /dev/infiniband:/dev/infiniband

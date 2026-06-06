@@ -17,9 +17,9 @@
 #     --env-file .env.unholy-fusion \
 #     --profile head up -d
 #
-# The entrypoint swap is handled by ENTRYPOINT_FILE=./entrypoint.unholy.sh
+# The entrypoint swap is handled by ENTRYPOINT_FILE=./entrypoints/entrypoint.unholy.sh
 # in .env.unholy-fusion, which the base docker-compose.yml resolves via
-# ${ENTRYPOINT_FILE:-./entrypoint.sh}:/entrypoint.sh:ro
+# ${ENTRYPOINT_FILE:-./entrypoints/entrypoint.sh}:/entrypoint.sh:ro
 #
 # This file is intentionally minimal. Its presence as the second -f argument
 # documents the intent and provides a stable extension point for future

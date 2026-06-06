@@ -31,7 +31,7 @@ The aidendle94 image does not include the GB10 UMA memory accounting fix.
 During profiling, the OS releases page cache, causing `current_free >
 init_free`. This triggers two assertion failures in vLLM v1. Both are
 bypassed at startup via `VLLM_SKIP_INIT_MEMORY_CHECK=1` plus two inline
-patches applied by `entrypoint.unholy.sh`:
+patches applied by `entrypoints/entrypoint.unholy.sh`:
 
 **Patch 1** — `vllm/v1/worker/utils.py` `request_memory()`:  
 Pre-init free-memory check is skipped when `VLLM_SKIP_INIT_MEMORY_CHECK=1`.
