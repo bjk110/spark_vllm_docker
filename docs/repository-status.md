@@ -1,6 +1,6 @@
 # Repository Status and Cleanup Roadmap
 
-Last updated: 2026-06-06 (Stage 3-C).
+Last updated: 2026-06-06 (Stage 3-E).
 
 This document summarises the current recommended paths, major directory roles,
 completed documentation cleanup stages, and intentionally deferred structural work.
@@ -77,7 +77,9 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | `patches/flashinfer/` | FlashInfer-specific patches; see `patches/README.md` |
 | `patches/archive/` | Historical patches retained for reproducibility; see `patches/README.md` |
 | `patches/unknown/` | Unverified early bring-up helpers; see `patches/README.md` |
-| `benchmarks/` | Raw benchmark artifacts and experiment outputs; see `benchmarks/README.md` |
+| `benchmarks/` | Raw benchmark artifacts and experiment outputs only; see `benchmarks/README.md` |
+| `benchmarks/llama-benchy/` | Raw llama-benchy output files; filename legend in `benchmarks/llama-benchy/README.md` |
+| `docs/unholy-fusion-benchmark.md` | Interpreted unholy-fusion serving result analysis and DSV4 comparison |
 | `entrypoints/` | Container entrypoint scripts; selected via `ENTRYPOINT_FILE` in `docker-compose.yml`; see `entrypoints/README.md` |
 | `compose/` | Compose overrides (`docker-compose.unholy.yml`); referenced via `-f` flag |
 | `docs/` | Interpreted technical notes, stack guides, and status documents |
@@ -99,6 +101,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | **Stage 3-B** | Dockerfiles reorganized: active builds moved to `dockerfiles/active/`, legacy/intermediate variants moved to `dockerfiles/legacy/`; `dockerfiles/README.md` rewritten; build commands updated in `README.md` and `docs/` |
 | **Stage 3-C** | `patches/` split into purpose-based subdirectories (`common/`, `sm121/`, `dsv4/`, `qwen/`, `turboquant/`, `flashinfer/`, `archive/`, `unknown/`); all Dockerfile `COPY` references, entrypoint script paths, and documentation updated simultaneously |
 | **Stage 3-D** | `models/` renamed to `presets/`; all host-side preset path references updated in `README.md`, `docs/`, and `.env.example`. Container-internal `/models/...` mount paths are unrelated and unchanged. |
+| **Stage 3-E** | Benchmark folder scope clarified as raw artifacts only; interpreted benchmark analysis confirmed to remain under `docs/`; `benchmarks/README.md` updated to remove safe-default guidance and point to `docs/unholy-fusion-benchmark.md`. |
 
 ---
 
@@ -110,7 +113,7 @@ README links in the same change.
 
 | Deferred item | Notes |
 |---|---|
-| Reorganize benchmark outputs into `benchmarks/summary/` and `benchmarks/raw/` | Documentation-level impact only |
+| Benchmark split deferred — `benchmarks/` remains raw artifacts only; interpreted analysis stays in `docs/` (decided Stage 3-E) | No structural move needed |
 | Add CI checks for compose config syntax and shell script syntax | Low-risk addition; `bash -n` for scripts, `docker compose config` for compose |
 
 ---

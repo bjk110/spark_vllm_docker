@@ -455,7 +455,7 @@ vllm-spark/
 ├── docs/                          # Technical notes, stack guides, and status documents
 │   ├── repository-status.md          # Current recommended paths + cleanup roadmap
 │   ├── dsv4-flash-tp2.md             # DSV4-Flash: build, recipe, 9-way benchmark sweep
-│   └── unholy-fusion-benchmark.md    # unholy-fusion B12X benchmark + comparison vs dsv4-d568
+│   └── unholy-fusion-benchmark.md    # Interpreted unholy-fusion serving result analysis and DSV4 comparison
 ├── benchmarks/                    # Raw benchmark artifacts and experiment outputs; see benchmarks/README.md
 │   └── llama-benchy/              # Raw llama-benchy result files; see benchmarks/llama-benchy/README.md
 ├── patches/                       # Build/runtime patch scripts; grouped by purpose — see patches/README.md
