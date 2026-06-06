@@ -16,7 +16,7 @@ Removed (merged upstream — no patch needed):
   - PR #39931 — Hybrid model + uniform quantization (merged 2026-05-05)
 
 Usage (in Dockerfile, after vLLM install):
-  COPY patches/apply_turboquant_fixes.py /tmp/
+  COPY patches/turboquant/apply_turboquant_fixes.py /tmp/
   RUN python3 /tmp/apply_turboquant_fixes.py
 """
 

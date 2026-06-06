@@ -41,9 +41,9 @@ ghcr.io/bjk110/vllm-spark:dsv4-d568
 `dockerfiles/active/Dockerfile.dsv4-d568` 가 v022-d568 베이스 위에:
 1. **vllm-builder stage**: `jasl/vllm:codex/ds4-sm120-min-enable` @ `edc82b614f51f4f9ce16c7010e879571e5c46136` (2026-05-19 HEAD, +249 commits over forum-pinned `dda4668b`) 휠 빌드
 2. **runner stage**: v022-d568 의 기존 vLLM (v0.21.0+PR#35568) 제거 → jasl 휠 설치
-3. `patches/apply_dsv4_packed_mapping.py` 적용 (defensive, jasl branch 가 자체 정의 시 skip)
-4. `patches/patch_split_module_compat.py` 재적용 (jasl 휠은 base 의 패치를 상속 못 함)
-5. `patches/moe_config_e256/e512.json` 재배치 (GB10 튜닝, vLLM 재설치로 사라진 것 복원)
+3. `patches/dsv4/apply_dsv4_packed_mapping.py` 적용 (defensive, jasl branch 가 자체 정의 시 skip)
+4. `patches/common/patch_split_module_compat.py` 재적용 (jasl 휠은 base 의 패치를 상속 못 함)
+5. `patches/dsv4/moe_config_e256.json` 및 `patches/dsv4/moe_config_e512.json` 재배치 (GB10 튜닝, vLLM 재설치로 사라진 것 복원)
 6. `instanttensor` 설치 (eugr PR #219 recipe 요구사항)
 
 ### 1.2. jasl/vllm @ edc82b614f51 의 핵심 변경 (vs dda4668b)
@@ -171,7 +171,7 @@ TypeError: split_module() got an unexpected keyword argument 'tuple_return'
 
 원인: vLLM 이 `is_torch_equal_or_newer("2.12.0.dev")` 정적 체크로 `tuple_return=True` 를 패스하지만 NGC 26.04 의 PyTorch 2.12.0a0 alpha 는 이 kwarg 미지원.
 
-수정: `patches/patch_split_module_compat.py` — 정적 버전 체크를 런타임 signature probe 로 교체. Dockerfile 의 runner stage 에서 새 vLLM 설치 직후 적용.
+수정: `patches/common/patch_split_module_compat.py` — 정적 버전 체크를 런타임 signature probe 로 교체. Dockerfile 의 runner stage 에서 새 vLLM 설치 직후 적용.
 
 ### 4.2. Forum 권장 `dda4668b` pin 의 MTP graph hang
 
@@ -473,7 +473,7 @@ desired GPU memory utilization (0.85, 103.38 GiB).
 
 §11.6 의 운영 5분 제약을 영구 해소하기 위한 escape-hatch 패치 검증.
 
-**패치 디자인** (`patches/patch_skip_init_memory_check.py`, commit `82d013a`):
+**패치 디자인** (`patches/common/patch_skip_init_memory_check.py`, commit `82d013a`):
 - `vllm/v1/worker/utils.py:413` `request_memory()` 함수에 env-var anchor 추가
 - `VLLM_SKIP_INIT_MEMORY_CHECK=1` 설정 시 pre-check 건너뛰고 경고 로그 + 정상 진행
 - 진짜 OOM 은 weight load 단계에서 natural failure site 로 surface
@@ -521,8 +521,8 @@ desired GPU memory utilization (0.85, 103.38 GiB).
 ### 11.8. envs.py registration + fadvise port 시도 (mixed, 2026-05-24)
 
 §11.7 G8 통과 후 보강 시도. 두 패치 묶음 (이미지 `dsv4-d568-fadvise`):
-1. `patches/patch_envs_register_skip_memcheck.py` — vllm/envs.py `environment_variables` dict 에 `VLLM_SKIP_INIT_MEMORY_CHECK` 등록 → 시작 시 "Unknown vLLM environment variable" 경고 제거.
-2. `patches/patch_fadvise_safetensors.py` — upstream PR #35929 port. `safetensors_weights_iterator` 의 외부 루프 끝에 `posix_fadvise(POSIX_FADV_DONTNEED)` 호출 추가하여 가중치 로드 후 page cache 회수.
+1. `patches/common/patch_envs_register_skip_memcheck.py` — vllm/envs.py `environment_variables` dict 에 `VLLM_SKIP_INIT_MEMORY_CHECK` 등록 → 시작 시 "Unknown vLLM environment variable" 경고 제거.
+2. `patches/common/patch_fadvise_safetensors.py` — upstream PR #35929 port. `safetensors_weights_iterator` 의 외부 루프 끝에 `posix_fadvise(POSIX_FADV_DONTNEED)` 호출 추가하여 가중치 로드 후 page cache 회수.
 
 **빌드**: `vllm-spark:dsv4-d568-fadvise` (image `35e137059410`). STAGE 1/2 대부분 cache hit, 빌드 ~2-3분.
 
@@ -552,7 +552,7 @@ fadvise 이미지에서 `dsv4-d568-skipmem` 으로 rollback 했더니 **동일 a
 
 §11.8 의 실패 진단 후 더 근본적 패치 도입:
 
-**패치 디자인** (`patches/patch_relax_profile_assertion.py`):
+**패치 디자인** (`patches/common/patch_relax_profile_assertion.py`):
 - `vllm/v1/worker/gpu_worker.py` 의 `determine_available_memory()` 내 assertion 변경
 - `VLLM_SKIP_INIT_MEMORY_CHECK=1` 환경 변수 시 `init_snapshot.free_memory < free_gpu_memory` 발견하면 ValueError 대신 warning + 정상 진행
 - 즉 기존 G8 escape hatch 재사용 — 단일 env-var 로 GB10/UMA 전체 quirk 커버 (pre-init + post-profile 둘 다)

@@ -1,6 +1,6 @@
 # Repository Status and Cleanup Roadmap
 
-Last updated: 2026-06-06 (Stage 2-F).
+Last updated: 2026-06-06 (Stage 3-C).
 
 This document summarises the current recommended paths, major directory roles,
 completed documentation cleanup stages, and intentionally deferred structural work.
@@ -69,7 +69,14 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | `dockerfiles/active/` | Current active build targets; see `dockerfiles/README.md` |
 | `dockerfiles/legacy/` | Historical, intermediate, and specialized Dockerfile variants; see `dockerfiles/README.md` |
 | `models/` | `.env` model-serving preset files only — **not** actual model weights; see `models/README.md` |
-| `patches/` | Build/runtime patch scripts and compatibility shims; see `patches/README.md` |
+| `patches/common/` | Common runtime/build compatibility patches; see `patches/README.md` |
+| `patches/sm121/` | SM121 / Blackwell / FP8 patches; see `patches/README.md` |
+| `patches/dsv4/` | DeepSeek-V4 specific patches and MoE config files; see `patches/README.md` |
+| `patches/qwen/` | Qwen-specific compatibility patches; see `patches/README.md` |
+| `patches/turboquant/` | TurboQuant-specific patches; see `patches/README.md` |
+| `patches/flashinfer/` | FlashInfer-specific patches; see `patches/README.md` |
+| `patches/archive/` | Historical patches retained for reproducibility; see `patches/README.md` |
+| `patches/unknown/` | Unverified early bring-up helpers; see `patches/README.md` |
 | `benchmarks/` | Raw benchmark artifacts and experiment outputs; see `benchmarks/README.md` |
 | `entrypoints/` | Container entrypoint scripts; selected via `ENTRYPOINT_FILE` in `docker-compose.yml`; see `entrypoints/README.md` |
 | `compose/` | Compose overrides (`docker-compose.unholy.yml`); referenced via `-f` flag |
@@ -90,6 +97,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | **Stage 2-F** | This document |
 | **Stage 3-A** | Entrypoint scripts moved from repo root to `entrypoints/`; `docker-compose.yml` default updated to `./entrypoints/entrypoint.sh`; `.env.unholy-fusion` updated to `./entrypoints/entrypoint.unholy.sh`; `entrypoints/README.md` added |
 | **Stage 3-B** | Dockerfiles reorganized: active builds moved to `dockerfiles/active/`, legacy/intermediate variants moved to `dockerfiles/legacy/`; `dockerfiles/README.md` rewritten; build commands updated in `README.md` and `docs/` |
+| **Stage 3-C** | `patches/` split into purpose-based subdirectories (`common/`, `sm121/`, `dsv4/`, `qwen/`, `turboquant/`, `flashinfer/`, `archive/`, `unknown/`); all Dockerfile `COPY` references, entrypoint script paths, and documentation updated simultaneously |
 
 ---
 
@@ -102,7 +110,6 @@ README links in the same change.
 | Deferred item | Notes |
 |---|---|
 | Rename `models/` to `presets/` or `model-presets/` | Backward-compatible rename; requires updating all `models/<preset>.env` references in README, entrypoint, and compose |
-| Split `patches/` into subdirectories (`common/`, `sm121/`, `dsv4/`, `qwen/`, `turboquant/`, `archive/`) | Requires updating all `COPY patches/…` lines in Dockerfiles simultaneously |
 | Reorganize benchmark outputs into `benchmarks/summary/` and `benchmarks/raw/` | Documentation-level impact only |
 | Add CI checks for compose config syntax and shell script syntax | Low-risk addition; `bash -n` for scripts, `docker compose config` for compose |
 

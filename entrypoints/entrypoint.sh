@@ -3,9 +3,9 @@ set -euo pipefail
 
 # Apply Qwen3.5 MoE text-only patches (abliterated models only)
 # Set APPLY_TEXT_ONLY_SHIM=1 in .env to enable
-if [ "${APPLY_TEXT_ONLY_SHIM:-0}" = "1" ] && [ -f /patches/patch_qwen35_moe_text.py ]; then
+if [ "${APPLY_TEXT_ONLY_SHIM:-0}" = "1" ] && [ -f /patches/qwen/patch_qwen35_moe_text.py ]; then
     echo "[entrypoint] Applying TextOnlyShim patch (APPLY_TEXT_ONLY_SHIM=1)"
-    python3 /patches/patch_qwen35_moe_text.py || true
+    python3 /patches/qwen/patch_qwen35_moe_text.py || true
 fi
 
 # =============================================================================

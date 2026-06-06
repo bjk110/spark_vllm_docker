@@ -73,7 +73,7 @@ RUN --mount=type=cache,id=git-flashinfer,target=/git-cache/flashinfer \
 RUN cd /workspace/flashinfer && \
     git submodule update --init --recursive
 
-COPY patches/flashinfer_cache.patch /workspace/flashinfer/
+COPY patches/flashinfer/flashinfer_cache.patch /workspace/flashinfer/
 RUN cd /workspace/flashinfer && \
     (patch -p1 --dry-run < flashinfer_cache.patch &>/dev/null && \
      patch -p1 < flashinfer_cache.patch || \
@@ -181,13 +181,13 @@ RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
 
 # ---- PR #38423 NVFP4 DGX Spark patches ----
 # Apply Python-level fixes from vllm-project/vllm#38423
-COPY patches/pr38423_nvfp4_spark.py /tmp/
+COPY patches/sm121/pr38423_nvfp4_spark.py /tmp/
 RUN python3 /tmp/pr38423_nvfp4_spark.py
 
 # ---- Existing patches ----
 
 # 1. fastsafetensors natural-sort
-COPY patches/fastsafetensors_natural_sort.patch /tmp/
+COPY patches/archive/fastsafetensors_natural_sort.patch /tmp/
 RUN cd / && \
     (patch -p1 --dry-run < /tmp/fastsafetensors_natural_sort.patch &>/dev/null && \
      patch -p1 < /tmp/fastsafetensors_natural_sort.patch && \
@@ -195,11 +195,11 @@ RUN cd / && \
      echo "Patch not applicable, skipping.")
 
 # 2. Qwen3.5 MoE rope validation fix
-COPY patches/qwen3_5_moe_rope_fix.py /tmp/
+COPY patches/qwen/qwen3_5_moe_rope_fix.py /tmp/
 RUN python3 /tmp/qwen3_5_moe_rope_fix.py
 
 # 3. AOT compile cache fix
-COPY patches/aot_cache_fix.patch /tmp/
+COPY patches/archive/aot_cache_fix.patch /tmp/
 RUN cd / && \
     (patch -p1 --dry-run < /tmp/aot_cache_fix.patch &>/dev/null && \
      patch -p1 < /tmp/aot_cache_fix.patch && \
@@ -207,7 +207,7 @@ RUN cd / && \
      echo "AOT cache fix patch not applicable, skipping.")
 
 # 4. nogds force
-COPY patches/nogds_force.patch /tmp/
+COPY patches/archive/nogds_force.patch /tmp/
 RUN cd / && \
     (patch -p1 --dry-run < /tmp/nogds_force.patch &>/dev/null && \
      patch -p1 < /tmp/nogds_force.patch && \
@@ -215,11 +215,11 @@ RUN cd / && \
      echo "nogds force patch not applicable, skipping.")
 
 # 5. GB10 MoE tuning configs
-COPY patches/moe_config_e256.json /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=256,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
-COPY patches/moe_config_e512.json /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=512,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
+COPY patches/dsv4/moe_config_e256.json /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=256,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
+COPY patches/dsv4/moe_config_e512.json /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=512,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
 
 # 6. SM121 compatibility patches
-COPY patches/apply_sm121_patches.py /tmp/
+COPY patches/sm121/apply_sm121_patches.py /tmp/
 RUN python3 /tmp/apply_sm121_patches.py || \
     echo "WARNING: SM121 patches partially failed"
 

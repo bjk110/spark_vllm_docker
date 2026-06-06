@@ -102,7 +102,7 @@ RUN --mount=type=cache,id=git-fi-v022,target=/git-cache/flashinfer \
     git submodule update --init --recursive
 
 # Optional: FlashInfer cache patch
-COPY patches/flashinfer_cache.patch /workspace/flashinfer/
+COPY patches/flashinfer/flashinfer_cache.patch /workspace/flashinfer/
 RUN cd /workspace/flashinfer && \
     (patch -p1 --dry-run < flashinfer_cache.patch &>/dev/null && \
      patch -p1 < flashinfer_cache.patch || echo "[flashinfer] cache patch not applicable")
@@ -166,7 +166,7 @@ RUN pip install -q setuptools setuptools-scm ninja cmake wheel packaging
 # 2026-05-18 — public GitHub v2.11.0 source still has it, but NGC ships a
 # different alpha snapshot). vLLM v0.21.0 still emits hoist=True on
 # LayerName registration, so we patch the source before bdist_wheel.
-COPY patches/fix_pytorch211_compat.py /tmp/fix_pytorch211_compat.py
+COPY patches/common/fix_pytorch211_compat.py /tmp/fix_pytorch211_compat.py
 RUN python3 /tmp/fix_pytorch211_compat.py
 
 # Build vLLM wheel (includes _C + _C_stable_libtorch)
@@ -247,19 +247,19 @@ RUN uv pip install transformers==${TRANSFORMERS_VER} --upgrade --no-deps --syste
 #   nogds_force.patch                   → runtime GDS fallback
 #   fix_pytorch211_compat.py            → hoist kwarg never actually removed
 
-COPY patches/moe_config_e256.json \
+COPY patches/dsv4/moe_config_e256.json \
      /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=256,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
-COPY patches/moe_config_e512.json \
+COPY patches/dsv4/moe_config_e512.json \
      /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=512,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
 
 # SM121 / GB10 platform patches (is_blackwell_class, flashinfer_nvfp4 split,
 # TRITON_PTXAS_PATH auto-config — none merged upstream yet).
-COPY patches/apply_sm121_patches.py /tmp/
+COPY patches/sm121/apply_sm121_patches.py /tmp/
 RUN python3 /tmp/apply_sm121_patches.py || echo "[patch] SM121 partial"
 
 # TurboQuant fixes — reduced to PRs #40074, #39988 (still open against main).
 # #40060, #39931, #40092 are in v0.21.0.
-COPY patches/apply_turboquant_fixes.py /tmp/
+COPY patches/turboquant/apply_turboquant_fixes.py /tmp/
 RUN python3 /tmp/apply_turboquant_fixes.py
 
 RUN uv pip uninstall triton-kernels 2>/dev/null || true
