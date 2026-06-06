@@ -75,6 +75,45 @@ Verified preset: `models/dsv4-flash-fp8-tp2.env` — DeepSeek-V4-Flash dual-rdma
 
 **Full guide + 9-way benchmark sweep + MTP/backend analysis**: [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md).
 
+### unholy-fusion (aidendle94 — DSV4 alternative image)
+
+Third-party image from `local-inference-lab/vllm:dev/unholy-fusion`
+(Docker Hub: `aidendle94/sparkrun-vllm-ds4-gb10:production-ready`, also mirrored as
+`ghcr.io/bjk110/vllm-spark:unholy-fusion-prod-ready`). An alternative to `dsv4-d568`
+for DeepSeek-V4-Flash that adds custom GB10 (Blackwell sm_120/sm_121) kernels
+unavailable in the jasl lineage.
+
+| Component | Detail |
+|---|---|
+| Image | `aidendle94/sparkrun-vllm-ds4-gb10:production-ready` (Docker Hub) |
+| Mirror | `ghcr.io/bjk110/vllm-spark:unholy-fusion-prod-ready` |
+| Backend | `mp` (SPMD, no Ray) |
+| Runtime env | conda (`/opt/env`) — no NGC base |
+| MTP | n=1 (n=2 causes catastrophic collapse with B12X_MOE at c≥4) |
+
+Key B12X kernel switches (GB10-specific, not in jasl lineage):
+
+| Env var | Kernel | Setting |
+|---|---|---|
+| `VLLM_USE_B12X_MOE=1` | Custom MoE dispatcher for GB10 | **On** — delivers 2× prefill speedup vs jasl0603 |
+| `VLLM_USE_BREAKABLE_CUDAGRAPH=0` | | Required (=1 causes garbled output) |
+| `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0` | | Required (missing causes `ValueError` at engine init) |
+| `VLLM_USE_B12X_MHC` | Multi-head compression | Off (unstable) |
+
+Operational limits vs dsv4-d568:
+
+| Limit | Safe | Broken | Failure |
+|---|---|---|---|
+| MAX_NUM_SEQS | ≤ 4 | ≥ 5 | CUDA graph capture hang at startup |
+| MAX_MODEL_LEN | ≤ 262144 | 524288 | Starts OK but crashes at d≥131072 (RPC timeout) |
+| Max context depth | d=131072 (128k tokens) | — | effective ceiling with MAX_MODEL_LEN=262144 |
+
+KV cache: ~17.1 GiB / 1,144,306 tokens at GPU_UTIL=0.80.
+
+**Full benchmark analysis + comparison vs jasl0603**: [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md)
+
+See [§ Applying unholy-fusion for DSV4](#applying-unholy-fusion-for-dsv4) for the switching procedure.
+
 ### Older / legacy stacks
 
 Earlier images and the v022 intermediate layers are documented separately:
@@ -114,7 +153,7 @@ recipe / image / topology in its header comment.
 | `qwen3.6-35b-a3b.env` | Qwen/Qwen3.6-35B-A3B | BF16 hybrid Mamba/Attention MoE (KV fp8) | single | 1 | v022-d568 | `--reasoning-parser qwen3` + `--compilation-config {"use_inductor_graph_partition":true}` for hybrid arch |
 | `gemma4-31b-it.env` | google/gemma-4-31B-it | BF16 dense multimodal | single | 1 | v022-d568 | `--limit-mm-per-prompt {"image":1,"audio":0,"video":0}` (audio still beta in vLLM 0.21) |
 | `qwen3.6-27b-prismascout-nvfp4-tp2.env` (+ `-v022`) | rdtand/Qwen3.6-27B-PrismaSCOUT-Blackwell-NVFP4-BF16-vllm | NVFP4 mixed-precision (ViT NVFP4 + LM NVFP4 + BF16 sidecars) | dual-rdma | 2 | v022-vllm021 | MTP `n=3`; **v022 preset requires `--mm-encoder-tp-mode data`** (see Software Stack §v022) for ViT MLP K-align |
-| `dsv4-flash-fp8-tp2.env` | deepseek-ai/DeepSeek-V4-Flash | FP8 (E4M3 128×128 block, official) | dual-rdma | 2 | **dsv4-d568** | DSV4 sparse MLA + Lightning Indexer + fp8_ds_mla KV + MTP heads. Full guide + 9-way benchmark sweep in [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md). Operational best: `MAX_NUM_SEQS=4`, MTP off, Ray (peak 69 t/s decode, 800 t/s prefill at c=4). |
+| `dsv4-flash-fp8-tp2.env` | deepseek-ai/DeepSeek-V4-Flash | FP8 (E4M3 128×128 block, official) | dual-rdma | 2 | **dsv4-d568** or **unholy-fusion** | DSV4 sparse MLA + Lightning Indexer + fp8_ds_mla KV + MTP heads. Full guide: [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md). Alternative: unholy-fusion image (`aidendle94/sparkrun-vllm-ds4-gb10:production-ready`) — 2× prefill speedup via B12X_MOE kernel, capped at MAX_NUM_SEQS=4 / MAX_MODEL_LEN=262144. See [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md). |
 
 ## Quick Start
 
@@ -389,8 +428,11 @@ vllm-spark/
 │   ├── qwen3.6-35b-a3b.env           # Qwen3.6-35B-A3B BF16 hybrid MoE (single, TP1; v022-d568)
 │   ├── dsv4-flash-fp8-tp2.env        # DeepSeek-V4-Flash official FP8 (dual-rdma, TP2; dsv4-d568)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 experimental (single, TP1)
+├── entrypoint.unholy.sh           # unholy-fusion image entrypoint (swap with entrypoint.sh to activate)
+├── .env.unholy-fusion             # unholy-fusion config (MAX_NUM_SEQS=4, mp backend, B12X_MOE=1)
 ├── docs/                          # Per-model deep-dive guides
-│   └── dsv4-flash-tp2.md             # DSV4-Flash: build, recipe, 9-way benchmark sweep
+│   ├── dsv4-flash-tp2.md             # DSV4-Flash: build, recipe, 9-way benchmark sweep
+│   └── unholy-fusion-benchmark.md    # unholy-fusion B12X benchmark + comparison vs jasl0603
 ├── benchmarks/                    # llama-benchy benchmark results
 ├── patches/                       # SM121 / PyTorch 2.11 / TurboQuant patches
 │   ├── fix_pytorch211_compat.py       # hoist=True removal (PyTorch 2.11)
@@ -620,6 +662,61 @@ Scored on factual correctness of each answer (O=정답, △=부분정답, X=오�
 
 Use `k8v4` only if highest answer fidelity is required and KV capacity is not the bottleneck. Avoid `3bit_nc` — quality loss is measurable.
 
+## Applying unholy-fusion for DSV4
+
+The unholy-fusion image uses its own entrypoint (`entrypoint.unholy.sh`) and config
+(`.env.unholy-fusion`) alongside the standard files. Switching is a file-swap:
+
+### Switching from jasl0603/dsv4-d568 → unholy-fusion
+
+> **GB10 note**: stopping a vLLM container leaves ~100 GiB stuck in the NVIDIA driver.
+> Reboot both nodes before switching to recover UMA memory — `rmmod nvidia_uvm` does not free it.
+
+```bash
+# 1. Reboot both nodes
+ssh spark01 'sudo systemctl reboot'
+ssh spark02 'sudo systemctl reboot'
+
+# 2. On each node — swap entrypoint and config
+cd /path/to/vllm-spark
+cp .env .env.jasl.bak
+cp entrypoint.sh entrypoint.jasl.sh
+cp .env.unholy-fusion .env
+cp entrypoint.unholy.sh entrypoint.sh
+
+# 3. Start worker first, then head
+# spark02:
+docker compose -f docker-compose.yml --env-file .env --profile worker up -d
+# spark01:
+docker compose -f docker-compose.yml --env-file .env --profile head up -d
+
+# 4. Verify
+curl http://localhost:8000/health
+```
+
+### Switching back to jasl0603/dsv4-d568
+
+```bash
+# On each node
+cp .env.jasl.bak .env
+cp entrypoint.jasl.sh entrypoint.sh
+# Reboot + restart containers (same GB10 UMA rule applies)
+```
+
+### Key differences vs jasl0603
+
+| Parameter | jasl0603 (dsv4-d568) | unholy-fusion |
+|---|---|---|
+| Image | `ghcr.io/bjk110/vllm-spark:dsv4-d568-jasl0603` | `aidendle94/sparkrun-vllm-ds4-gb10:production-ready` |
+| Backend | Ray + expert-parallel | mp (SPMD, no Ray) |
+| MTP | n=2 (configurable) | n=1 (n=2 broken with B12X_MOE) |
+| MAX_NUM_SEQS | up to 8 | ≤ 4 (hard limit) |
+| MAX_MODEL_LEN | up to 1,000,000 | ≤ 262,144 |
+| KV cache | ~11.9 GiB | ~17.1 GiB |
+| Prefill (c=1) | ~950 t/s | ~1900–2050 t/s (2× via B12X_MOE) |
+| Decode peak c=8 d=0 | ~116 t/s | ~112 t/s (similar) |
+| Decode peak d=131072 | ~32 t/s | ~96 t/s (3×, B12X attention) |
+
 ## System Tuning
 
 Recommended OS-level settings for DGX Spark:
@@ -732,8 +829,8 @@ work reshuffles `main`, re-locate the boundary commits with:
 ## Branch structure
 
 `main` is the only long-lived branch. All previously separate work
-streams (base stack refresh, TurboQuant rebase, single-Spark CLUSTER_MODE)
-have been merged in and their feature branches deleted.
+streams (base stack refresh, TurboQuant rebase, single-Spark CLUSTER_MODE,
+unholy-fusion integration) have been merged in and their feature branches deleted.
 
 ### Archived branch history
 
