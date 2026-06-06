@@ -1,27 +1,36 @@
 # Dockerfile Variants
 
-This directory contains historical, experimental, or intermediate Dockerfile variants
-used while testing DGX Spark / GB10 vLLM stacks.
+This directory is organized into two subdirectories:
 
-## Active build targets (repository root)
+```text
+dockerfiles/
+  active/    Current active build targets
+  legacy/    Historical, intermediate, and specialized variants
+```
 
-The currently active Dockerfiles are kept in the **repository root** for backward
-compatibility with existing build commands:
+---
+
+## Active build targets — `dockerfiles/active/`
 
 | Dockerfile | Image tag | Role |
 |---|---|---|
 | `Dockerfile.v022-d568` | `v022-d568` | Forward-stack validation base (NGC 26.04 + vLLM 0.21.0 + SM121 FP8 cherry-pick). General-purpose base for non-DSV4 model presets. **On GHCR.** |
-| `Dockerfile.dsv4-d568` | `dsv4-d568` | Primary DeepSeek-V4-Flash image path. `FROM v022-d568` + SM12x DSV4 vLLM patches (sparse MLA, Lightning Indexer, fp8_ds_mla KV, MTP). **On GHCR.** |
+| `Dockerfile.dsv4-d568` | `dsv4-d568` | Primary DeepSeek-V4-Flash image path. `FROM v022-d568` + SM12x DSV4 vLLM patches (sparse MLA, Lightning Indexer, fp8_ds_mla KV, MTP). **On GHCR. Currently frozen — do not update casually.** |
 
-Build commands for these:
+Build commands (always build from **repo root** with `.` as context):
 
 ```bash
 # Build on a Spark node (spark01 or spark02) — homeserver has insufficient RAM
-docker buildx build -f Dockerfile.v022-d568  -t vllm-spark:v022-d568  --load .
-docker buildx build -f Dockerfile.dsv4-d568  -t vllm-spark:dsv4-d568  --load .
+docker buildx build -f dockerfiles/active/Dockerfile.v022-d568  -t vllm-spark:v022-d568  --load .
+docker buildx build -f dockerfiles/active/Dockerfile.dsv4-d568  -t vllm-spark:dsv4-d568  --load .
 ```
 
-## Files in this directory
+`COPY patches/...`, `COPY scripts/...`, and other relative paths inside these Dockerfiles
+resolve from the repo root build context, not from the Dockerfile's location.
+
+---
+
+## Legacy / historical variants — `dockerfiles/legacy/`
 
 | Dockerfile | Era / purpose | Status |
 |---|---|---|
@@ -39,9 +48,25 @@ docker buildx build -f Dockerfile.dsv4-d568  -t vllm-spark:dsv4-d568  --load .
 The v022 intermediate layers are kept for bisection and rollback if a regression is
 found in `v022-d568`. They are not published to GHCR.
 
+Legacy build commands (build from repo root):
+
+```bash
+docker buildx build -f dockerfiles/legacy/Dockerfile.gemma4       -t vllm-spark:v021-ngc2603  --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022          -t vllm-spark:v022-vllm021  --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022-fi0611   -t vllm-spark:v022-fi0611   --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022-ngc2604  -t vllm-spark:v022-ngc2604  --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022-tx581    -t vllm-spark:v022-tx581    --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022-trt37    -t vllm-spark:v022-trt37    --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022-nccl234  -t vllm-spark:v022-nccl234  --load .
+```
+
+---
+
 ## Notes
 
-- Do not assume a Dockerfile in this directory is the current recommended build path.
-- Check the top-level `README.md` (§ Software Stack / § Build) for the active targets.
-- A future cleanup may reorganize this directory into `active/` and `legacy/`
-  subdirectories, but this stage intentionally avoids moving files.
+- Do not assume a Dockerfile in `legacy/` is a current recommended build path.
+- Check the top-level `README.md` (§ Software Stack / § Build) for active targets.
+- `dsv4-d568` is frozen — changes to `dockerfiles/active/Dockerfile.dsv4-d568` should
+  be coordinated with the full runtime verification procedure.
+- Any change to an active Dockerfile should update this document and `README.md` in the
+  same commit.

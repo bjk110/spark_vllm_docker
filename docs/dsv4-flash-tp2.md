@@ -38,7 +38,7 @@ ghcr.io/bjk110/vllm-spark:dsv4-d568
       + Triton 3.7.0 + NCCL 2.30.4 + Transformers 5.8.1)
 ```
 
-`Dockerfile.dsv4-d568` 가 v022-d568 베이스 위에:
+`dockerfiles/active/Dockerfile.dsv4-d568` 가 v022-d568 베이스 위에:
 1. **vllm-builder stage**: `jasl/vllm:codex/ds4-sm120-min-enable` @ `edc82b614f51f4f9ce16c7010e879571e5c46136` (2026-05-19 HEAD, +249 commits over forum-pinned `dda4668b`) 휠 빌드
 2. **runner stage**: v022-d568 의 기존 vLLM (v0.21.0+PR#35568) 제거 → jasl 휠 설치
 3. `patches/apply_dsv4_packed_mapping.py` 적용 (defensive, jasl branch 가 자체 정의 시 skip)
@@ -68,7 +68,7 @@ ghcr.io/bjk110/vllm-spark:dsv4-d568
 
 - 빌드는 충분한 RAM(≥48 GiB 권장) 이 있는 호스트에서. 저메모리 호스트는 vLLM C++/CUDA 컴파일 중 OOM 위험.
 - 빌드 시간 ~22 분 (vLLM 휠 빌드 ~1344s + runner stage ~50s, ccache miss 기준). ccache hit 시 ~3 분.
-- 명령은 [`README`](../README.md#소스에서-빌드) 의 일반 패턴과 동일 — `docker buildx build -f Dockerfile.dsv4-d568 ...`.
+- 명령은 [`README`](../README.md#소스에서-빌드) 의 일반 패턴과 동일 — `docker buildx build -f dockerfiles/active/Dockerfile.dsv4-d568 ...`.
 
 ### 1.4. 양 노드 배포
 
@@ -477,7 +477,7 @@ desired GPU memory utilization (0.85, 103.38 GiB).
 - `vllm/v1/worker/utils.py:413` `request_memory()` 함수에 env-var anchor 추가
 - `VLLM_SKIP_INIT_MEMORY_CHECK=1` 설정 시 pre-check 건너뛰고 경고 로그 + 정상 진행
 - 진짜 OOM 은 weight load 단계에서 natural failure site 로 surface
-- Dockerfile.dsv4-d568 STAGE 2 에 idempotent 적용 (env-var 미설정 시 동작 동일)
+- `dockerfiles/active/Dockerfile.dsv4-d568` STAGE 2 에 idempotent 적용 (env-var 미설정 시 동작 동일)
 - vLLM `envs.py` 미등록 var 라서 시작 시 `Unknown vLLM environment variable detected` 경고 출력 (무해, 향후 vLLM 패치로 등록 가능)
 
 **빌드 및 배포**:

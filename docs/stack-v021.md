@@ -47,7 +47,7 @@ Same base as `v021-ngc2603` plus the TurboQuant cherry-pick stack
 Build:
 
 ```bash
-docker buildx build -f dockerfiles/Dockerfile.gemma4 \
+docker buildx build -f dockerfiles/legacy/Dockerfile.gemma4 \
   -t vllm-spark:v021-ngc2603 --load .
 # (v021-tq is built by layering the apply_turboquant_fixes.py patch on top
 #  during the runner stage; see CHANGELOG for the exact recipe.)

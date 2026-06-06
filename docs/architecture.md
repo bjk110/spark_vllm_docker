@@ -92,8 +92,8 @@ graph TB
 ```mermaid
 graph LR
     NGC["NGC 26.04<br/>PyTorch 2.12.0a0<br/>FlashInfer 0.6.11.post3"]
-      --> BASE["Dockerfile.v022-d568<br/>→ <b>vllm-spark:v022-d568</b>"]
-    BASE --> DSV4["Dockerfile.dsv4-d568<br/>STAGE1: jasl@edc82b614f51 source wheel<br/>STAGE2: wheel --no-deps + 3 patches"]
+      --> BASE["dockerfiles/active/Dockerfile.v022-d568<br/>→ <b>vllm-spark:v022-d568</b>"]
+    BASE --> DSV4["dockerfiles/active/Dockerfile.dsv4-d568<br/>STAGE1: jasl@edc82b614f51 source wheel<br/>STAGE2: wheel --no-deps + 3 patches"]
     DSV4 --> PROD["<b>:dsv4-d568-relax</b> ✅ 운영"]
     DSV4 -.-> BAD[":dsv4-d568-5d64798 ⚠️<br/>runtime thrash · 미참조 보존"]
 

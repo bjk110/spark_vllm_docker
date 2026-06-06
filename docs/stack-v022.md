@@ -8,17 +8,17 @@ not pushed to GHCR).
 
 | Tag | Dockerfile | Stack diff |
 |---|---|---|
-| `v022-vllm021` | `dockerfiles/Dockerfile.v022` | vLLM v0.21.0 release pin off `95995bbe` (NGC 26.03 base) |
-| `v022-fi0611` | `dockerfiles/Dockerfile.v022-fi0611` | + FlashInfer 0.6.11.post3 |
-| `v022-ngc2604` | `dockerfiles/Dockerfile.v022-ngc2604` | + NGC 26.04 (PyTorch 2.12.0a0) + `patch_split_module_compat.py` |
-| `v022-tx581` | `dockerfiles/Dockerfile.v022-tx581` | + Transformers 5.8.1 |
-| `v022-trt37` | `dockerfiles/Dockerfile.v022-trt37` | + Triton 3.7.0 |
-| `v022-nccl234` | `dockerfiles/Dockerfile.v022-nccl234` | + NCCL 2.30.4 (pip override) |
-| `v022-d568` (current) | `Dockerfile.v022-d568` | + vLLM PR #35568 cherry-pick (SM121 FP8). **Only this is on GHCR.** |
+| `v022-vllm021` | `dockerfiles/legacy/Dockerfile.v022` | vLLM v0.21.0 release pin off `95995bbe` (NGC 26.03 base) |
+| `v022-fi0611` | `dockerfiles/legacy/Dockerfile.v022-fi0611` | + FlashInfer 0.6.11.post3 |
+| `v022-ngc2604` | `dockerfiles/legacy/Dockerfile.v022-ngc2604` | + NGC 26.04 (PyTorch 2.12.0a0) + `patch_split_module_compat.py` |
+| `v022-tx581` | `dockerfiles/legacy/Dockerfile.v022-tx581` | + Transformers 5.8.1 |
+| `v022-trt37` | `dockerfiles/legacy/Dockerfile.v022-trt37` | + Triton 3.7.0 |
+| `v022-nccl234` | `dockerfiles/legacy/Dockerfile.v022-nccl234` | + NCCL 2.30.4 (pip override) |
+| `v022-d568` (current) | `dockerfiles/active/Dockerfile.v022-d568` | + vLLM PR #35568 cherry-pick (SM121 FP8). **Only this is on GHCR.** |
 
 ## v022-vllm021 — NGC 26.03 / vLLM v0.21.0 release-pinned
 
-The foundation of the series. Built from `dockerfiles/Dockerfile.v022`, pinned
+The foundation of the series. Built from `dockerfiles/legacy/Dockerfile.v022`, pinned
 to the vLLM v0.21.0 release tag (`ad7125a4`). Three upstream-absorbed runtime
 patches drop out of the build (`aot_cache_fix.patch`,
 `fastsafetensors_natural_sort.patch`, `nogds_force.patch`). Preset overrides

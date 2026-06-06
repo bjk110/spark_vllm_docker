@@ -13,7 +13,7 @@ completed documentation cleanup stages, and intentionally deferred structural wo
 
 Image: `ghcr.io/bjk110/vllm-spark:dsv4-d568`
 
-Built from `Dockerfile.dsv4-d568`. Uses the Ray backend by default.
+Built from `dockerfiles/active/Dockerfile.dsv4-d568`. Uses the Ray backend by default.
 See the top-level `README.md` and `docs/dsv4-flash-tp2.md` for the full guide.
 
 ### Experimental high-prefill path — `unholy-fusion`
@@ -64,9 +64,10 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 
 | Path | Current role |
 |---|---|
-| `Dockerfile.v022-d568` | Active root-level build — forward-stack validation base; on GHCR |
-| `Dockerfile.dsv4-d568` | Active root-level build — primary DeepSeek-V4-Flash image; on GHCR |
-| `dockerfiles/` | Historical, intermediate, and specialized Dockerfile variants; see `dockerfiles/README.md` |
+| `dockerfiles/active/Dockerfile.v022-d568` | Active build — forward-stack validation base; on GHCR |
+| `dockerfiles/active/Dockerfile.dsv4-d568` | Active build — primary DeepSeek-V4-Flash image; on GHCR. **Currently frozen.** |
+| `dockerfiles/active/` | Current active build targets; see `dockerfiles/README.md` |
+| `dockerfiles/legacy/` | Historical, intermediate, and specialized Dockerfile variants; see `dockerfiles/README.md` |
 | `models/` | `.env` model-serving preset files only — **not** actual model weights; see `models/README.md` |
 | `patches/` | Build/runtime patch scripts and compatibility shims; see `patches/README.md` |
 | `benchmarks/` | Raw benchmark artifacts and experiment outputs; see `benchmarks/README.md` |
@@ -88,6 +89,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | **Stage 2-E** | Benchmark artifacts documented; `benchmarks/README.md` and `benchmarks/llama-benchy/README.md` added with filename legend and 21-file inventory |
 | **Stage 2-F** | This document |
 | **Stage 3-A** | Entrypoint scripts moved from repo root to `entrypoints/`; `docker-compose.yml` default updated to `./entrypoints/entrypoint.sh`; `.env.unholy-fusion` updated to `./entrypoints/entrypoint.unholy.sh`; `entrypoints/README.md` added |
+| **Stage 3-B** | Dockerfiles reorganized: active builds moved to `dockerfiles/active/`, legacy/intermediate variants moved to `dockerfiles/legacy/`; `dockerfiles/README.md` rewritten; build commands updated in `README.md` and `docs/` |
 
 ---
 
@@ -100,7 +102,6 @@ README links in the same change.
 | Deferred item | Notes |
 |---|---|
 | Rename `models/` to `presets/` or `model-presets/` | Backward-compatible rename; requires updating all `models/<preset>.env` references in README, entrypoint, and compose |
-| Move Dockerfiles into `dockerfiles/active/` and `dockerfiles/legacy/` | Requires updating build commands in README and any CI scripts |
 | Split `patches/` into subdirectories (`common/`, `sm121/`, `dsv4/`, `qwen/`, `turboquant/`, `archive/`) | Requires updating all `COPY patches/…` lines in Dockerfiles simultaneously |
 | Reorganize benchmark outputs into `benchmarks/summary/` and `benchmarks/raw/` | Documentation-level impact only |
 | Add CI checks for compose config syntax and shell script syntax | Low-risk addition; `bash -n` for scripts, `docker compose config` for compose |

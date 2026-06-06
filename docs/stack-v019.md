@@ -19,7 +19,7 @@ forward-stack lineage. Kept for historical reproduction only.
 Build:
 
 ```bash
-docker buildx build -f dockerfiles/Dockerfile.ngc2603-v3 \
+docker buildx build -f dockerfiles/legacy/Dockerfile.ngc2603-v3 \
   -t vllm-spark:v019-ngc2603 --load .
 ```
 

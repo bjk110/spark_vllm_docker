@@ -198,43 +198,43 @@ docker pull ghcr.io/bjk110/vllm-spark:v022-d568
 docker pull ghcr.io/bjk110/vllm-spark:dsv4-d568
 ```
 
-**Intermediate stacked variants are local-build only** (kept on a build node for bisection / rollback). Rebuild from source via the matching `dockerfiles/Dockerfile.v022-*` if you need to bisect:
+**Intermediate stacked variants are local-build only** (kept on a build node for bisection / rollback). Rebuild from source via the matching `dockerfiles/legacy/Dockerfile.v022-*` if you need to bisect:
 
 | Tag | Dockerfile | Diff from previous layer |
 |---|---|---|
-| `v022-vllm021` | `dockerfiles/Dockerfile.v022` | vLLM v0.21.0 release pin (off `95995bbe`) |
-| `v022-fi0611` | `dockerfiles/Dockerfile.v022-fi0611` | FlashInfer 0.6.11.post3 |
-| `v022-ngc2604` | `dockerfiles/Dockerfile.v022-ngc2604` | NGC 26.04 (PyTorch 2.12.0a0) + `patch_split_module_compat.py` |
-| `v022-tx581` | `dockerfiles/Dockerfile.v022-tx581` | Transformers 5.8.1 |
-| `v022-trt37` | `dockerfiles/Dockerfile.v022-trt37` | Triton 3.7.0 |
-| `v022-nccl234` | `dockerfiles/Dockerfile.v022-nccl234` | NCCL 2.30.4 (pip override) |
-| `v022-d568` | `Dockerfile.v022-d568` | vLLM PR #35568 cherry-pick (SM121 FP8) — **on GHCR; forward-stack validation base** |
-| `dsv4-d568` | `Dockerfile.dsv4-d568` | DeepSeek-V4-Flash derivative — `FROM v022-d568` + SM12x DSV4 vLLM patches (DSV4-specific). **On GHCR.** |
+| `v022-vllm021` | `dockerfiles/legacy/Dockerfile.v022` | vLLM v0.21.0 release pin (off `95995bbe`) |
+| `v022-fi0611` | `dockerfiles/legacy/Dockerfile.v022-fi0611` | FlashInfer 0.6.11.post3 |
+| `v022-ngc2604` | `dockerfiles/legacy/Dockerfile.v022-ngc2604` | NGC 26.04 (PyTorch 2.12.0a0) + `patch_split_module_compat.py` |
+| `v022-tx581` | `dockerfiles/legacy/Dockerfile.v022-tx581` | Transformers 5.8.1 |
+| `v022-trt37` | `dockerfiles/legacy/Dockerfile.v022-trt37` | Triton 3.7.0 |
+| `v022-nccl234` | `dockerfiles/legacy/Dockerfile.v022-nccl234` | NCCL 2.30.4 (pip override) |
+| `v022-d568` | `dockerfiles/active/Dockerfile.v022-d568` | vLLM PR #35568 cherry-pick (SM121 FP8) — **on GHCR; forward-stack validation base** |
+| `dsv4-d568` | `dockerfiles/active/Dockerfile.dsv4-d568` | DeepSeek-V4-Flash derivative — `FROM v022-d568` + SM12x DSV4 vLLM patches (DSV4-specific). **On GHCR.** |
 
 #### Option B: Build from source
 
 ```bash
 # NGC 26.03 source build (vLLM main, TurboQuant included)
-docker buildx build -f dockerfiles/Dockerfile.gemma4 \
+docker buildx build -f dockerfiles/legacy/Dockerfile.gemma4 \
   -t vllm-spark:v021-ngc2603 --load .
 
 # vLLM v0.21.0 release-pinned source build
 # (build on a Spark node only — low-RAM hosts can OOM during vLLM C++/CUDA compile)
-docker buildx build -f dockerfiles/Dockerfile.v022 \
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022 \
   -t vllm-spark:v022-vllm021 --load .
 
 # Stacked-upgrade builds (each cached layer-by-layer; rebuild only the diff)
-docker buildx build -f dockerfiles/Dockerfile.v022-fi0611  -t vllm-spark:v022-fi0611  --load .
-docker buildx build -f dockerfiles/Dockerfile.v022-ngc2604 -t vllm-spark:v022-ngc2604 --load .
-docker buildx build -f dockerfiles/Dockerfile.v022-tx581   -t vllm-spark:v022-tx581   --load .
-docker buildx build -f dockerfiles/Dockerfile.v022-trt37   -t vllm-spark:v022-trt37   --load .
-docker buildx build -f dockerfiles/Dockerfile.v022-nccl234 -t vllm-spark:v022-nccl234 --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022-fi0611  -t vllm-spark:v022-fi0611  --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022-ngc2604 -t vllm-spark:v022-ngc2604 --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022-tx581   -t vllm-spark:v022-tx581   --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022-trt37   -t vllm-spark:v022-trt37   --load .
+docker buildx build -f dockerfiles/legacy/Dockerfile.v022-nccl234 -t vllm-spark:v022-nccl234 --load .
 
-# Active top-level builds:
-docker buildx build -f Dockerfile.v022-d568    -t vllm-spark:v022-d568    --load .
+# Active builds:
+docker buildx build -f dockerfiles/active/Dockerfile.v022-d568    -t vllm-spark:v022-d568    --load .
 # DeepSeek-V4-Flash derivative (FROM v022-d568 + SM12x DSV4 patches).
 # Build on a Spark node; see docs/dsv4-flash-tp2.md §1.
-docker buildx build -f Dockerfile.dsv4-d568    -t vllm-spark:dsv4-d568    --load .
+docker buildx build -f dockerfiles/active/Dockerfile.dsv4-d568    -t vllm-spark:dsv4-d568    --load .
 ```
 
 Build arguments:
@@ -419,14 +419,16 @@ vllm-spark/
 │   ├── entrypoint.sh                  # CLUSTER_MODE-aware entrypoint (standard dsv4-d568 path)
 │   └── entrypoint.unholy.sh           # mp-only entrypoint for the unholy-fusion path
 ├── .env.example                   # Full configuration template
-├── Dockerfile.v022-d568           # Current base image build (NGC 26.04 stack)
-├── Dockerfile.dsv4-d568           # DeepSeek-V4-Flash derivative (FROM v022-d568)
-├── dockerfiles/                   # Historical / intermediate Dockerfile variants (not active build targets — see dockerfiles/README.md)
-│   ├── Dockerfile                     # NGC 26.01 era (vLLM 0.18.x, historical)
-│   ├── Dockerfile.gemma4              # v021-ngc2603 unified build
-│   ├── Dockerfile.ngc2603-v3          # v018-ngc2603 archived build
-│   ├── Dockerfile.nvfp4               # NVFP4 runtime defaults overlay
-│   └── Dockerfile.v022(-fi0611/-ngc2604/-tx581/-trt37/-nccl234)  # v022 stack intermediates
+├── dockerfiles/                   # All Dockerfiles; see dockerfiles/README.md
+│   ├── active/                        # Current active build targets (build from repo root with . as context)
+│   │   ├── Dockerfile.v022-d568           # Forward-stack validation base (NGC 26.04 stack)
+│   │   └── Dockerfile.dsv4-d568           # DeepSeek-V4-Flash derivative (FROM v022-d568)
+│   └── legacy/                        # Historical / intermediate / specialized variants
+│       ├── Dockerfile                     # NGC 26.01 era (vLLM 0.18.x, historical)
+│       ├── Dockerfile.gemma4              # v021-ngc2603 unified build
+│       ├── Dockerfile.ngc2603-v3          # v018-ngc2603 archived build
+│       ├── Dockerfile.nvfp4               # NVFP4 runtime defaults overlay
+│       └── Dockerfile.v022(-fi0611/-ngc2604/-tx581/-trt37/-nccl234)  # v022 stack intermediates
 ├── CHANGELOG.md                   # Release-by-release history
 ├── PATCH_STATUS.md                # Per-patch purpose / status / removal condition
 ├── models/                        # .env preset files for model-serving configs (not model weights — see models/README.md)
