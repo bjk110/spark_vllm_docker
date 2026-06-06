@@ -64,7 +64,7 @@
 #   - flashinfer_cache.patch        (FlashInfer build-time, optional)
 #
 # Build:
-#   docker buildx build -f Dockerfile.v022-d568 \
+#   docker buildx build -f dockerfiles/active/Dockerfile.v022-d568 \
 #     -t ghcr.io/bjk110/vllm-spark:v022-d568 --load .
 #
 # Verify:

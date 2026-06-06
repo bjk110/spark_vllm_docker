@@ -14,8 +14,8 @@ dockerfiles/
 
 | Dockerfile | Image tag | Role |
 |---|---|---|
-| `Dockerfile.v022-d568` | `v022-d568` | Forward-stack validation base (NGC 26.04 + vLLM 0.21.0 + SM121 FP8 cherry-pick). General-purpose base for non-DSV4 model presets. **On GHCR.** |
-| `Dockerfile.dsv4-d568` | `dsv4-d568` | Primary DeepSeek-V4-Flash image path. `FROM v022-d568` + SM12x DSV4 vLLM patches (sparse MLA, Lightning Indexer, fp8_ds_mla KV, MTP). **On GHCR. Currently frozen — do not update casually.** |
+| `dockerfiles/active/Dockerfile.v022-d568` | `v022-d568` | Forward-stack validation base (NGC 26.04 + vLLM 0.21.0 + SM121 FP8 cherry-pick). General-purpose base for non-DSV4 model presets. **On GHCR.** |
+| `dockerfiles/active/Dockerfile.dsv4-d568` | `dsv4-d568` | Primary DeepSeek-V4-Flash image path. `FROM v022-d568` + SM12x DSV4 vLLM patches (sparse MLA, Lightning Indexer, fp8_ds_mla KV, MTP). **On GHCR. Currently frozen — do not update casually.** |
 
 Build commands (always build from **repo root** with `.` as context):
 
