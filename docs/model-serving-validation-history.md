@@ -1,0 +1,245 @@
+# Model Serving Validation History
+
+Historical stack validation notes and benchmark results for models running on DGX Spark (GB10).
+Extracted from `README.md` to keep the main guide focused on operational procedures.
+
+---
+
+## v022-d568 Stack — Validation Notes
+
+### Build and verification sequence
+
+Stacked-upgrade image built 2026-05-18, the deepest in the v022 series. Each layer was booted
+and verified against the PrismaSCOUT NVFP4 TP=2 preset (text + image inference, MTP n=3);
+the final `-d568` layer was additionally verified against `wangzhang-122b-abliterix-fp8-tp2`
+to confirm the SM121 FP8 kernel path now activates, on 2026-05-19 against
+`wangzhang-122b-abliterix-nvfp4-tp2` (custom BF16 → NVFP4 W4A4 with fused-group shared
+`weight_global_scale`) to confirm the SM121 NVFP4 path (FlashInfer-CUTLASS NVFP4 GEMM + MoE)
+is live end-to-end, and on 2026-05-20 against `gemma4-31b-it` (dense BF16 multimodal, TP=1)
+and `qwen3.6-35b-a3b` (hybrid Mamba/Attention MoE BF16 with `--reasoning-parser qwen3`
++ `--compilation-config use_inductor_graph_partition=true`, TP=1) to confirm dense/hybrid
+single-node paths.
+
+### Intermediate stacked images (local-build only)
+
+Kept on a build node for bisection / rollback — not pushed to GHCR:
+
+- `ghcr.io/bjk110/vllm-spark:v022-fi0611` — v022-vllm021 + FlashInfer 0.6.11.post3
+- `ghcr.io/bjk110/vllm-spark:v022-ngc2604` — v022-fi0611 + NGC 26.04 (PyTorch 2.12.0a0) + `patch_split_module_compat.py`
+- `ghcr.io/bjk110/vllm-spark:v022-tx581` — v022-ngc2604 + Transformers 5.8.1
+- `ghcr.io/bjk110/vllm-spark:v022-trt37` — v022-tx581 + Triton 3.7.0
+- `ghcr.io/bjk110/vllm-spark:v022-nccl234` — v022-trt37 + NCCL 2.30.4
+
+### Runtime patches added during the stack
+
+- `patches/common/patch_split_module_compat.py` (since `-ngc2604`): swaps vLLM's static
+  `is_torch_equal_or_newer("2.12.0.dev")` gate around
+  `torch.fx.passes.split_module.split_module(tuple_return=True)` for an
+  `inspect.signature(...).parameters` probe. NGC 26.04 ships a PyTorch 2.12 alpha that
+  predates the upstream `tuple_return` commit, so the version gate would otherwise fire
+  false-positive and PyTorch would raise `TypeError`.
+- `patches/sm121/apply_sm121_fp8_pr35568.py` (only on `-d568`): build-time cherry-pick of
+  vLLM PR #35568. Widens four `enable_sm120_only` / `arch in [89, 120]` gates to
+  `SM12x family` in the Marlin/CUTLASS FP8 codepaths so the DGX Spark GB10 (SM121) is no
+  longer excluded. Confirmed live by the abliterix-FP8 boot logging
+  `Selected CutlassFP8ScaledMMLinearKernel for CompressedTensorsW8A8Fp8`.
+
+### Verified preset overrides
+
+- `presets/qwen3.6-27b-prismascout-nvfp4-tp2-v022-{fi0611,ngc2604,tx581,trt37,nccl234,d568}.env`
+  — PrismaSCOUT NVFP4 (text + image)
+- `presets/wangzhang-122b-abliterix-fp8-tp2-v022-d568.env` — abliterix FP8 (text, confirms
+  FP8 kernel path activation)
+- `presets/wangzhang-122b-abliterix-nvfp4-tp2.env` — abliterix NVFP4 (text, **custom BF16 →
+  NVFP4 with fused-group shared `weight_global_scale`**; confirms FlashInfer-CUTLASS NVFP4
+  GEMM + MoE path activation)
+- `presets/gemma4-31b-it.env` — Gemma 4 31B IT (dense BF16 multimodal, single TP=1; confirms
+  dense Gemma 4 path on the forward stack)
+- `presets/qwen3.6-35b-a3b.env` — Qwen3.6-35B-A3B (hybrid Mamba/Attention MoE BF16, single
+  TP=1; confirms `--reasoning-parser qwen3` + Inductor graph-partition path)
+
+---
+
+## Benchmark Results
+
+All benchmarks measured with [llama-benchy](https://github.com/eugr/llama-benchy) v0.3.4.
+
+### Gemma 4 — Single Node (TP1, BF16)
+
+| Concurrency | 26B MoE (4B active) | 31B Dense |
+|---|---|---|
+| 1 | 25.0 (peak 26) | 4.0 (peak 5) |
+| 2 | 45.9 (peak 49) | 7.9 (peak 8) |
+| 4 | 67.2 (peak 77) | 14.1 (peak 17) |
+
+| Metric | 26B MoE | 31B Dense |
+|---|---|---|
+| TTFT c=1 | 417 ms | 653 ms |
+| KV cache | 224K tokens (51.3 GiB) | 77K tokens (35.2 GiB, FP8) |
+
+### Qwen3.5 122B — Decode Throughput Comparison (t/s)
+
+| Concurrency | FP8 TP2 (abliterated) | INT4 TP1 (Intel) | NVFP4 TP1 (abliterated) |
+|---|---|---|---|
+| 1 | 31.5 (peak 32.5) | 29.7 (peak 30) | 17.0 (peak 18) |
+| 2 | 42.4 (peak 54) | 57.6 (peak 59) | 33.3 (peak 35) |
+| 4 | 59.7 (peak 91) | 52.1 (peak 97) | 55.2 (peak 65) |
+
+| Metric | FP8 TP2 | INT4 TP1 | NVFP4 TP1 |
+|---|---|---|---|
+| TTFT c=1 | 1,989 ms | 1,098 ms | 984 ms |
+| KV cache | 839K tokens (38.5 GiB/node) | 789K tokens (36.2 GiB) | 155K tokens (14.3 GiB) |
+
+### 397B INT4 TP2
+
+#### Single Request (concurrency=1)
+
+| Test | Throughput (t/s) | TTFT (ms) |
+|---|---|---|
+| pp512 | 967 ± 33 | 543 ± 25 |
+| pp1024 | 1,349 ± 2 | 776 ± 2 |
+| pp2048 | 1,704 ± 9 | 1,224 ± 7 |
+| tg128 | 27.0 ± 0.1 | — |
+
+#### Concurrent Requests — Total Decode Throughput (t/s)
+
+| Concurrency | tg128 total | tg128 peak |
+|---|---|---|
+| 1 | 27.0 | 28 |
+| 2 | 45.3 | 52 |
+| 4 | 60~67 | 85~88 |
+| 8 | 59~91 | 152~160 |
+
+### Qwen3.5-122B-A10B PrismaQuant — Single Node (TP1, mixed-precision + fp8 KV)
+
+4.76bpp mixed-precision checkpoint (NVFP4 bulk MoE / MXFP8 high-sensitivity Linears / BF16 router+embed).
+Weights 72 GB, peak VRAM ~86 GB (fp8 KV @ 32k) on a single GB10.
+Model ships with MTP speculative-decoding heads — this preset defaults to `n=1` after local tuning.
+
+**Decode throughput vs MTP setting (llama-benchy, 3 runs each, tg32):**
+
+| Concurrency | MTP=3 total / peak | MTP=1 total / peak | MTP=0 total / peak |
+|---|---:|---:|---:|
+| 1 | 11.2 / 12.5 | 15.7 / 16.4 | **19.1 / 20.0** |
+| 2 | 20.5 / 23.0 | 25.7 / 28.7 | **30.4 / 38.0** |
+| 3 | 21.1 / 24.0 | 30.3 / 34.0 | **39.8 / 49.0** |
+| 4 | 29.2 / 33.7 | 45.1 / 50.7 | **65.1 / 72.3** |
+
+**Prefill throughput (pp2048 total t/s) and TTFT (c=1):**
+
+| MTP | pp c=1 | pp c=4 | TTFT c=1 |
+|---|---:|---:|---:|
+| n=3 | 1,744 | 2,262 | 1,026 ms |
+| n=1 | 1,825 | 2,318 | 1,033 ms |
+| n=0 | **1,989** | **2,555** | **947 ms** |
+
+MTP speculative decoding adds per-step overhead; on tg32 microbursts (32 generated tokens) the
+overhead dominates and MTP=0 wins. For longer natural-text generation the acceptance rate rises
+and MTP=1 matches or beats MTP=0. MTP=3 (model-card default) measured worst in every throughput
+bucket on this hardware — the extra speculative tokens lower acceptance and amortize poorly on GB10.
+
+**vs Intel INT4 / RedHatAI NVFP4 (same TP=1, c=1, prior runs):**
+
+| Quant | Disk | pp2048 c=1 | tg32 c=1 | tg32 c=4 peak |
+|---|---:|---:|---:|---:|
+| Intel INT4 AutoRound | ~65 GB | 2,084 | 29.8 | 96.0 |
+| RedHatAI NVFP4 | ~60 GB | 2,027 | 16.2 | 60.0 |
+| PrismaQuant (MTP=1) | 72 GB | 1,825 | 15.7 | 50.7 |
+| PrismaQuant (MTP=0) | 72 GB | 1,989 | 19.1 | 72.3 |
+
+Intel INT4 remains fastest on GB10. PrismaQuant's value is **quality-per-bit** via Fisher-weighted
+per-Linear allocation (NVFP4 bulk + MXFP8 for sensitive Linears + BF16 for router/embed) — see
+the model card for the methodology.
+
+### Qwen3.6-35B-A3B — Single Node (TP1, FP16 + fp8 KV)
+
+Original bf16/fp16 weights, fp8 KV cache, 32K context, `spark01` single-node.
+
+| Concurrency | pp2048 total t/s | tg32 total t/s | tg32 per-req t/s | peak tg t/s |
+|---|---|---|---|---|
+| 1 | 3,032 ± 825 | 32.4 ± 0.1 | 32.4 | 33 |
+| 2 | 4,724 ± 75 | 63.9 ± 2.2 | 32.0 | 66 |
+| 3 | 4,783 ± 439 | 61.1 ± 10.8 | 21.5 | 72 |
+| 4 | 5,206 ± 444 | 80.1 ± 19.2 | 22.4 | 101 |
+
+TTFT c=1: ~746 ms (pp2048).
+
+### 397B INT4 TP2 — TurboQuant KV Cache Sweep
+
+Same 397B INT4 AutoRound model on `v021-tq`, TP=2 (spark01+spark02 over 200 Gbps RoCE),
+`max_model_len=32768`, `gpu_memory_utilization=0.90`. Only `--kv-cache-dtype` varies.
+Measured 2026-04-17.
+
+#### Capacity & Quality Profile
+
+| Mode | Compression | KV tokens | Max conc @ 32K | PPL vs bf16* |
+|---|---:|---:|---:|---:|
+| `turboquant_3bit_nc` | 4.9x | 75,488 | 3.00x | +20.6% |
+| `turboquant_k3v4_nc` | 3.5x | 64,960 | 3.00x | +10.6% |
+| `turboquant_4bit_nc` | 3.8x | 57,120 | 2.82x | +2.7% |
+| `turboquant_k8v4`    | 2.6x | 38,528 | 2.50x | +1.2% |
+
+*PPL figures are the upstream reference values from `TurboQuantConfig` docstring.
+
+Note: `k3v4_nc` is strictly dominated by `4bit_nc` — higher compression (3.8x > 3.5x)
+*and* lower PPL (+2.7% < +10.6%) — because 3-bit keys cost more quality than 4-bit keys
+cost capacity.
+
+#### Prefill Throughput — `t/s (total)`
+
+| Mode       | pp512 c1 | pp1024 c1 | pp2048 c1 | pp2048 c4 |
+|---|---:|---:|---:|---:|
+| 3bit_nc    | 916.1 | 1,313.4 | 1,673.4 | 1,928.9 |
+| k3v4_nc    | 898.0 | 1,304.1 | 1,663.2 | 2,013.1 |
+| 4bit_nc    | 873.8 | 1,300.7* | 1,642.7 | 1,930.8 |
+| k8v4       | 901.8 | 1,295.4* | 1,662.7 | 1,931.7 |
+
+\* approx — see full tables in `benchmarks/llama-benchy/results_397b-int4-tq-*-c1to4.md`
+
+#### Decode Throughput — tg128 `t/s (total)` / peak
+
+| Mode       | c1 | c2 | c3 | c4 peak |
+|---|---:|---:|---:|---:|
+| 3bit_nc    | 26.7 | 42.1 | 50.1 | 72.0 |
+| k3v4_nc    | 26.8 | 44.4 | 55.4 | 80.0 |
+| 4bit_nc    | 26.6 | 44.7 | 55.2 | **84.0** |
+| k8v4       | 26.7 | 45.0 | 56.1 | 78.7 |
+
+#### Analysis
+
+- **Decode throughput (c1) is identical across modes** (26.6-26.8 t/s). Single-request workload
+  is compute-bound on the MoE matmul, not KV memory-bound.
+- **High concurrency (c4) amplifies differences**: `4bit_nc` reaches peak 84 t/s tg128 at c4 —
+  **+17% vs 3bit_nc** — because 4-bit value dequant has better arithmetic intensity than 3-bit.
+- **KV capacity ≠ throughput**: `3bit_nc` has 2x the KV capacity of `k8v4` but *lower* peak
+  throughput, counter-intuitively. Dequant cost dominates.
+- **Prefill is essentially flat** (±3%) across modes — attention read/write is a small fraction
+  of prefill compute for this model.
+
+#### Korean QA Quality (12 questions, mt=30000, thinking off)
+
+Scored on factual correctness of each answer (O=정답, △=부분정답, X=오답). Details in
+`benchmarks/results/*_Qwen3.5-397B-A17B-int4-AutoRound_mt30000_*.txt`.
+
+| Mode | O | △ | X | Timeout | Score |
+|---|---:|---:|---:|---:|---:|
+| `3bit_nc` | 7 | 2 | 3 | 0 | **66.7%** |
+| `k3v4_nc` | 8 | 3 | 1 | 0 | 79.2% |
+| `4bit_nc` | 8 | 3 | 1 | 0 | 79.2% |
+| `k8v4`    | 8 | 3 | 0 | 1 | 79.2% (Q6 제외) |
+
+`3bit_nc` shows real quality degradation on logic/syllable-decomposition tasks — matches the
++20.6% PPL prediction. The other three modes are indistinguishable on this benchmark
+(12 questions is too small to separate +1% vs +10% PPL). `k8v4` had one client-side timeout
+on an overlong answer (seahorse-emoji question, urllib 900 s limit) — not a vLLM/model issue.
+
+#### Recommendation
+
+**`turboquant_4bit_nc` is the operational default** for this model:
+- Best peak decode throughput at c4 (84 t/s tg128)
+- 3.8x KV compression (~2x concurrency headroom vs bf16)
+- Only +2.7% PPL penalty — imperceptible in actual responses
+- Strictly better than `k3v4_nc` on every axis
+
+Use `k8v4` only if highest answer fidelity is required and KV capacity is not the bottleneck.
+Avoid `3bit_nc` — quality loss is measurable.
