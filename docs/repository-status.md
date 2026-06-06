@@ -1,6 +1,6 @@
 # Repository Status and Cleanup Roadmap
 
-Last updated: 2026-06-06 (Stage 3-E).
+Last updated: 2026-06-06 (Stage 3-F).
 
 This document summarises the current recommended paths, major directory roles,
 completed documentation cleanup stages, and intentionally deferred structural work.
@@ -80,6 +80,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | `benchmarks/` | Raw benchmark artifacts and experiment outputs only; see `benchmarks/README.md` |
 | `benchmarks/llama-benchy/` | Raw llama-benchy output files; filename legend in `benchmarks/llama-benchy/README.md` |
 | `docs/unholy-fusion-benchmark.md` | Interpreted unholy-fusion serving result analysis and DSV4 comparison |
+| `docs/model-serving-validation-history.md` | Historical stack validation notes and benchmark results (Gemma 4, Qwen3.5 122B, 397B INT4, PrismaQuant, TurboQuant KV sweep) — extracted from `README.md` |
 | `entrypoints/` | Container entrypoint scripts; selected via `ENTRYPOINT_FILE` in `docker-compose.yml`; see `entrypoints/README.md` |
 | `compose/` | Compose overrides (`docker-compose.unholy.yml`); referenced via `-f` flag |
 | `docs/` | Interpreted technical notes, stack guides, and status documents |
@@ -102,6 +103,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | **Stage 3-C** | `patches/` split into purpose-based subdirectories (`common/`, `sm121/`, `dsv4/`, `qwen/`, `turboquant/`, `flashinfer/`, `archive/`, `unknown/`); all Dockerfile `COPY` references, entrypoint script paths, and documentation updated simultaneously |
 | **Stage 3-D** | `models/` renamed to `presets/`; all host-side preset path references updated in `README.md`, `docs/`, and `.env.example`. Container-internal `/models/...` mount paths are unrelated and unchanged. |
 | **Stage 3-E** | Benchmark folder scope clarified as raw artifacts only; interpreted benchmark analysis confirmed to remain under `docs/`; `benchmarks/README.md` updated to remove safe-default guidance and point to `docs/unholy-fusion-benchmark.md`. |
+| **Stage 3-F** | Detailed v022 stack validation notes and historical benchmark tables (Gemma 4, Qwen3.5 122B, 397B INT4, PrismaQuant, TurboQuant KV sweep) extracted from `README.md` into `docs/model-serving-validation-history.md`; `README.md` replaced with concise summaries and links. |
 
 ---
 
