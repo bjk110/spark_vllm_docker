@@ -205,7 +205,7 @@ docker pull ghcr.io/bjk110/vllm-spark:dsv4-d568
 | `v022-tx581` | `dockerfiles/Dockerfile.v022-tx581` | Transformers 5.8.1 |
 | `v022-trt37` | `dockerfiles/Dockerfile.v022-trt37` | Triton 3.7.0 |
 | `v022-nccl234` | `dockerfiles/Dockerfile.v022-nccl234` | NCCL 2.30.4 (pip override) |
-| `v022-d568` | `Dockerfile.v022-d568` | vLLM PR #35568 cherry-pick (SM121 FP8) — **on GHCR, general production base** |
+| `v022-d568` | `Dockerfile.v022-d568` | vLLM PR #35568 cherry-pick (SM121 FP8) — **on GHCR; forward-stack validation base** |
 | `dsv4-d568` | `Dockerfile.dsv4-d568` | DeepSeek-V4-Flash derivative — `FROM v022-d568` + SM12x DSV4 vLLM patches (DSV4-specific). **On GHCR.** |
 
 #### Option B: Build from source
@@ -416,7 +416,7 @@ vllm-spark/
 ├── .env.example                   # Full configuration template
 ├── Dockerfile.v022-d568           # Current base image build (NGC 26.04 stack)
 ├── Dockerfile.dsv4-d568           # DeepSeek-V4-Flash derivative (FROM v022-d568)
-├── dockerfiles/                   # Legacy / intermediate builds (kept for bisection)
+├── dockerfiles/                   # Historical / intermediate Dockerfile variants (not active build targets — see dockerfiles/README.md)
 │   ├── Dockerfile                     # NGC 26.01 era (vLLM 0.18.x, historical)
 │   ├── Dockerfile.gemma4              # v021-ngc2603 unified build
 │   ├── Dockerfile.ngc2603-v3          # v018-ngc2603 archived build
