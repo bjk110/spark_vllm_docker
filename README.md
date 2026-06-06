@@ -717,6 +717,14 @@ cp entrypoint.jasl.sh entrypoint.sh
 | Decode peak c=8 d=0 | ~116 t/s | ~112 t/s (similar) |
 | Decode peak d=131072 | ~32 t/s | ~96 t/s (3×, B12X attention) |
 
+> **Production note**: unholy-fusion is valuable as an experimental
+> high-prefill-performance alternative; it is not a general production default.
+> The safe operational profile is single or few long-context streams (`c=1–2`).
+> Long-context concurrency (`d≥4k`, `c≥4`) collapses decode throughput due to
+> O(n) attention cost and scheduler queuing under `MAX_NUM_SEQS=4`.
+> For workloads requiring more than 262k context or sustained high concurrency,
+> jasl0603 is the appropriate choice.
+
 ## System Tuning
 
 Recommended OS-level settings for DGX Spark:

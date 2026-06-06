@@ -37,12 +37,16 @@ patches applied by `entrypoint.unholy.sh`:
 Pre-init free-memory check is skipped when `VLLM_SKIP_INIT_MEMORY_CHECK=1`.
 
 **Patch 2** — `vllm/v1/worker/gpu_worker.py` `determine_available_memory()`:  
-When `current_free > init_free`, returns `current_free` (~34 GiB) as the KV
-cache budget instead of firing the assertion. This gives a safe KV allocation
-without overestimating (which caused OOM in earlier patch iterations).
+When OS page-cache release during profiling causes `current_free > init_free`,
+the patch returns `current_free` as the post-profile free UMA memory (~34 GiB)
+rather than firing the assertion. vLLM then applies `GPU_MEMORY_UTILIZATION`
+against this budget; the resulting effective KV cache allocation is approximately
+**~17 GiB** (1,144,306 tokens at GPU_UTIL=0.80).
 
-**Effective KV cache**: ~34 GiB (vs ~93 GiB on a system with accurate UMA
-accounting). This limits multi-request performance at depth ≥ 32k.
+> The UMA patch may expose roughly ~34 GiB of post-profile free memory in the
+> worker memory path, but the stable benchmark run reports an effective vLLM KV
+> cache allocation around ~17 GiB. Treat free memory after UMA page-cache release
+> and the vLLM-reported KV cache budget as separate metrics.
 
 ---
 
@@ -159,6 +163,13 @@ significant depth. The depth ceiling remains **d=131072** (128k tokens).
 
 ## Full Depth Sweep — MTP n=1 (2026-06-05 08:46 KST)
 
+> **Note**: This run used `MAX_NUM_SEQS=8`, which is now confirmed to cause
+> startup hang on GB10 UMA (CUDA graph capture stall). The data is preserved
+> for reference but reflects an **experimental configuration** not recommended
+> for operational use. c=6 and c=8 results here are not reproducible at the
+> current safe limit of `MAX_NUM_SEQS=4`. Use the 2026-06-06 22:14 KST run
+> for the current stable reference.
+
 `pp=2048, tg=128, runs=3, latency-mode=generation`
 
 ### Prompt Processing — pp2048 t/s (total)
@@ -192,8 +203,10 @@ Depth and concurrency have negligible effect on pp performance.
 - Single-request tg (c=1) is stable at 35–40 t/s regardless of depth — no
   KV pressure at low concurrency.
 - At depth ≥ 32k with c ≥ 4, total throughput collapses to 3–8 t/s. This is
-  directly caused by the 34 GiB KV cache limit: available blocks per request
-  drop below what the scheduler needs to maintain c=4+ concurrency.
+  directly caused by the ~17 GiB effective KV cache allocation: available blocks
+  per request drop below what the scheduler needs to maintain c=4+ concurrency
+  at long context (note: the ~34 GiB post-profile UMA free memory is not the
+  same as the KV cache — see §GB10 UMA Memory Patches).
 - Peak t/s at d=0/c=8 reaches **170.67 t/s**, consistent with the forum
   reference (aidendle94: ~167 t/s peak).
 
@@ -401,6 +414,15 @@ drop-in for long-context or high-concurrency production workloads.
 jasl0603 uses the Ray backend with expert parallelism. unholy-fusion uses mp
 backend without expert parallelism (`--enable-expert-parallel` is incompatible
 with `VLLM_USE_B12X_MOE`).
+
+**Production-readiness**: unholy-fusion is valuable as an **experimental
+high-prefill-performance** alternative. It should not be used as a general
+production default. The recommended safe operational profile is single or
+few long-context streams (`c=1–2`), not many concurrent long-context users.
+Long-context concurrency (`d≥4k`, `c≥4`) collapses decode throughput due to
+O(n) attention cost and scheduler queuing under `MAX_NUM_SEQS=4`. For
+workloads requiring more than 262k context or sustained high concurrency,
+jasl0603 remains the appropriate choice.
 
 ### Operational limits of unholy-fusion
 

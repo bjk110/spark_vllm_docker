@@ -27,7 +27,7 @@ export VLLM_CACHE_ROOT="/cache/huggingface/vllm-cache"
 mkdir -p "${DG_JIT_CACHE_DIR}" "${TRITON_CACHE_DIR}" "${TORCHINDUCTOR_CACHE_DIR}" "${VLLM_CACHE_ROOT}"
 
 : "${ROLE:?ROLE must be set to head or worker}"
-: "${DISTRIBUTED_BACKEND:=ray}"
+: "${DISTRIBUTED_BACKEND:=mp}"
 : "${MTP_NUM_TOKENS:=1}"
 
 # ── NCCL GID index: auto-detect RoCE v2 IPv4-mapped entry ───────────────────
@@ -116,7 +116,7 @@ if [ "${ROLE}" = "worker" ]; then
     --kv-cache-dtype fp8 \
     --block-size 256 \
     --max-model-len "${MAX_MODEL_LEN:-262144}" \
-    --max-num-seqs "${MAX_NUM_SEQS:-8}" \
+    --max-num-seqs "${MAX_NUM_SEQS:-4}" \
     --max-num-batched-tokens "${MAX_NUM_BATCHED_TOKENS:-16384}" \
     --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION:-0.80}" \
     --enable-prefix-caching \
@@ -147,7 +147,7 @@ exec vllm serve "${MODEL_CONTAINER_PATH}" \
   --kv-cache-dtype fp8 \
   --block-size 256 \
   --max-model-len "${MAX_MODEL_LEN:-262144}" \
-  --max-num-seqs "${MAX_NUM_SEQS:-8}" \
+  --max-num-seqs "${MAX_NUM_SEQS:-4}" \
   --max-num-batched-tokens "${MAX_NUM_BATCHED_TOKENS:-16384}" \
   --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION:-0.80}" \
   --enable-prefix-caching \
