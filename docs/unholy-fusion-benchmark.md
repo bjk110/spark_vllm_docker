@@ -53,9 +53,9 @@ See `.env.unholy-fusion` for the full variable set. Key parameters:
 ```
 VLLM_IMAGE=aidendle94/sparkrun-vllm-ds4-gb10:production-ready
 GPU_MEMORY_UTILIZATION=0.80
-MAX_NUM_SEQS=8
+MAX_NUM_SEQS=4                # confirmed upper limit; ≥5 causes startup hang
 MAX_NUM_BATCHED_TOKENS=8192
-MAX_MODEL_LEN=262144
+MAX_MODEL_LEN=262144          # confirmed upper limit; 524288 crashes at d≥131072
 MTP_NUM_TOKENS=1          # speculative decoding depth (1=best, see §MTP)
 VLLM_USE_B12X_MOE=1
 VLLM_USE_BREAKABLE_CUDAGRAPH=0
@@ -130,6 +130,30 @@ dips slightly to ~1813–1821 t/s due to attention cost scaling with context len
 **Note**: MAX_NUM_SEQS=4 caps actual concurrency — c=8 requests are queued in batches
 of 4, so c=8 total is lower than expected. Compare to 2026-06-05 run (MAX_NUM_SEQS=8):
 c8 total d=0 was 73.79 t/s vs 67.20 t/s here.
+
+---
+
+## MAX_MODEL_LEN=524288 Depth Probe (2026-06-06, FAILED)
+
+`pp=2048, tg=128, runs=3, latency-mode=generation`  
+Config: MAX_NUM_SEQS=4, MAX_MODEL_LEN=**524288**, GPU_UTIL=0.80, MTP n=1
+
+**Outcome: server crash at first d=131072 request.**
+
+| depth | result | note |
+|------:|--------|------|
+| 0 | ✓ success | pp ~1800 t/s, tg c1 39 t/s, tg c4 65 t/s |
+| 131072 | ✗ crash | `sample_tokens` RPC timeout → EngineCore fatal → connection refused |
+| 196608 | ✗ crash | server already dead |
+| 262144+ | ✗ crash | server already dead |
+
+**Why**: With MAX_MODEL_LEN=524288, CUDA graph sizes roughly double. The decode step
+at d=131072 context length now exceeds the EngineCore RPC timeout limit. RAM hits
+120/121 GiB (UMA fully consumed). Reboot required for recovery.
+
+**Conclusion**: MAX_MODEL_LEN=262144 is the confirmed stable upper bound.
+Raising it to 524288 starts the engine but makes it operationally unusable at any
+significant depth. The depth ceiling remains **d=131072** (128k tokens).
 
 ---
 
@@ -380,11 +404,24 @@ with `VLLM_USE_B12X_MOE`).
 
 ### Operational limits of unholy-fusion
 
-- **MAX_NUM_SEQS ≤ 4**: Values ≥ 5 cause CUDA graph capture hang at startup
-  (Worker_TP* stalls in `gpu_model_runner.py:6290`, EngineCore blocks on shm_broadcast
-  indefinitely). Root cause unknown; likely MTP + B12X_MOE interaction with larger
-  graph capture sizes.
-- **MAX_MODEL_LEN ≤ 262144**: 1M and 131072 tested — both caused startup hang
-  when combined with NUM_SEQS=6. Not tested with NUM_SEQS=4.
-- Requires `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0` in .env (missing this
-  causes `ValueError: invalid literal for int() with base 10: ''` at engine init).
+| limit | confirmed safe | confirmed broken | failure mode |
+|-------|---------------|-----------------|--------------|
+| MAX_NUM_SEQS | ≤ 4 | ≥ 5 | startup hang (CUDA graph capture, `gpu_model_runner.py:6290`) |
+| MAX_MODEL_LEN | ≤ 262144 | 524288 | starts OK but crashes at d≥131072 (`sample_tokens` RPC timeout) |
+| MTP n | 1 (or 3) | 2 | n=2 catastrophic throughput collapse at c≥4 |
+| VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS | must be 0 | unset/1 | `ValueError: invalid literal for int() with base 10: ''` at engine init |
+
+**MAX_NUM_SEQS ≥ 5** — Worker_TP* stalls in `gpu_model_runner.py:6290` during CUDA
+graph memory profiling. EngineCore shm_broadcast times out indefinitely. Tested:
+NUM_SEQS=5, 6, 8 all hang. Root cause: MTP + B12X_MOE interaction with larger
+graph capture sizes on GB10.
+
+**MAX_MODEL_LEN = 524288 (2026-06-06 test)** — Starts successfully with NUM_SEQS=4;
+KV cache allocates to 3,698,516 tokens (vs 1,144,306 with 262144). However, the first
+request at d=131072 triggers `sample_tokens` RPC timeout → EngineCore fatal error →
+server crash. Root cause: CUDA graph sizes scale with MAX_MODEL_LEN; at 524288 the
+decode step at 131k context exceeds the RPC timeout threshold. RAM is also driven to
+120/121 GiB (UMA fully consumed). Requires reboot to recover.
+
+**Effective depth limit: d=131072 (128k tokens)** with MAX_MODEL_LEN=262144.
+Depth 131072 + pp 2048 = 133120 total context, which fits within the 262144 limit.
