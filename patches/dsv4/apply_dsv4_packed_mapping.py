@@ -15,7 +15,7 @@ Source: pasta-paul/dsv4-flash-w4a16-fp8 / scripts/patch_v4_packed_mapping.py
         (verified on dual DGX Spark GB10 SM 12.1a, 2026-05-06)
 
 Usage (in Dockerfile, after vLLM source clone):
-  COPY patches/apply_dsv4_packed_mapping.py /tmp/
+  COPY patches/dsv4/apply_dsv4_packed_mapping.py /tmp/
   RUN python3 /tmp/apply_dsv4_packed_mapping.py /workspace/vllm-src/vllm/model_executor/models/deepseek_v4.py
 """
 import sys

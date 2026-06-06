@@ -70,7 +70,7 @@ RUN --mount=type=cache,id=git-fi-2603v3,target=/git-cache/flashinfer \
     git submodule update --init --recursive
 
 # Optional: FlashInfer cache patch
-COPY patches/flashinfer_cache.patch /workspace/flashinfer/
+COPY patches/flashinfer/flashinfer_cache.patch /workspace/flashinfer/
 RUN cd /workspace/flashinfer && \
     (patch -p1 --dry-run < flashinfer_cache.patch &>/dev/null && \
      patch -p1 < flashinfer_cache.patch || echo "[flashinfer] cache patch not applicable")
@@ -130,7 +130,7 @@ RUN pip install -q setuptools setuptools-scm ninja cmake wheel packaging
 
 # Apply PyTorch 2.11 compatibility patches via Python script
 # (avoids shell escaping issues with sed + braces)
-COPY patches/fix_pytorch211_compat.py /tmp/fix_pytorch211_compat.py
+COPY patches/common/fix_pytorch211_compat.py /tmp/fix_pytorch211_compat.py
 RUN cd /workspace/vllm-src && python3 /tmp/fix_pytorch211_compat.py
 
 # Build vLLM wheel (includes _C + _C_stable_libtorch)
@@ -205,30 +205,30 @@ RUN uv pip install transformers==${TRANSFORMERS_VER} --upgrade --no-deps --syste
     uv pip install huggingface-hub --upgrade --no-deps --system
 
 # ---- Patches (non-fatal, skip if not applicable) ----
-COPY patches/fastsafetensors_natural_sort.patch /tmp/
+COPY patches/archive/fastsafetensors_natural_sort.patch /tmp/
 RUN cd / && (patch -p1 --dry-run < /tmp/fastsafetensors_natural_sort.patch &>/dev/null && \
      patch -p1 < /tmp/fastsafetensors_natural_sort.patch && \
      echo "[patch] fastsafetensors OK" || echo "[patch] fastsafetensors skip")
 
-COPY patches/qwen3_5_moe_rope_fix.py /tmp/
+COPY patches/qwen/qwen3_5_moe_rope_fix.py /tmp/
 RUN python3 /tmp/qwen3_5_moe_rope_fix.py
 
-COPY patches/aot_cache_fix.patch /tmp/
+COPY patches/archive/aot_cache_fix.patch /tmp/
 RUN cd / && (patch -p1 --dry-run < /tmp/aot_cache_fix.patch &>/dev/null && \
      patch -p1 < /tmp/aot_cache_fix.patch && \
      echo "[patch] aot_cache OK" || echo "[patch] aot_cache skip")
 
-COPY patches/nogds_force.patch /tmp/
+COPY patches/archive/nogds_force.patch /tmp/
 RUN cd / && (patch -p1 --dry-run < /tmp/nogds_force.patch &>/dev/null && \
      patch -p1 < /tmp/nogds_force.patch && \
      echo "[patch] nogds OK" || echo "[patch] nogds skip")
 
-COPY patches/moe_config_e256.json \
+COPY patches/dsv4/moe_config_e256.json \
      /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=256,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
-COPY patches/moe_config_e512.json \
+COPY patches/dsv4/moe_config_e512.json \
      /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=512,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
 
-COPY patches/apply_sm121_patches.py /tmp/
+COPY patches/sm121/apply_sm121_patches.py /tmp/
 RUN python3 /tmp/apply_sm121_patches.py || echo "[patch] SM121 partial"
 
 RUN uv pip uninstall triton-kernels 2>/dev/null || true

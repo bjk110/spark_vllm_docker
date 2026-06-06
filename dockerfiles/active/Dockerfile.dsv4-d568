@@ -20,10 +20,10 @@
 #     (NGC 26.04 / PyTorch 2.12.0a0 / FlashInfer 0.6.12 / Triton 3.7.0
 #      / NCCL 2.30.4 / Transformers 5.8.1)
 #   + jasl/vllm @ edc82b614f51 (replaces v022-d568's vLLM 0.21.0+PR#35568)
-#   + patches/apply_dsv4_packed_mapping.py (defensive — skips if branch
+#   + patches/dsv4/apply_dsv4_packed_mapping.py (defensive — skips if branch
 #     already defines packed_modules_mapping)
-#   + patches/patch_split_module_compat.py (re-applied after vLLM swap)
-#   + patches/moe_config_e256.json / e512.json (re-staged GB10 fused-MoE
+#   + patches/common/patch_split_module_compat.py (re-applied after vLLM swap)
+#   + patches/dsv4/moe_config_e256.json / e512.json (re-staged GB10 fused-MoE
 #     configs)
 #   + instanttensor (per eugr/spark-vllm-docker PR #219 recipe)
 #
@@ -110,13 +110,13 @@ RUN cd /workspace/vllm-src && \
     echo "[cherry-pick] applied A-group (scheduler decode-protection): ${VLLM_CHERRY_PICKS}"
 
 # Apply packed_modules_mapping patch — defensive (skips if already present in jasl branch).
-COPY patches/apply_dsv4_packed_mapping.py /tmp/apply_dsv4_packed_mapping.py
+COPY patches/dsv4/apply_dsv4_packed_mapping.py /tmp/apply_dsv4_packed_mapping.py
 RUN python3 /tmp/apply_dsv4_packed_mapping.py \
       /workspace/vllm-src/vllm/model_executor/models/deepseek_v4.py || \
     echo "[patch] packed_mapping skipped (anchor not found — likely already in jasl branch)"
 
 # PyTorch 2.11/2.12-alpha compat: strip hoist=True kwarg from register_opaque_type().
-COPY patches/fix_pytorch211_compat.py /tmp/fix_pytorch211_compat.py
+COPY patches/common/fix_pytorch211_compat.py /tmp/fix_pytorch211_compat.py
 RUN cd /workspace/vllm-src && python3 /tmp/fix_pytorch211_compat.py || \
     echo "[patch] fix_pytorch211_compat not applicable on jasl branch"
 
@@ -178,7 +178,7 @@ RUN --mount=type=cache,id=uv-dsv4-d568,target=/root/.cache/uv \
 # commit. This patch swaps the static version check for a runtime signature probe.
 # The v022-d568 base had this applied to its bundled vLLM, but we just replaced vLLM
 # with the jasl wheel — re-apply to the new install.
-COPY patches/patch_split_module_compat.py /tmp/patch_split_module_compat.py
+COPY patches/common/patch_split_module_compat.py /tmp/patch_split_module_compat.py
 RUN python3 /tmp/patch_split_module_compat.py
 
 # GB10 UMA: add VLLM_SKIP_INIT_MEMORY_CHECK=1 env-var escape hatch for
@@ -186,13 +186,13 @@ RUN python3 /tmp/patch_split_module_compat.py
 # nvidia driver accumulates host-RAM reservations after a few minutes uptime,
 # causing the check to reject well-sized configs that would actually fit.
 # Patch is idempotent; with the env-var unset, behavior is unchanged.
-COPY patches/patch_skip_init_memory_check.py /tmp/patch_skip_init_memory_check.py
+COPY patches/common/patch_skip_init_memory_check.py /tmp/patch_skip_init_memory_check.py
 RUN python3 /tmp/patch_skip_init_memory_check.py
 
 # GB10 UMA cleanup: register VLLM_SKIP_INIT_MEMORY_CHECK in vllm/envs.py's
 # environment_variables dict so the "Unknown vLLM environment variable
 # detected" warning goes away on startup. See docs/dsv4-flash-tp2.md §11.7.
-COPY patches/patch_envs_register_skip_memcheck.py /tmp/patch_envs_register_skip_memcheck.py
+COPY patches/common/patch_envs_register_skip_memcheck.py /tmp/patch_envs_register_skip_memcheck.py
 RUN python3 /tmp/patch_envs_register_skip_memcheck.py
 
 # GB10 UMA: extend VLLM_SKIP_INIT_MEMORY_CHECK=1 to also relax the
@@ -200,7 +200,7 @@ RUN python3 /tmp/patch_envs_register_skip_memcheck.py
 # kernel can reclaim page cache during profiling, raising the UMA free
 # metric above the init snapshot and tripping vLLM's "other process
 # released GPU memory" check. See docs/dsv4-flash-tp2.md §11.9.
-COPY patches/patch_relax_profile_assertion.py /tmp/patch_relax_profile_assertion.py
+COPY patches/common/patch_relax_profile_assertion.py /tmp/patch_relax_profile_assertion.py
 RUN python3 /tmp/patch_relax_profile_assertion.py
 
 # NOTE: patch_fadvise_safetensors.py (PR #35929 port) was tried and
@@ -213,9 +213,9 @@ RUN python3 /tmp/patch_relax_profile_assertion.py
 
 # Restore the GB10-tuned fused-MoE configs that were placed by the base image's
 # vLLM install (the path now points at the freshly installed jasl wheel).
-COPY patches/moe_config_e256.json \
+COPY patches/dsv4/moe_config_e256.json \
      /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=256,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
-COPY patches/moe_config_e512.json \
+COPY patches/dsv4/moe_config_e512.json \
      /usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs/E=512,N=512,device_name=NVIDIA_GB10,dtype=fp8_w8a8,block_shape=[128,128].json
 
 # Confirm DSV4 architecture registration after install (transformers + vllm).

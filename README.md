@@ -57,8 +57,8 @@ Intermediate stacked images (**local-build only**, kept for bisection / rollback
 - `ghcr.io/bjk110/vllm-spark:v022-nccl234` — v022-trt37 + NCCL 2.30.4
 
 **Runtime patches added during the stack:**
-- `patches/patch_split_module_compat.py` (since `-ngc2604`): swaps vLLM's static `is_torch_equal_or_newer("2.12.0.dev")` gate around `torch.fx.passes.split_module.split_module(tuple_return=True)` for an `inspect.signature(...).parameters` probe. NGC 26.04 ships a PyTorch 2.12 alpha that predates the upstream `tuple_return` commit, so the version gate would otherwise fire false-positive and PyTorch would raise `TypeError`.
-- `patches/apply_sm121_fp8_pr35568.py` (only on `-d568`): build-time cherry-pick of vLLM PR #35568. Widens four `enable_sm120_only` / `arch in [89, 120]` gates to `SM12x family` in the Marlin/CUTLASS FP8 codepaths so the DGX Spark GB10 (SM121) is no longer excluded. Confirmed live by the abliterix-FP8 boot logging `Selected CutlassFP8ScaledMMLinearKernel for CompressedTensorsW8A8Fp8`.
+- `patches/common/patch_split_module_compat.py` (since `-ngc2604`): swaps vLLM's static `is_torch_equal_or_newer("2.12.0.dev")` gate around `torch.fx.passes.split_module.split_module(tuple_return=True)` for an `inspect.signature(...).parameters` probe. NGC 26.04 ships a PyTorch 2.12 alpha that predates the upstream `tuple_return` commit, so the version gate would otherwise fire false-positive and PyTorch would raise `TypeError`.
+- `patches/sm121/apply_sm121_fp8_pr35568.py` (only on `-d568`): build-time cherry-pick of vLLM PR #35568. Widens four `enable_sm120_only` / `arch in [89, 120]` gates to `SM12x family` in the Marlin/CUTLASS FP8 codepaths so the DGX Spark GB10 (SM121) is no longer excluded. Confirmed live by the abliterix-FP8 boot logging `Selected CutlassFP8ScaledMMLinearKernel for CompressedTensorsW8A8Fp8`.
 
 Verified preset overrides:
 - `models/qwen3.6-27b-prismascout-nvfp4-tp2-v022-{fi0611,ngc2604,tx581,trt37,nccl234,d568}.env` — PrismaSCOUT NVFP4 (text + image)
@@ -344,10 +344,10 @@ This keeps torch.compile + CUDAGraph (`FULL_AND_PIECEWISE`) enabled. Cold-start 
 
 **Last-resort workaround** — `--enforce-eager`. Disables torch.compile and CUDAGraph entirely; loses inference performance but guaranteed to bypass the codegen path.
 
-**Hot-patch (kept on standby)** — `patches/patch_codegen_fx_repr.py` rewrites `_node_ref()` to honor `__fx_repr__()` and merges its namespace into the `exec()` scope. Apply only if a future vLLM bump regresses the Inductor partition path or a different opaque type triggers the same SyntaxError:
+**Hot-patch (kept on standby)** — `patches/archive/patch_codegen_fx_repr.py` rewrites `_node_ref()` to honor `__fx_repr__()` and merges its namespace into the `exec()` scope. Apply only if a future vLLM bump regresses the Inductor partition path or a different opaque type triggers the same SyntaxError:
 
 ```bash
-docker exec vllm-spark-head python3 /patches/patch_codegen_fx_repr.py
+docker exec vllm-spark-head python3 /patches/archive/patch_codegen_fx_repr.py
 docker compose --profile head restart
 ```
 
@@ -458,17 +458,15 @@ vllm-spark/
 │   └── unholy-fusion-benchmark.md    # unholy-fusion B12X benchmark + comparison vs dsv4-d568
 ├── benchmarks/                    # Raw benchmark artifacts and experiment outputs; see benchmarks/README.md
 │   └── llama-benchy/              # Raw llama-benchy result files; see benchmarks/llama-benchy/README.md
-├── patches/                       # Build/runtime patch scripts and compatibility shims; see patches/README.md
-│   ├── fix_pytorch211_compat.py       # hoist=True removal (PyTorch 2.11)
-│   ├── fastsafetensors_natural_sort.patch
-│   ├── aot_cache_fix.patch
-│   ├── nogds_force.patch
-│   ├── apply_sm121_patches.py
-│   ├── moe_config_e256.json / moe_config_e512.json
-│   ├── apply_turboquant_fixes.py      # v021-tq only
-│   ├── patch_qwen35_moe_text.py       # APPLY_TEXT_ONLY_SHIM=1 only
-│   ├── patch_codegen_fx_repr.py       # On-standby hot-patch (see Troubleshooting)
-│   └── ...                            # See PATCH_STATUS.md for the full inventory
+├── patches/                       # Build/runtime patch scripts; grouped by purpose — see patches/README.md
+│   ├── common/                        # Common runtime/build compatibility patches
+│   ├── sm121/                         # SM121 / Blackwell / FP8 / NVFP4 patches
+│   ├── dsv4/                          # DeepSeek-V4 specific patches and MoE config files
+│   ├── qwen/                          # Qwen-specific compatibility patches
+│   ├── turboquant/                    # TurboQuant-specific patches
+│   ├── flashinfer/                    # FlashInfer-specific patches
+│   ├── archive/                       # Historical patches retained for reproducibility
+│   └── unknown/                       # Unverified early bring-up helpers
 └── scripts/
     ├── run-cluster-node.sh        # Manual Ray cluster bootstrap
     ├── verify_imports.py          # Build-time import verification

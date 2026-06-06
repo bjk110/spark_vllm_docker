@@ -34,7 +34,7 @@ MoE for SM120 (#3066). TurboQuant enables 2-4x KV cache capacity via
 ## v021-tq
 
 Same base as `v021-ngc2603` plus the TurboQuant cherry-pick stack
-(`patches/apply_turboquant_fixes.py`). Required by every `*-tq.env` preset
+(`patches/turboquant/apply_turboquant_fixes.py`). Required by every `*-tq.env` preset
 (e.g. `gemma4-26b-a4b-tq.env`, `redhatai-122b-nvfp4-tq.env`,
 `qwen3.5-397b-int4-tq.env`).
 
