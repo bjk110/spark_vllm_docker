@@ -61,17 +61,17 @@ Intermediate stacked images (**local-build only**, kept for bisection / rollback
 - `patches/sm121/apply_sm121_fp8_pr35568.py` (only on `-d568`): build-time cherry-pick of vLLM PR #35568. Widens four `enable_sm120_only` / `arch in [89, 120]` gates to `SM12x family` in the Marlin/CUTLASS FP8 codepaths so the DGX Spark GB10 (SM121) is no longer excluded. Confirmed live by the abliterix-FP8 boot logging `Selected CutlassFP8ScaledMMLinearKernel for CompressedTensorsW8A8Fp8`.
 
 Verified preset overrides:
-- `models/qwen3.6-27b-prismascout-nvfp4-tp2-v022-{fi0611,ngc2604,tx581,trt37,nccl234,d568}.env` — PrismaSCOUT NVFP4 (text + image)
-- `models/wangzhang-122b-abliterix-fp8-tp2-v022-d568.env` — abliterix FP8 (text, confirms FP8 kernel path activation)
-- `models/wangzhang-122b-abliterix-nvfp4-tp2.env` — abliterix NVFP4 (text, **custom BF16 → NVFP4 with fused-group shared `weight_global_scale`**; confirms FlashInfer-CUTLASS NVFP4 GEMM + MoE path activation)
-- `models/gemma4-31b-it.env` — Gemma 4 31B IT (dense BF16 multimodal, single TP=1; confirms dense Gemma 4 path on the forward stack)
-- `models/qwen3.6-35b-a3b.env` — Qwen3.6-35B-A3B (hybrid Mamba/Attention MoE BF16, single TP=1; confirms `--reasoning-parser qwen3` + Inductor graph-partition path)
+- `presets/qwen3.6-27b-prismascout-nvfp4-tp2-v022-{fi0611,ngc2604,tx581,trt37,nccl234,d568}.env` — PrismaSCOUT NVFP4 (text + image)
+- `presets/wangzhang-122b-abliterix-fp8-tp2-v022-d568.env` — abliterix FP8 (text, confirms FP8 kernel path activation)
+- `presets/wangzhang-122b-abliterix-nvfp4-tp2.env` — abliterix NVFP4 (text, **custom BF16 → NVFP4 with fused-group shared `weight_global_scale`**; confirms FlashInfer-CUTLASS NVFP4 GEMM + MoE path activation)
+- `presets/gemma4-31b-it.env` — Gemma 4 31B IT (dense BF16 multimodal, single TP=1; confirms dense Gemma 4 path on the forward stack)
+- `presets/qwen3.6-35b-a3b.env` — Qwen3.6-35B-A3B (hybrid Mamba/Attention MoE BF16, single TP=1; confirms `--reasoning-parser qwen3` + Inductor graph-partition path)
 
 ### dsv4-d568 — Primary DeepSeek-V4-Flash path
 
 **This is the primary documented path for DeepSeek-V4-Flash on 2× DGX Spark / GB10.**
 
-Layered on top of `v022-d568`. Uses a fork of vLLM with SM12x DSV4 support (sparse MLA, Lightning Indexer, fp8_ds_mla KV cache, MTP heads). Preset: `models/dsv4-flash-fp8-tp2.env`.
+Layered on top of `v022-d568`. Uses a fork of vLLM with SM12x DSV4 support (sparse MLA, Lightning Indexer, fp8_ds_mla KV cache, MTP heads). Preset: `presets/dsv4-flash-fp8-tp2.env`.
 
 | Component | Version |
 |---|---|
@@ -81,7 +81,7 @@ Layered on top of `v022-d568`. Uses a fork of vLLM with SM12x DSV4 support (spar
 | Additional patches | `apply_dsv4_packed_mapping.py`, `patch_split_module_compat.py` (re-applied), `moe_config_e256/e512.json` (re-staged), `instanttensor` pip dep |
 | Image tag | `ghcr.io/bjk110/vllm-spark:dsv4-d568` (**on GHCR**, digest `sha256:b18da2a0`) |
 
-Verified preset: `models/dsv4-flash-fp8-tp2.env` — DeepSeek-V4-Flash dual-rdma TP=2, 200K ctx, fp8 KV cache + Lightning Indexer.
+Verified preset: `presets/dsv4-flash-fp8-tp2.env` — DeepSeek-V4-Flash dual-rdma TP=2, 200K ctx, fp8 KV cache + Lightning Indexer.
 
 **Full guide + 9-way benchmark sweep + MTP/backend analysis**: [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md).
 
@@ -135,7 +135,7 @@ Earlier images and the v022 intermediate layers are documented separately:
 
 | Stack | When to use | Details |
 |---|---|---|
-| `v021-ngc2603` / `v021-tq` | Production default for most presets (`models/*.env` images column = `v021-ngc2603`); required for `*-tq` (TurboQuant) presets | [`docs/stack-v021.md`](docs/stack-v021.md) |
+| `v021-ngc2603` / `v021-tq` | Production default for most presets (`presets/*.env` images column = `v021-ngc2603`); required for `*-tq` (TurboQuant) presets | [`docs/stack-v021.md`](docs/stack-v021.md) |
 | `v022-vllm021` / `v022-tx581` / `v022-{fi0611,ngc2604,trt37,nccl234}` | v022 stack intermediates (local-build only, kept for bisection / rollback against `v022-d568`) | [`docs/stack-v022.md`](docs/stack-v022.md) |
 | `v019-ngc2603` | Archived (vLLM 0.19.1 + Gemma 4 + async scheduling). Historical reproduction only. | [`docs/stack-v019.md`](docs/stack-v019.md) |
 
@@ -143,8 +143,8 @@ See [`CHANGELOG.md`](CHANGELOG.md) for release-by-release detail and [`PATCH_STA
 
 ## Supported Models
 
-The table below covers the currently shipped presets in `models/`. For the
-complete list, see [`models/`](models/) — each preset file documents its own
+The table below covers the currently shipped presets in `presets/`. For the
+complete list, see [`presets/`](presets/) — each preset file documents its own
 recipe / image / topology in its header comment.
 
 | Preset | Model | Quantization / dtype | Topology | TP | Image | Notes |
@@ -172,10 +172,10 @@ recipe / image / topology in its header comment.
 
 ## Quick Start
 
-> **Note**: The `models/` directory in this repository contains `.env` preset files only.
+> **Note**: The `presets/` directory contains `.env` preset files only.
 > It does **not** store actual model weights. Keep model weights outside the repository
 > and point `MODEL_PATH` / `MODEL_CONTAINER_PATH` to the correct host/container paths.
-> See [`models/README.md`](models/README.md) for details.
+> See [`presets/README.md`](presets/README.md) for details.
 
 ### 0. Get the Docker Image
 
@@ -194,7 +194,7 @@ docker pull ghcr.io/bjk110/vllm-spark:v021-tq
 docker pull ghcr.io/bjk110/vllm-spark:v022-d568
 
 # DeepSeek-V4-Flash derivative image (FROM v022-d568, with SM12x DSV4 support).
-# DSV4-specific only. See models/dsv4-flash-fp8-tp2.env and docs/dsv4-flash-tp2.md.
+# DSV4-specific only. See presets/dsv4-flash-fp8-tp2.env and docs/dsv4-flash-tp2.md.
 docker pull ghcr.io/bjk110/vllm-spark:dsv4-d568
 ```
 
@@ -253,10 +253,10 @@ Dual-Spark presets ship with `CLUSTER_MODE=dual-rdma` and TP=2.
 
 ```bash
 # Single Spark (no RDMA needed):
-cp models/redhatai-122b-nvfp4.env .env
+cp presets/redhatai-122b-nvfp4.env .env
 
 # Dual Spark + RoCE:
-cp models/qwen3.5-397b-int4.env .env
+cp presets/qwen3.5-397b-int4.env .env
 ```
 
 Edit `MODEL_PATH` in `.env` to point to your local model weights directory:
@@ -307,7 +307,7 @@ For `dual-rdma` deployments, the entrypoint chooses how the two nodes coordinate
 Switching is a single env line — same image, same compose, just restart:
 
 ```
-# in models/<preset>.env
+# in presets/<preset>.env
 DISTRIBUTED_BACKEND=mp   # or ray (default)
 MASTER_PORT=29501        # only used in mp mode
 ```
@@ -431,7 +431,7 @@ vllm-spark/
 │       └── Dockerfile.v022(-fi0611/-ngc2604/-tx581/-trt37/-nccl234)  # v022 stack intermediates
 ├── CHANGELOG.md                   # Release-by-release history
 ├── PATCH_STATUS.md                # Per-patch purpose / status / removal condition
-├── models/                        # .env preset files for model-serving configs (not model weights — see models/README.md)
+├── presets/                       # .env preset files for model-serving configs (not model weights — see presets/README.md)
 │   ├── gemma4-26b-a4b.env             # Gemma 4 26B MoE (single, TP1)
 │   ├── gemma4-26b-a4b-tq.env          # Gemma 4 + TurboQuant KV (single, TP1)
 │   ├── redhatai-122b-nvfp4.env        # RedHatAI NVFP4 (single, TP1)
@@ -782,7 +782,7 @@ docker compose \
   --profile worker down || true
 
 # Reboot to reclaim GB10 UMA memory, then start the normal dsv4-d568 path:
-# docker compose --env-file models/dsv4-flash-fp8-tp2.env --profile worker|head up -d
+# docker compose --env-file presets/dsv4-flash-fp8-tp2.env --profile worker|head up -d
 ```
 
 #### Manual fallback path
@@ -830,7 +830,7 @@ echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 > upstream Qwen3.6 weights on a single DGX Spark. It is **not** a base-stack change —
 > the main image, vLLM, FlashInfer, transformers, and CUDA versions are unchanged.
 
-- **Preset file**: `models/qwen3.6-35b-fp16.env`
+- **Preset file**: `presets/qwen3.6-35b-fp16.env`
 - **Scope**: `single DGX Spark / TP=1` (designed to fit one GB10 node with headroom)
 - **Model**: original Qwen3.6-35B-A3B weights (bf16/fp16, **not quantized**).
   `--kv-cache-dtype fp8` is an optional KV-cache-only optimization and does **not**
@@ -864,7 +864,7 @@ rsync -av <source_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/ \
 
 # On <head_node>: materialize the preset and substitute the local model root
 cd <repo>
-cp models/qwen3.6-35b-fp16.env .env
+cp presets/qwen3.6-35b-fp16.env .env
 sed -i "s|\[model_path\]|<spark_model_dir>/Qwen|" .env
 ```
 
@@ -897,10 +897,10 @@ this table when you need to reproduce or roll back to a specific image.
 
 | Image tag | Git ref (commit) | Stack | Notes |
 |---|---|---|---|
-| `dsv4-d568` (active, DSV4-specific) | current HEAD | `FROM v022-d568` + SM12x DSV4 vLLM patches | DeepSeek-V4-Flash primary path; used only by `models/dsv4-flash-fp8-tp2.env`. See [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md). |
+| `dsv4-d568` (active, DSV4-specific) | current HEAD | `FROM v022-d568` + SM12x DSV4 vLLM patches | DeepSeek-V4-Flash primary path; used only by `presets/dsv4-flash-fp8-tp2.env`. See [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md). |
 | `v022-d568` (active, general base) | current HEAD | NGC 26.04 + vLLM 0.21.0+PR#35568 + FlashInfer 0.6.11.post3 + Triton 3.7.0 + NCCL 2.30.4 + Transformers 5.8.1 | General production base for v022-series presets and the dsv4-d568 derivative. |
 | `v021-tq` | `3070f9a` | base + TQ patches + Inductor-graph-partition fix | Required for any `*-tq.env` preset (production default for TurboQuant presets). |
-| `v021-ngc2603` | `8623187` | vLLM `95995bbe` + FlashInfer `v0.6.9` | Production default for non-TQ presets (most `models/*.env` files reference this). |
+| `v021-ngc2603` | `8623187` | vLLM `95995bbe` + FlashInfer `v0.6.9` | Production default for non-TQ presets (most `presets/*.env` files reference this). |
 | `v020-ngc2603` (superseded) | `8efdf0b` (base-refresh-20260417 base bump) | vLLM `978a4462` + FlashInfer `v0.6.8` | Superseded by v021; only kept on GHCR for historical reproduction. |
 | `v019-ngc2603` (superseded) | `7736716` (Gemma 4 + vLLM 0.19.1 upgrade) | vLLM `0.19.1` `a7d79fa` + FlashInfer `v0.6.7.post3` | Superseded by v021. |
 | `v018-ngc2603` (archive) | `feb5993` (NGC 26.03 source build intro) — Git tag `v018-ngc2603` exists | vLLM `0.18.3` `c494977` + FlashInfer `v0.6.7` | The only currently-tagged release in Git. |

@@ -22,7 +22,7 @@ The foundation of the series. Built from `dockerfiles/legacy/Dockerfile.v022`, p
 to the vLLM v0.21.0 release tag (`ad7125a4`). Three upstream-absorbed runtime
 patches drop out of the build (`aot_cache_fix.patch`,
 `fastsafetensors_natural_sort.patch`, `nogds_force.patch`). Preset overrides
-live alongside the base preset as `models/*-v022.env`. Use this image to
+live alongside the base preset as `presets/*-v022.env`. Use this image to
 validate behavior on the released v0.21.0 before bumping the default image
 off `95995bbe`.
 
@@ -40,8 +40,8 @@ off `95995bbe`.
 
 | Override env | Model | Notes |
 |---|---|---|
-| `models/wangzhang-122b-abliterix-fp8-tp2-v022.env` | wangzhang/Qwen3.5-122B-A10B-abliterix (FP8) | text-only shim, dual-rdma TP=2 |
-| `models/qwen3.6-27b-prismascout-nvfp4-tp2-v022.env` | rdtand/Qwen3.6-27B-PrismaSCOUT-Blackwell-NVFP4-BF16 | NVFP4 mixed-precision, **adds `--mm-encoder-tp-mode data`** so the ViT MLP fc2 (`hidden=4304`) is not split across TP=2 (would yield K=2152, breaking NVFP4 GEMM K-align(16)); MTP `n=3`, dual-rdma TP=2 |
+| `presets/wangzhang-122b-abliterix-fp8-tp2-v022.env` | wangzhang/Qwen3.5-122B-A10B-abliterix (FP8) | text-only shim, dual-rdma TP=2 |
+| `presets/qwen3.6-27b-prismascout-nvfp4-tp2-v022.env` | rdtand/Qwen3.6-27B-PrismaSCOUT-Blackwell-NVFP4-BF16 | NVFP4 mixed-precision, **adds `--mm-encoder-tp-mode data`** so the ViT MLP fc2 (`hidden=4304`) is not split across TP=2 (would yield K=2152, breaking NVFP4 GEMM K-align(16)); MTP `n=3`, dual-rdma TP=2 |
 
 ### Caveat — AOT compile cache poisoning across config changes
 

@@ -68,7 +68,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | `dockerfiles/active/Dockerfile.dsv4-d568` | Active build — primary DeepSeek-V4-Flash image; on GHCR. **Currently frozen.** |
 | `dockerfiles/active/` | Current active build targets; see `dockerfiles/README.md` |
 | `dockerfiles/legacy/` | Historical, intermediate, and specialized Dockerfile variants; see `dockerfiles/README.md` |
-| `models/` | `.env` model-serving preset files only — **not** actual model weights; see `models/README.md` |
+| `presets/` | `.env` model-serving preset files only — **not** actual model weights; see `presets/README.md`. Previously named `models/`; container-internal `/models/...` mount paths are unrelated and unchanged. |
 | `patches/common/` | Common runtime/build compatibility patches; see `patches/README.md` |
 | `patches/sm121/` | SM121 / Blackwell / FP8 patches; see `patches/README.md` |
 | `patches/dsv4/` | DeepSeek-V4 specific patches and MoE config files; see `patches/README.md` |
@@ -98,6 +98,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | **Stage 3-A** | Entrypoint scripts moved from repo root to `entrypoints/`; `docker-compose.yml` default updated to `./entrypoints/entrypoint.sh`; `.env.unholy-fusion` updated to `./entrypoints/entrypoint.unholy.sh`; `entrypoints/README.md` added |
 | **Stage 3-B** | Dockerfiles reorganized: active builds moved to `dockerfiles/active/`, legacy/intermediate variants moved to `dockerfiles/legacy/`; `dockerfiles/README.md` rewritten; build commands updated in `README.md` and `docs/` |
 | **Stage 3-C** | `patches/` split into purpose-based subdirectories (`common/`, `sm121/`, `dsv4/`, `qwen/`, `turboquant/`, `flashinfer/`, `archive/`, `unknown/`); all Dockerfile `COPY` references, entrypoint script paths, and documentation updated simultaneously |
+| **Stage 3-D** | `models/` renamed to `presets/`; all host-side preset path references updated in `README.md`, `docs/`, and `.env.example`. Container-internal `/models/...` mount paths are unrelated and unchanged. |
 
 ---
 
@@ -109,7 +110,6 @@ README links in the same change.
 
 | Deferred item | Notes |
 |---|---|
-| Rename `models/` to `presets/` or `model-presets/` | Backward-compatible rename; requires updating all `models/<preset>.env` references in README, entrypoint, and compose |
 | Reorganize benchmark outputs into `benchmarks/summary/` and `benchmarks/raw/` | Documentation-level impact only |
 | Add CI checks for compose config syntax and shell script syntax | Low-risk addition; `bash -n` for scripts, `docker compose config` for compose |
 
@@ -121,5 +121,5 @@ README links in the same change.
 - Dockerfiles under `dockerfiles/` are historical or intermediate — not active build targets.
 - Unreferenced patches should not be deleted solely because `grep` finds no references;
   they may support bisect, forum reproduction, or manual recovery flows.
-- `.env` preset files in `models/` should be reviewed before use — `MODEL_PATH` must
+- `.env` preset files in `presets/` should be reviewed before use — `MODEL_PATH` must
   point to the correct local weight directory.

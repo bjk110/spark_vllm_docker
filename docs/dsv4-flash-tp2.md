@@ -21,7 +21,7 @@ NVIDIA 개발자 포럼 [DeepSeek V4 Flash official FP8 running across 2× DGX S
 | GPU mem util | 0.85 |
 | 운영 best `MAX_NUM_SEQS` | **4** (forum 기본 2, 우리 환경 4 가 peak) |
 | Compose 파일 | `docker-compose.yml` (공용) |
-| Env 프리셋 | `models/dsv4-flash-fp8-tp2.env` |
+| Env 프리셋 | `presets/dsv4-flash-fp8-tp2.env` |
 | 이미지 | `ghcr.io/bjk110/vllm-spark:dsv4-d568` |
 | 컨테이너 | `vllm-spark-head` (head 노드) / `vllm-spark-worker` (worker 노드) |
 
@@ -88,7 +88,7 @@ ghcr.io/bjk110/vllm-spark:dsv4-d568
 | 호스트 (양 spark) | `${MODEL_PATH}` 환경변수가 가리키는 디렉토리 |
 | 컨테이너 내부 | `/models/DeepSeek-V4-Flash` (`${MODEL_CONTAINER_PATH}`) |
 
-호스트 경로는 [`models/dsv4-flash-fp8-tp2.env`](../models/dsv4-flash-fp8-tp2.env) 의 `MODEL_PATH` 로 지정. compose 가 그 디렉토리를 컨테이너의 `/models/DeepSeek-V4-Flash` 에 read-only 바인드.
+호스트 경로는 [`presets/dsv4-flash-fp8-tp2.env`](../presets/dsv4-flash-fp8-tp2.env) 의 `MODEL_PATH` 로 지정. compose 가 그 디렉토리를 컨테이너의 `/models/DeepSeek-V4-Flash` 에 read-only 바인드.
 
 ### 2.2. 디스크 요구사항
 
@@ -124,7 +124,7 @@ sudo sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
 
 ### 3.3. MP 모드 (Ray Compiled DAG 우회용)
 
-`models/dsv4-flash-fp8-tp2.env` 에서:
+`presets/dsv4-flash-fp8-tp2.env` 에서:
 ```
 DISTRIBUTED_BACKEND=mp
 MASTER_PORT=29501
@@ -189,7 +189,7 @@ This may lead to suboptimal performance. Consider increasing max_num_batched_tok
 
 ### 4.4. `--attention_config.use_fp4_indexer_cache=True` 는 GB10 에서 활성화 불가
 
-jasl/vllm 의 `vllm/v1/attention/backends/mla/indexer.py` 가 이 옵션을 시도하면 *"requires Blackwell datacenter GPUs"* 검증을 수행. GB10 (SM121, consumer Blackwell) 은 datacenter 클래스가 아니므로 이 가드에 걸려 활성화 실패. 부팅 로그가 자동으로 `Using FP8 indexer cache for Lightning Indexer` 로 fallback 되는 것이 정상 동작. 따라서 `models/dsv4-flash-fp8-tp2.env` 에 이 플래그를 **추가하지 않음**. 환경변수 `VLLM_TRITON_MLA_SPARSE=1` 가 GB10 sparse MLA 활성화 경로의 핵심.
+jasl/vllm 의 `vllm/v1/attention/backends/mla/indexer.py` 가 이 옵션을 시도하면 *"requires Blackwell datacenter GPUs"* 검증을 수행. GB10 (SM121, consumer Blackwell) 은 datacenter 클래스가 아니므로 이 가드에 걸려 활성화 실패. 부팅 로그가 자동으로 `Using FP8 indexer cache for Lightning Indexer` 로 fallback 되는 것이 정상 동작. 따라서 `presets/dsv4-flash-fp8-tp2.env` 에 이 플래그를 **추가하지 않음**. 환경변수 `VLLM_TRITON_MLA_SPARSE=1` 가 GB10 sparse MLA 활성화 경로의 핵심.
 
 ### 4.5. Page cache 점유로 인한 GPU 메모리 부족
 
@@ -404,7 +404,7 @@ NVIDIA 개발자 포럼 [post #53 Serapis](https://forums.developer.nvidia.com/t
 - **`bt=12288` 은 평형 (saturation 도달)** (run E). 4192 → 8192 단계의 +29% 와 달리 8192 → 12288 은 -2% (σ 범위). vLLM 의 "Consider increasing" hint 는 bt=4192 시점 경고였고 8192 가 이미 sweet spot.
 - **Decode peak 는 모든 run 에서 ≈40 t/s** (GPU-bound 영역). 본 섹션의 변경 후보들은 모두 c=4 admission ceiling 자체를 깰 수 없음 — admission 자체를 확장한 [설정 #10](#9-decode-최고-기록-설정-10--max_num_seqs8-2026-05-22) 만이 decode 60+ t/s 영역을 열었음.
 
-→ 네 변경 모두 `models/dsv4-flash-fp8-tp2.env` 와 `docker-compose.yml` 에 적용하지 않음. 본 negative finding 은 동일 시도 재발 방지용 기록.
+→ 네 변경 모두 `presets/dsv4-flash-fp8-tp2.env` 와 `docker-compose.yml` 에 적용하지 않음. 본 negative finding 은 동일 시도 재발 방지용 기록.
 
 ### 10.4. 결과 파일
 
@@ -423,7 +423,7 @@ NVIDIA 개발자 포럼 [post #53 Serapis](https://forums.developer.nvidia.com/t
 ### 11.1. 빌드/배포
 - spark02 빌드 → 이미지 `vllm-spark:dsv4-d568-dad6ff8` (31.6 GB), spark01 로 docker save | ssh docker load 전송 (~27분)
 - Dockerfile 변경: `git fetch origin ${VLLM_BRANCH}` → `git fetch origin ${VLLM_COMMIT}` (jasl 브랜치 force-rebase 대응)
-- 양 노드 `.env` 및 `models/dsv4-flash-fp8-tp2.env` 의 `VLLM_IMAGE` 갱신
+- 양 노드 `.env` 및 `presets/dsv4-flash-fp8-tp2.env` 의 `VLLM_IMAGE` 갱신
 - Dry-run import 검증 (`docker run --rm` 안에서 `import vllm` + `DeepseekV4ForCausalLM` + `EngineCoreProc` + MTP + FlashInfer) 모두 통과 → 빌드 결함 아님
 
 ### 11.2. 실패 모드

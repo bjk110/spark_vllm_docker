@@ -8,7 +8,7 @@ It does **not** contain actual Hugging Face model weights.
 ## What these files are
 
 Each `.env` file in this directory defines model-specific runtime settings passed to
-`docker compose --env-file models/<preset>.env`. Typical settings include:
+`docker compose --env-file presets/<preset>.env`. Typical settings include:
 
 - `MODEL_PATH` — host path to the model weight directory
 - `MODEL_CONTAINER_PATH` — container-internal mount point
@@ -33,10 +33,10 @@ Point the preset to that location by editing `MODEL_PATH` in the chosen `.env` f
 ```bash
 # Edit directly:
 sed -i 's|/path/to/model|/mnt/data/llm-models/deepseek-ai/DeepSeek-V4-Flash|' \
-  models/dsv4-flash-fp8-tp2.env
+  presets/dsv4-flash-fp8-tp2.env
 
 # Or copy to .env and edit there:
-cp models/dsv4-flash-fp8-tp2.env .env
+cp presets/dsv4-flash-fp8-tp2.env .env
 # then edit MODEL_PATH in .env
 ```
 
@@ -44,15 +44,17 @@ cp models/dsv4-flash-fp8-tp2.env .env
 
 ```bash
 # Launch with a preset directly (no copy needed):
-docker compose --env-file models/dsv4-flash-fp8-tp2.env --profile head up -d
+docker compose --env-file presets/dsv4-flash-fp8-tp2.env --profile head up -d
 
 # Or copy to .env and use the default:
-cp models/redhatai-122b-nvfp4.env .env
+cp presets/redhatai-122b-nvfp4.env .env
 docker compose --profile head up -d
 ```
 
 ## Directory name
 
-The directory is named `models/` for backward compatibility with existing docs and
-scripts. The name may change to `presets/` or `model-presets/` in a future cleanup,
-but no rename is happening in the current release.
+This directory was previously named `models/`. It was renamed to `presets/` in
+Stage 3-D to avoid confusion with actual model weights and container-internal
+`/models/...` mount paths. Container-internal paths such as
+`MODEL_CONTAINER_PATH=/models/DeepSeek-V4-Flash` are unrelated to this directory
+and remain unchanged.
