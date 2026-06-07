@@ -733,4 +733,8 @@ Maintainer-only Git tag and archived branch notes are documented in
 
 ## License
 
-Configuration files are provided as-is for reference. Models are subject to their respective licenses ([Qwen License](https://huggingface.co/Qwen/Qwen3.5-397B-A17B)).
+The source code, Dockerfiles, scripts, presets, and documentation in this repository are licensed under the Apache License 2.0. See [`LICENSE`](LICENSE).
+
+This repository does **not** distribute model weights. Presets may reference upstream models, but users are responsible for obtaining model weights and complying with the applicable upstream model licenses and terms.
+
+Container images and dependencies remain governed by their respective upstream licenses and terms. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

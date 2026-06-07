@@ -1,6 +1,6 @@
 # Repository Status and Cleanup Roadmap
 
-Last updated: 2026-06-07 (Stage 3-H).
+Last updated: 2026-06-07 (Stage 3-I).
 
 This document summarises the current recommended paths, major directory roles,
 completed documentation cleanup stages, and intentionally deferred structural work.
@@ -60,6 +60,21 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 
 ---
 
+## License scope
+
+The root [`LICENSE`](../LICENSE) (Apache License 2.0) applies to this repository's
+own source code, Dockerfiles, scripts, presets, and documentation.
+
+It does **not** apply to model weights, container base images, or upstream
+dependencies. [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) documents
+third-party/container/model scope. This repository does not distribute model
+weights.
+
+This is not legal advice — see `THIRD_PARTY_NOTICES.md` and the `## License`
+section in `README.md` for the practical scope summary.
+
+---
+
 ## Directory roles
 
 | Path | Current role |
@@ -108,6 +123,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | **Stage 3-F** | Detailed v022 stack validation notes and historical benchmark tables (Gemma 4, Qwen3.5 122B, 397B INT4, PrismaQuant, TurboQuant KV sweep) extracted from `README.md` into `docs/model-serving-validation-history.md`; `README.md` replaced with concise summaries and links. |
 | **Stage 3-G** | Out-of-scope quantization utility (`quantize/`) removed from this serving repository and kept out of scope; quantization tooling is intentionally not part of this repo's focus on DGX Spark / GB10 vLLM container serving. |
 | **Stage 3-H** | README image/Git tag management details extracted into `docs/images.md` and `docs/release-management.md`; `README.md` replaced with a concise current-paths summary and links (docs-only — no runtime, image, or tag changes). |
+| **Stage 3-I** | License scope clarified: root `LICENSE` (Apache-2.0) applies to repository-owned source/config/docs; third-party components and model weights remain under upstream terms. `THIRD_PARTY_NOTICES.md` added; misleading Qwen-license reference in `README.md` replaced. |
 
 ---
 

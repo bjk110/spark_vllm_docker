@@ -58,3 +58,9 @@ Stage 3-D to avoid confusion with actual model weights and container-internal
 `/models/...` mount paths. Container-internal paths such as
 `MODEL_CONTAINER_PATH=/models/DeepSeek-V4-Flash` are unrelated to this directory
 and remain unchanged.
+
+## License and model weights
+
+Preset files in this directory are configuration references only.
+
+This repository does not distribute model weights. Users are responsible for obtaining model weights and complying with the applicable upstream model licenses and terms.
