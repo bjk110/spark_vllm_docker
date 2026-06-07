@@ -130,6 +130,12 @@ The table below covers the currently shipped presets in `presets/`. For the
 complete list, see [`presets/`](presets/) — each preset file documents its own
 recipe / image / topology in its header comment.
 
+> Some preset notes below name the script used to produce a given checkpoint
+> (e.g. `quantize_qwen35_abliterix_fp8_direct.py`, `convert_bf16_to_nvfp4.py`)
+> for provenance only. Quantization tooling is intentionally out of scope for
+> this public serving repository — this repository focuses on DGX Spark / GB10
+> vLLM container serving, presets, runtime patches, and validation notes.
+
 | Preset | Model | Quantization / dtype | Topology | TP | Image | Notes |
 |---|---|---|---|---|---|---|
 | `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE (26B/4B active) | single | 1 | v021-ngc2603 | — |

@@ -1,6 +1,6 @@
 # Repository Status and Cleanup Roadmap
 
-Last updated: 2026-06-06 (Stage 3-F).
+Last updated: 2026-06-07 (Stage 3-G).
 
 This document summarises the current recommended paths, major directory roles,
 completed documentation cleanup stages, and intentionally deferred structural work.
@@ -104,6 +104,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | **Stage 3-D** | `models/` renamed to `presets/`; all host-side preset path references updated in `README.md`, `docs/`, and `.env.example`. Container-internal `/models/...` mount paths are unrelated and unchanged. |
 | **Stage 3-E** | Benchmark folder scope clarified as raw artifacts only; interpreted benchmark analysis confirmed to remain under `docs/`; `benchmarks/README.md` updated to remove safe-default guidance and point to `docs/unholy-fusion-benchmark.md`. |
 | **Stage 3-F** | Detailed v022 stack validation notes and historical benchmark tables (Gemma 4, Qwen3.5 122B, 397B INT4, PrismaQuant, TurboQuant KV sweep) extracted from `README.md` into `docs/model-serving-validation-history.md`; `README.md` replaced with concise summaries and links. |
+| **Stage 3-G** | Out-of-scope quantization utility (`quantize/`) removed from this serving repository and kept out of scope; quantization tooling is intentionally not part of this repo's focus on DGX Spark / GB10 vLLM container serving. |
 
 ---
 
