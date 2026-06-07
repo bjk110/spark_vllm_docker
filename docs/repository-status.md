@@ -1,6 +1,6 @@
 # Repository Status and Cleanup Roadmap
 
-Last updated: 2026-06-07 (Stage 3-G).
+Last updated: 2026-06-07 (Stage 3-H).
 
 This document summarises the current recommended paths, major directory roles,
 completed documentation cleanup stages, and intentionally deferred structural work.
@@ -81,6 +81,8 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | `benchmarks/llama-benchy/` | Raw llama-benchy output files; filename legend in `benchmarks/llama-benchy/README.md` |
 | `docs/unholy-fusion-benchmark.md` | Interpreted unholy-fusion serving result analysis and DSV4 comparison |
 | `docs/model-serving-validation-history.md` | Historical stack validation notes and benchmark results (Gemma 4, Qwen3.5 122B, 397B INT4, PrismaQuant, TurboQuant KV sweep) — extracted from `README.md` |
+| `docs/images.md` | Container image tag history and image-to-preset/Git-ref mapping — extracted from `README.md` |
+| `docs/release-management.md` | Maintainer-only Git tag creation, branch structure, and archived branch notes — extracted from `README.md` |
 | `entrypoints/` | Container entrypoint scripts; selected via `ENTRYPOINT_FILE` in `docker-compose.yml`; see `entrypoints/README.md` |
 | `compose/` | Compose overrides (`docker-compose.unholy.yml`); referenced via `-f` flag |
 | `docs/` | Interpreted technical notes, stack guides, and status documents |
@@ -105,6 +107,7 @@ benchmark traceability. `jasl` is not a currently recommended operational path.
 | **Stage 3-E** | Benchmark folder scope clarified as raw artifacts only; interpreted benchmark analysis confirmed to remain under `docs/`; `benchmarks/README.md` updated to remove safe-default guidance and point to `docs/unholy-fusion-benchmark.md`. |
 | **Stage 3-F** | Detailed v022 stack validation notes and historical benchmark tables (Gemma 4, Qwen3.5 122B, 397B INT4, PrismaQuant, TurboQuant KV sweep) extracted from `README.md` into `docs/model-serving-validation-history.md`; `README.md` replaced with concise summaries and links. |
 | **Stage 3-G** | Out-of-scope quantization utility (`quantize/`) removed from this serving repository and kept out of scope; quantization tooling is intentionally not part of this repo's focus on DGX Spark / GB10 vLLM container serving. |
+| **Stage 3-H** | README image/Git tag management details extracted into `docs/images.md` and `docs/release-management.md`; `README.md` replaced with a concise current-paths summary and links (docs-only — no runtime, image, or tag changes). |
 
 ---
 

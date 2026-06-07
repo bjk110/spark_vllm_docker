@@ -716,58 +716,20 @@ memory pressure):
 4. Only if the above still fails: consider a TP=2 variant across both Spark
    nodes (no preset ships for this — this experimental preset is TP=1 only).
 
-## Image tags & Git tags
+## Container images
 
-GHCR image tags (`ghcr.io/bjk110/vllm-spark:<tag>`) and Git tags do **not**
-march in lockstep yet — only `v018-ngc2603` exists as a Git tag. The mapping
-below documents what each image tag corresponds to in the Git history. Use
-this table when you need to reproduce or roll back to a specific image.
+The current recommended serving paths are:
 
-| Image tag | Git ref (commit) | Stack | Notes |
-|---|---|---|---|
-| `dsv4-d568` (active, DSV4-specific) | current HEAD | `FROM v022-d568` + SM12x DSV4 vLLM patches | DeepSeek-V4-Flash primary path; used only by `presets/dsv4-flash-fp8-tp2.env`. See [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md). |
-| `v022-d568` (active, general base) | current HEAD | NGC 26.04 + vLLM 0.21.0+PR#35568 + FlashInfer 0.6.11.post3 + Triton 3.7.0 + NCCL 2.30.4 + Transformers 5.8.1 | General production base for v022-series presets and the dsv4-d568 derivative. |
-| `v021-tq` | `3070f9a` | base + TQ patches + Inductor-graph-partition fix | Required for any `*-tq.env` preset (production default for TurboQuant presets). |
-| `v021-ngc2603` | `8623187` | vLLM `95995bbe` + FlashInfer `v0.6.9` | Production default for non-TQ presets (most `presets/*.env` files reference this). |
-| `v020-ngc2603` (superseded) | `8efdf0b` (base-refresh-20260417 base bump) | vLLM `978a4462` + FlashInfer `v0.6.8` | Superseded by v021; only kept on GHCR for historical reproduction. |
-| `v019-ngc2603` (superseded) | `7736716` (Gemma 4 + vLLM 0.19.1 upgrade) | vLLM `0.19.1` `a7d79fa` + FlashInfer `v0.6.7.post3` | Superseded by v021. |
-| `v018-ngc2603` (archive) | `feb5993` (NGC 26.03 source build intro) — Git tag `v018-ngc2603` exists | vLLM `0.18.3` `c494977` + FlashInfer `v0.6.7` | The only currently-tagged release in Git. |
+| Path | Status | Config |
+|---|---|---|
+| `dsv4-d568` | Frozen primary DeepSeek-V4-Flash baseline | `presets/dsv4-flash-fp8-tp2.env` |
+| `unholy-fusion` | Experimental high-prefill path | `.env.unholy-fusion` + `compose/docker-compose.unholy.yml` |
 
-### Recommended Git tags to create
+Older image tags, Git commit mappings, and image history are documented in
+[`docs/images.md`](docs/images.md).
 
-Only `v018-ngc2603` is currently tagged. The maintainer can create the
-following tags to align Git tags with GHCR image tags. Run from a clean
-checkout of `main`; do **not** run blindly — verify the SHAs first.
-
-    git tag -a v019-ngc2603 7736716 -m "v019-ngc2603 — Gemma 4 + vLLM 0.19.1"
-    git tag -a v020-ngc2603 8efdf0b -m "v020-ngc2603 — base-refresh-20260417 (vLLM 978a4462, FlashInfer 0.6.8)"
-    git tag -a v021-ngc2603 8623187 -m "v021-ngc2603 — vLLM 95995bbe + FlashInfer v0.6.9"
-    git tag -a v021-tq      3070f9a -m "v021-tq — base + TurboQuant cherry-picks + codegen workaround"
-    git push origin v019-ngc2603 v020-ngc2603 v021-ngc2603 v021-tq
-
-**Verify commit before tagging.** The four SHAs above were extracted from
-`git log --oneline` at the time this README was last updated; if subsequent
-work reshuffles `main`, re-locate the boundary commits with:
-
-    git log --oneline --grep='base.refresh\|bump base.*v021\|0.19.1\|use Inductor graph partition'
-
-## Branch structure
-
-`main` is the only long-lived branch. All previously separate work
-streams (base stack refresh, TurboQuant rebase, single-Spark CLUSTER_MODE,
-unholy-fusion integration) have been merged in and their feature branches deleted.
-
-### Archived branch history
-
-The legacy TurboQuant branch is preserved as a tag for reference:
-
-- **`archive/feat-turboquant`**
-
-If needed, it can be restored with:
-
-```bash
-git checkout -b feat/turboquant archive/feat-turboquant
-```
+Maintainer-only Git tag and archived branch notes are documented in
+[`docs/release-management.md`](docs/release-management.md).
 
 ## License
 
