@@ -87,8 +87,7 @@ Ray is not used. Switching from `dsv4-d568` requires no file overwriting.
 
 For the safe-default values (`MAX_MODEL_LEN`, `MAX_NUM_SEQS`,
 `MAX_NUM_BATCHED_TOKENS`, `GPU_MEMORY_UTILIZATION`, `MTP_NUM_TOKENS`,
-`VLLM_USE_B12X_MOE`), see [Configuration](#configuration) above and
-[`docs/repository-status.md`](repository-status.md).
+`VLLM_USE_B12X_MOE`), see [Configuration](#configuration) above.
 
 ### Switching from dsv4-d568 → unholy-fusion (primary path)
 

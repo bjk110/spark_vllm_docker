@@ -11,7 +11,7 @@ document provides the detailed image-tag history.
 | Path | Status | Config | Image source |
 |---|---|---|---|
 | `dsv4-d568` | Frozen primary DeepSeek-V4-Flash baseline | `presets/dsv4-flash-fp8-tp2.env` | `ghcr.io/bjk110/vllm-spark:dsv4-d568` — see the image mapping below |
-| `unholy-fusion` | Experimental high-prefill path | `.env.unholy-fusion` + `compose/docker-compose.unholy.yml` | External/upstream image (`aidendle94/sparkrun-vllm-ds4-gb10:production-ready`) or its GHCR mirror — see `docs/repository-status.md` |
+| `unholy-fusion` | Experimental high-prefill path | `.env.unholy-fusion` + `compose/docker-compose.unholy.yml` | External/upstream image (`aidendle94/sparkrun-vllm-ds4-gb10:production-ready`) or its GHCR mirror — see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md) |
 
 ## Image tag mapping
 
@@ -22,7 +22,7 @@ this table when you need to reproduce or roll back to a specific image.
 
 | Image tag | Git ref (commit) | Stack | Notes |
 |---|---|---|---|
-| `dsv4-d568` (active, DSV4-specific) | repository HEAD at the time this mapping was last reviewed | `FROM v022-d568` + SM12x DSV4 vLLM patches | DeepSeek-V4-Flash primary path; used only by `presets/dsv4-flash-fp8-tp2.env`. See [`docs/dsv4-flash-tp2.md`](dsv4-flash-tp2.md). **Frozen** — see `docs/repository-status.md` directory-roles table. |
+| `dsv4-d568` (active, DSV4-specific) | repository HEAD at the time this mapping was last reviewed | `FROM v022-d568` + SM12x DSV4 vLLM patches | DeepSeek-V4-Flash primary path; used only by `presets/dsv4-flash-fp8-tp2.env`. See [`docs/dsv4-flash-tp2.md`](dsv4-flash-tp2.md). **Frozen.** |
 | `v022-d568` (active, general base) | repository HEAD at the time this mapping was last reviewed | NGC 26.04 + vLLM 0.21.0+PR#35568 + FlashInfer 0.6.11.post3 + Triton 3.7.0 + NCCL 2.30.4 + Transformers 5.8.1 | Forward-stack validation base for v022-series presets and the dsv4-d568 derivative. |
 | `v021-tq` | `3070f9a` | base + TQ patches + Inductor-graph-partition fix | Required for any `*-tq.env` preset (legacy preset base for TurboQuant presets). |
 | `v021-ngc2603` | `8623187` | vLLM `95995bbe` + FlashInfer `v0.6.9` | Retained for older presets — most non-TQ `presets/*.env` files reference this. |

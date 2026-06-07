@@ -7,8 +7,7 @@ series, and older/legacy stacks.
 
 The top-level [`README.md`](../README.md) only lists the current recommended
 serving paths — see [`README.md` § Current serving paths](../README.md#current-serving-paths)
-for the short summary and [`docs/repository-status.md`](repository-status.md)
-for the current recommended-paths roadmap.
+for the short summary.
 
 ## Current stack summary
 
@@ -92,6 +91,6 @@ See [`CHANGELOG.md`](../CHANGELOG.md) for release-by-release detail and [`PATCH_
 - `dsv4-d568` is used only by `presets/dsv4-flash-fp8-tp2.env`.
 - `unholy-fusion` serves the same model/preset via its own override path
   (`.env.unholy-fusion` + `compose/docker-compose.unholy.yml`) rather than by
-  copying a preset to `.env` — see [`docs/repository-status.md`](repository-status.md).
+  copying a preset to `.env` — see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md).
 
 For exact image tags, digests, and Git-ref → image mapping, see [`docs/images.md`](images.md).

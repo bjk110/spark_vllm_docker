@@ -14,9 +14,6 @@ Pick the topology by setting `CLUSTER_MODE=single` (default) or
 For release-by-release detail and patch-by-patch status, see
 [`CHANGELOG.md`](CHANGELOG.md) and [`PATCH_STATUS.md`](PATCH_STATUS.md).
 
-For a high-level overview of the current repository state and deferred cleanup roadmap,
-see [`docs/repository-status.md`](docs/repository-status.md).
-
 ## Hardware and topology
 
 | Topology | Node | Role | GPU | Memory | Interconnect | Backend |
@@ -300,7 +297,6 @@ vllm-spark/
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 experimental (single, TP1)
 ├── .env.unholy-fusion             # unholy-fusion config (MAX_NUM_SEQS=4, mp backend, B12X_MOE=1)
 ├── docs/                          # Technical notes, stack guides, and status documents
-│   ├── repository-status.md          # Current recommended paths + cleanup roadmap
 │   ├── dsv4-flash-tp2.md             # DSV4-Flash: build, recipe, 9-way benchmark sweep
 │   └── unholy-fusion-benchmark.md    # Interpreted unholy-fusion serving result analysis and DSV4 comparison
 ├── benchmarks/                    # Raw benchmark artifacts and experiment outputs; see benchmarks/README.md
@@ -425,7 +421,6 @@ echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 
 | Document | Covers |
 |---|---|
-| [`docs/repository-status.md`](docs/repository-status.md) | Current recommended serving paths, directory roles, and the cleanup-stage roadmap |
 | [`docs/software-stack.md`](docs/software-stack.md) | Full image/stack lineage: `dsv4-d568`, `v022-d568`, `v021` series, and legacy stacks, with component versions and digests |
 | [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md) | DeepSeek-V4-Flash (`dsv4-d568`) build, deployment recipe, and 9-way benchmark sweep |
 | [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md) | `unholy-fusion` configuration, switching procedure, operational limits, and benchmark comparison vs `dsv4-d568` |
