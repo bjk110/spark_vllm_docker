@@ -3,7 +3,7 @@
 vLLM 0.19.1 with Gemma 4 support and async scheduling. Transformers 5.5.0.
 TTFT improved ~2x over v018. **Superseded by**
 [v021-ngc2603](stack-v021.md) (vLLM main `95995bbe` + TurboQuant + FlashInfer
-v0.6.9), and further by [v022-d568](../README.md#software-stack) on the
+v0.6.9), and further by [v022-d568](software-stack.md) on the
 forward-stack lineage. Kept for historical reproduction only.
 
 | Component | Version |

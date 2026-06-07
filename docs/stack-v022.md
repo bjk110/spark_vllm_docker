@@ -2,7 +2,7 @@
 
 The v022 series is the NGC 26.04 / vLLM v0.21.0 forward-stack. The final layer,
 `v022-d568`, is the current main image and is documented in the top-level
-[README](../README.md#software-stack). The intermediate variants here are
+[README → Current serving paths](../README.md#current-serving-paths) and [docs/software-stack.md](software-stack.md). The intermediate variants here are
 **local-build only** (kept on a build node for bisection / rollback;
 not pushed to GHCR).
 

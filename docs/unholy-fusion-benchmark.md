@@ -61,8 +61,8 @@ MAX_NUM_SEQS=4                # confirmed upper limit; ≥5 causes startup hang
 MAX_NUM_BATCHED_TOKENS=8192
 MAX_MODEL_LEN=262144          # confirmed upper limit; 524288 crashes at d≥131072
 MTP_NUM_TOKENS=1          # speculative decoding depth (1=best, see §MTP)
-VLLM_USE_B12X_MOE=1
-VLLM_USE_BREAKABLE_CUDAGRAPH=0
+VLLM_USE_B12X_MOE=1                  # required for the ~2x prefill speedup vs dsv4-d568 (see Comparison below)
+VLLM_USE_BREAKABLE_CUDAGRAPH=0       # required — setting this to 1 produces garbled output
 VLLM_SKIP_INIT_MEMORY_CHECK=1
 NCCL_NET=IB
 NCCL_CUMEM_ENABLE=0
@@ -76,6 +76,114 @@ JIT caches are persisted via volume mounts:
 - `./cache/unholy-jit:/cache/jit` — vLLM compile cache root
 
 With warm cache, model startup takes ~5 min (weight load ~60 s, profiling ~17 s).
+
+---
+
+## Switching to/from unholy-fusion
+
+unholy-fusion uses its own entrypoint (`entrypoints/entrypoint.unholy.sh`) and config
+(`.env.unholy-fusion`). The entrypoint hardcodes the `mp` (SPMD) backend —
+Ray is not used. Switching from `dsv4-d568` requires no file overwriting.
+
+For the safe-default values (`MAX_MODEL_LEN`, `MAX_NUM_SEQS`,
+`MAX_NUM_BATCHED_TOKENS`, `GPU_MEMORY_UTILIZATION`, `MTP_NUM_TOKENS`,
+`VLLM_USE_B12X_MOE`), see [Configuration](#configuration) above and
+[`docs/repository-status.md`](repository-status.md).
+
+### Switching from dsv4-d568 → unholy-fusion (primary path)
+
+> **GB10 UMA note**: stopping a vLLM container leaves ~100 GiB stuck in the NVIDIA driver.
+> `rmmod nvidia_uvm` does **not** free it — a full reboot is required. Stop first, then reboot.
+
+The compose override uses `compose/docker-compose.unholy.yml` and `--env-file .env.unholy-fusion`.
+No files need to be copied or overwritten. The override sets `ENTRYPOINT_FILE=./entrypoints/entrypoint.unholy.sh`
+which the base compose resolves without touching `entrypoints/entrypoint.sh` or `.env`.
+
+```bash
+# 1. Stop existing containers on both nodes
+# On spark01:
+docker compose --profile head down || true
+# On spark02:
+docker compose --profile worker down || true
+
+# 2. Reboot both nodes to recover GB10 UMA memory
+sudo reboot
+```
+
+After both nodes are back up:
+
+```bash
+# 3. On spark02 — start worker first
+docker compose \
+  -f docker-compose.yml \
+  -f compose/docker-compose.unholy.yml \
+  --env-file .env.unholy-fusion \
+  --profile worker up -d
+
+# 4. On spark01 — start head
+docker compose \
+  -f docker-compose.yml \
+  -f compose/docker-compose.unholy.yml \
+  --env-file .env.unholy-fusion \
+  --profile head up -d
+
+# 5. Verify on spark01
+curl http://localhost:8000/health
+docker logs vllm-spark-head 2>&1 | grep "Application startup complete"
+docker logs vllm-spark-worker 2>&1 | grep -E "startup|ready|error" | tail -5
+# Or follow live:
+# docker logs -f vllm-spark-head
+```
+
+> **Startup time**: ~5 min with warm JIT cache (~60 s weight load + ~17 s profiling).
+> Cold cache (first boot after image change) is significantly longer due to JIT recompilation.
+
+#### Manual fallback only
+
+If your Docker Compose version does not support the `${ENTRYPOINT_FILE:-}` variable in volume specs,
+set `ENTRYPOINT_FILE` explicitly in your shell before running compose, or export it in `.env`:
+
+```env
+ENTRYPOINT_FILE=./entrypoints/entrypoint.unholy.sh
+```
+
+Do not overwrite entrypoint files. If a copy-based workaround is unavoidable, use the new paths
+and restore immediately after testing (see "Switching back" below).
+
+### Switching back to dsv4-d568
+
+#### Primary override path
+
+No files were modified, so simply stop the unholy containers and restart with the normal command:
+
+```bash
+# On spark01:
+docker compose \
+  -f docker-compose.yml \
+  -f compose/docker-compose.unholy.yml \
+  --profile head down || true
+
+# On spark02:
+docker compose \
+  -f docker-compose.yml \
+  -f compose/docker-compose.unholy.yml \
+  --profile worker down || true
+
+# Reboot to reclaim GB10 UMA memory, then start the normal dsv4-d568 path:
+# docker compose --env-file presets/dsv4-flash-fp8-tp2.env --profile worker|head up -d
+```
+
+#### Manual fallback path
+
+If the compose override path was used (no files were modified), no restore is needed — just start
+the normal dsv4-d568 containers as shown above.
+
+> **When to use unholy-fusion**: single or few long-context streams (`c=1–2`) where prefill
+> throughput matters. For workloads requiring more than 262k context, sustained high concurrency,
+> or operational stability, use `dsv4-d568`. See [Comparison vs. dsv4-d568](#comparison-vs-dsv4-d568)
+> below for the full condensed and detailed comparison data (including the "burst peak vs.
+> sustained decode" distinction — the comparison numbers are best-of-3 burst-peak first-token
+> rates, not sustained totals).
 
 ---
 

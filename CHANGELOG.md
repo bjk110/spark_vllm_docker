@@ -24,7 +24,7 @@ what users see (image tag, behavior, breaking changes) rather than every commit.
 - **Last-resort fallback**: `--enforce-eager` (disables torch.compile and
   CUDAGraph entirely). Hot-patch alternative: `patches/patch_codegen_fx_repr.py`
   (apply via `docker exec` — does not require image rebuild).
-- See [README.md → Troubleshooting](README.md#troubleshooting) for details.
+- See [docs/troubleshooting.md](docs/troubleshooting.md) for details.
 
 ## v021-ngc2603 / v021-tq — base stack bump (`8623187`, 2026-04-25)
 

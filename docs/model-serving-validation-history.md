@@ -164,6 +164,70 @@ Original bf16/fp16 weights, fp8 KV cache, 32K context, `spark01` single-node.
 
 TTFT c=1: ~746 ms (pp2048).
 
+### Qwen3.6-35B-A3B FP16 — Experimental test preset (setup notes)
+
+> This is an **experimental test preset** added for quick evaluation of the original
+> upstream Qwen3.6 weights on a single DGX Spark. It is **not** a base-stack change —
+> the main image, vLLM, FlashInfer, transformers, and CUDA versions are unchanged.
+
+- **Preset file**: `presets/qwen3.6-35b-fp16.env`
+- **Scope**: `single DGX Spark / TP=1` (designed to fit one GB10 node with headroom)
+- **Model**: original Qwen3.6-35B-A3B weights (bf16/fp16, **not quantized**).
+  `--kv-cache-dtype fp8` is an optional KV-cache-only optimization and does **not**
+  change the model weights.
+- **Recommended options** (already in the preset):
+  - `--kv-cache-dtype fp8` (KV cache compression only)
+  - `--reasoning-parser qwen3`
+  - `--enable-chunked-prefill`
+  - `--enable-prefix-caching` (added by the entrypoint by default)
+
+#### Before launching: stop the running 397B TP=2 stack
+
+```bash
+# On <head_node>:
+docker compose --profile head down
+# On <worker_node>:
+docker compose --profile worker down
+# Clear unified-memory residue between model switches (GB10) — on each node:
+sync && sudo sysctl -w vm.drop_caches=3
+```
+
+#### Model placement
+
+Transfer the model to your chosen Spark node before launch, then point
+`MODEL_PATH` at the local copy:
+
+```bash
+# From the build/source host (~67 GB, ~6 min over the RoCE link):
+rsync -av <source_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/ \
+    <head_node>:<spark_model_dir>/Qwen/Qwen_Qwen3.6-35B-A3B/
+
+# On <head_node>: materialize the preset and substitute the local model root
+cd <repo>
+cp presets/qwen3.6-35b-fp16.env .env
+sed -i "s|\[model_path\]|<spark_model_dir>/Qwen|" .env
+```
+
+#### Launch (single Spark, TP=1)
+
+On `<head_node>`:
+
+```bash
+cd <repo>
+docker compose --env-file .env --profile head up -d
+```
+
+#### If the first boot fails
+
+Adjust these values in `qwen3.6-35b-fp16.env` in this order (each step lowers
+memory pressure):
+
+1. `GPU_MEMORY_UTILIZATION=0.80`
+2. `MAX_MODEL_LEN=16384`
+3. `MAX_NUM_SEQS=4`
+4. Only if the above still fails: consider a TP=2 variant across both Spark
+   nodes (no preset ships for this — this experimental preset is TP=1 only).
+
 ### 397B INT4 TP2 — TurboQuant KV Cache Sweep
 
 Same 397B INT4 AutoRound model on `v021-tq`, TP=2 (spark01+spark02 over 200 Gbps RoCE),

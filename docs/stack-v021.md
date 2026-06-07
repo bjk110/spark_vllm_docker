@@ -1,6 +1,6 @@
 # Software Stack — v021-ngc2603 (previous main, NGC 26.03)
 
-Superseded by [v022-d568](../README.md#software-stack) on the forward-stack
+Superseded by [v022-d568](software-stack.md) on the forward-stack
 lineage. `v021-ngc2603` remains the **production default for non-TQ presets**
 in this repo (preset table column "Image: v021-ngc2603") because it's the
 most-tested broad-coverage image. Use v022-d568 to validate v0.21.0 release
