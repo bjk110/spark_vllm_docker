@@ -40,7 +40,7 @@ docker compose \
 ```
 
 This image is `mp` backend only (Ray is not available in its conda environment).
-See `README.md §Applying unholy-fusion for DSV4` and `docs/unholy-fusion-benchmark.md`.
+See `docs/unholy-fusion-benchmark.md §Switching to/from unholy-fusion`.
 
 **Safe defaults** (aligned across `.env.unholy-fusion`, `entrypoints/entrypoint.unholy.sh`, and `README.md`):
 
