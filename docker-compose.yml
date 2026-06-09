@@ -68,6 +68,7 @@ services:
       - NCCL_NVLS_ENABLE=${NCCL_NVLS_ENABLE:-1}
       - VLLM_USE_BREAKABLE_CUDAGRAPH=${VLLM_USE_BREAKABLE_CUDAGRAPH:-}
       - VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=${VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS:-}
+      - VLLM_USE_RAY_V2_EXECUTOR_BACKEND=${VLLM_USE_RAY_V2_EXECUTOR_BACKEND:-1}
       # ---- unholy-fusion / B12X kernels (empty = unset, no effect on jasl image) ----
       - VLLM_USE_B12X_MOE=${VLLM_USE_B12X_MOE:-}
       - VLLM_USE_B12X_MHC=${VLLM_USE_B12X_MHC:-}
@@ -87,6 +88,8 @@ services:
       - FLASHINFER_CUDA_ARCH_LIST=${FLASHINFER_CUDA_ARCH_LIST:-}
       - VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=${VLLM_SPARSE_INDEXER_MAX_LOGITS_MB:-256}
       - MTP_NUM_TOKENS=${MTP_NUM_TOKENS:-1}
+      # HPC-X RDMA NCCL plugin path - allows pip NCCL to find IB/RoCE net plugin
+      - LD_LIBRARY_PATH=/opt/hpcx/nccl_rdma_sharp_plugin/lib:/usr/local/lib/python3.12/dist-packages/nvidia/nccl/lib:/usr/local/lib/python3.12/dist-packages/torch/lib:/usr/local/lib/python3.12/dist-packages/torch_tensorrt/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
     deploy:
       resources:
         reservations:
@@ -162,6 +165,7 @@ services:
       - NCCL_NVLS_ENABLE=${NCCL_NVLS_ENABLE:-1}
       - VLLM_USE_BREAKABLE_CUDAGRAPH=${VLLM_USE_BREAKABLE_CUDAGRAPH:-}
       - VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=${VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS:-}
+      - VLLM_USE_RAY_V2_EXECUTOR_BACKEND=${VLLM_USE_RAY_V2_EXECUTOR_BACKEND:-1}
       - RAY_memory_monitor_refresh_ms=0
       # ---- unholy-fusion / B12X kernels (empty = unset, no effect on jasl image) ----
       - VLLM_USE_B12X_MOE=${VLLM_USE_B12X_MOE:-}
@@ -197,6 +201,8 @@ services:
       - FLASHINFER_CUDA_ARCH_LIST=${FLASHINFER_CUDA_ARCH_LIST:-}
       - VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=${VLLM_SPARSE_INDEXER_MAX_LOGITS_MB:-256}
       - MTP_NUM_TOKENS=${MTP_NUM_TOKENS:-1}
+      # HPC-X RDMA NCCL plugin path - allows pip NCCL to find IB/RoCE net plugin
+      - LD_LIBRARY_PATH=/opt/hpcx/nccl_rdma_sharp_plugin/lib:/usr/local/lib/python3.12/dist-packages/nvidia/nccl/lib:/usr/local/lib/python3.12/dist-packages/torch/lib:/usr/local/lib/python3.12/dist-packages/torch_tensorrt/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
     deploy:
       resources:
         reservations:

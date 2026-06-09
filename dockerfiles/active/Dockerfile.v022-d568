@@ -72,13 +72,14 @@
 #     /opt/scripts/verify_runtime.sh
 # =========================================================================
 
-ARG NGC_TAG=26.04-py3
+ARG NGC_TAG=26.05-py3
 ARG BUILD_JOBS=16
 
 # Pinned versions — change these to update
 ARG VLLM_COMMIT=ad7125a431e176d4161099480a66f0169609a690
+ARG VLLM_VERSION=0.22.1
 ARG FLASHINFER_REF=v0.6.12
-ARG TRANSFORMERS_VER=5.9.0
+ARG TRANSFORMERS_VER=5.10.2
 ARG TORCH_CUDA_ARCH="12.1a"
 
 # =========================================================================
@@ -158,6 +159,7 @@ FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS vllm-builder
 
 ARG BUILD_JOBS
 ARG VLLM_COMMIT
+ARG VLLM_VERSION
 ARG TORCH_CUDA_ARCH
 ENV MAX_JOBS=${BUILD_JOBS} \
     DEBIAN_FRONTEND=noninteractive \
@@ -183,7 +185,7 @@ RUN git clone https://github.com/vllm-project/vllm.git /workspace/vllm-src && \
 
 # Install build deps. vLLM v0.21.0 requires a C++20 compiler (PR #40380).
 # NGC 26.03 ships g++ 13 which already satisfies this.
-RUN pip install -q setuptools setuptools-scm ninja cmake wheel packaging
+RUN pip install -q setuptools "setuptools-scm>=8" setuptools-rust ninja cmake wheel packaging jinja2 regex
 
 # Strip hoist=True kwarg from register_opaque_type() before wheel build.
 # NGC 26.03's PyTorch 2.11 alpha removes this kwarg (verified empirically
@@ -201,7 +203,7 @@ RUN cd /workspace/vllm-src && VLLM_SRC=/workspace/vllm-src python3 /tmp/apply_sm
 # Build vLLM wheel (includes _C + _C_stable_libtorch)
 RUN --mount=type=cache,id=ccache-v022,target=/root/.ccache \
     cd /workspace/vllm-src && \
-    SETUPTOOLS_SCM_PRETEND_VERSION="0.21.0" \
+    SETUPTOOLS_SCM_PRETEND_VERSION="${VLLM_VERSION}" \
     VLLM_TARGET_DEVICE=cuda \
     python3 setup.py bdist_wheel -d /workspace/wheels && \
     ls -lh /workspace/wheels/*.whl && \
@@ -262,7 +264,8 @@ RUN --mount=type=cache,id=uv-v022,target=/root/.cache/uv \
     DEPS=$(pip show vllm 2>/dev/null | grep ^Requires | sed 's/Requires: //' | tr ',' '\n' | \
       sed 's/^ *//;s/ *$//' | grep -v -E '^(torch|torchvision|torchaudio|flashinfer|$)' | \
       tr '\n' ' ') && \
-    uv pip install --system $DEPS ray[default] fastsafetensors nvidia-nvshmem-cu13 uvloop
+    uv pip install --system $DEPS ray[default] fastsafetensors nvidia-nvshmem-cu13 uvloop && \
+    uv pip install --system "compressed-tensors==0.15.0.1" --no-deps
 
 # ---- Transformers (Gemma 4 + Qwen3.5 compatibility; vLLM v0.21.0 deprecates v4) ----
 ARG TRANSFORMERS_VER
