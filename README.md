@@ -14,6 +14,24 @@ Pick the topology by setting `CLUSTER_MODE=single` (default) or
 For release-by-release detail and patch-by-patch status, see
 [`CHANGELOG.md`](CHANGELOG.md) and [`PATCH_STATUS.md`](PATCH_STATUS.md).
 
+## Current serving paths
+
+| Path | Status | Image | Backend | Use case |
+|---|---|---|---|---|
+| `dsv4-d568` | **Frozen** primary DSV4 baseline | `ghcr.io/bjk110/vllm-spark:dsv4-d568` | `ray` (default) or `mp` | DeepSeek-V4-Flash on dual DGX Spark — see [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md) |
+| `unholy-fusion` | Experimental (mp-only, DSV4 only) | `aidendle94/sparkrun-vllm-ds4-gb10:production-ready` (mirror: `ghcr.io/bjk110/vllm-spark:unholy-fusion-prod-ready`) | `mp` (hardcoded) | Higher-prefill DSV4 alternative — see [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md) |
+| `v022-d568-ngc2605-tx5102-vllm022` | Active forward-stack (NGC 26.05, vLLM 0.22.1) | `ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022` | `ray` | Qwen3.5-122B-FP8 and other forward-stack models |
+| `v022-d568` | Stable general base (NGC 26.04, vLLM 0.21.0) | `ghcr.io/bjk110/vllm-spark:v022-d568` | `ray` or direct | Qwen3.6, Gemma 4 31B, abliterix NVFP4 presets |
+| `v021-ngc2603` / `v021-tq` | Stable base for most existing presets | `ghcr.io/bjk110/vllm-spark:v021-ngc2603` / `v021-tq` | `ray` or direct | Most non-DSV4 presets in `presets/*.env` |
+
+> **Image policy**: `dsv4-d568` is intentionally **frozen** and will not be rebased
+> onto NGC 26.05 or any later stack. Forward-stack upgrades (e.g.
+> `v022-d568-ngc2605-tx5102-vllm022`) are a **separate parallel path** for non-DSV4
+> models. Do not modify or rebase `dsv4-d568` without an explicit decision to do so.
+
+Component versions, stack lineage, and image digests → [`docs/software-stack.md`](docs/software-stack.md).
+Image tag → Git-ref mapping → [`docs/images.md`](docs/images.md).
+
 ## Hardware and topology
 
 | Topology | Node | Role | GPU | Memory | Interconnect | Backend |
@@ -38,76 +56,78 @@ For release-by-release detail and patch-by-patch status, see
 > and point `MODEL_PATH` / `MODEL_CONTAINER_PATH` to the correct host/container paths.
 > See [`presets/README.md`](presets/README.md) for details.
 
-### 0. Get the Docker Image
+### 0. Choose a serving path
+
+Select the path matching your model and use case from the
+[Current serving paths](#current-serving-paths) table above:
+
+- **Non-DSV4 models** on NGC 26.05 + vLLM 0.22.1 (e.g. Qwen3.5-122B-FP8):
+  use `v022-d568-ngc2605-tx5102-vllm022`
+- **Non-DSV4 models** on the stable NGC 26.04 base (Qwen3.6, Gemma 4 31B, etc.):
+  use `v022-d568`
+- **Non-DSV4 models** on the legacy stable base: use `v021-ngc2603` (or `v021-tq`
+  for TurboQuant KV presets)
+- **DeepSeek-V4-Flash** (decode-optimized, stable): use `dsv4-d568`
+- **DeepSeek-V4-Flash** (higher prefill, experimental): use `unholy-fusion`
+
+### 1. Get the Docker Image
 
 #### Option A: Pull pre-built image from GHCR
 
 ```bash
-# Base image (all models, no TQ patches)
+# Stable base for most existing presets:
 docker pull ghcr.io/bjk110/vllm-spark:v021-ngc2603
 
-# TurboQuant image (base + upstream TQ bugfix patches for hybrid models)
+# TurboQuant image (required for *-tq presets):
 docker pull ghcr.io/bjk110/vllm-spark:v021-tq
 
-# Final forward-stack image (NGC 26.04 + vLLM 0.21.0+PR#35568 + FlashInfer 0.6.11.post3
-# + Transformers 5.8.1 + Triton 3.7.0 + NCCL 2.30.4). General production base.
-# Manifest digest: sha256:88b544ed69476f3785ea7ce37fc8b99f0f064cc299eef35cda1535c68e7a9501
+# v022-d568 general base (NGC 26.04 + vLLM 0.21.0+PR#35568):
+# Digest: sha256:88b544ed69476f3785ea7ce37fc8b99f0f064cc299eef35cda1535c68e7a9501
 docker pull ghcr.io/bjk110/vllm-spark:v022-d568
 
-# DeepSeek-V4-Flash derivative image (FROM v022-d568, with SM12x DSV4 support).
-# DSV4-specific only. See presets/dsv4-flash-fp8-tp2.env and docs/dsv4-flash-tp2.md.
+# Forward-stack (NGC 26.05 + vLLM 0.22.1 + FlashInfer v0.6.12 + Transformers 5.10.2):
+# Digest: sha256:2c52c885e48cffd15097291a0926a51401ecb95d169e6831bb63a4fda6dda8a5
+docker pull ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022
+
+# DeepSeek-V4-Flash only (FROZEN — NOT rebased onto NGC 26.05):
 docker pull ghcr.io/bjk110/vllm-spark:dsv4-d568
 ```
 
-**Intermediate stacked variants are local-build only** (kept on a build node for bisection / rollback). Rebuild from source via the matching `dockerfiles/legacy/Dockerfile.v022-*` if you need to bisect:
-
-| Tag | Dockerfile | Diff from previous layer |
-|---|---|---|
-| `v022-vllm021` | `dockerfiles/legacy/Dockerfile.v022` | vLLM v0.21.0 release pin (off `95995bbe`) |
-| `v022-fi0611` | `dockerfiles/legacy/Dockerfile.v022-fi0611` | FlashInfer 0.6.11.post3 |
-| `v022-ngc2604` | `dockerfiles/legacy/Dockerfile.v022-ngc2604` | NGC 26.04 (PyTorch 2.12.0a0) + `patch_split_module_compat.py` |
-| `v022-tx581` | `dockerfiles/legacy/Dockerfile.v022-tx581` | Transformers 5.8.1 |
-| `v022-trt37` | `dockerfiles/legacy/Dockerfile.v022-trt37` | Triton 3.7.0 |
-| `v022-nccl234` | `dockerfiles/legacy/Dockerfile.v022-nccl234` | NCCL 2.30.4 (pip override) |
-| `v022-d568` | `dockerfiles/active/Dockerfile.v022-d568` | vLLM PR #35568 cherry-pick (SM121 FP8) — **on GHCR; forward-stack validation base** |
-| `dsv4-d568` | `dockerfiles/active/Dockerfile.dsv4-d568` | DeepSeek-V4-Flash derivative — `FROM v022-d568` + SM12x DSV4 vLLM patches (DSV4-specific). **On GHCR.** |
+Intermediate bisection-only build variants (`v022-vllm021`, `v022-fi0611`, etc.) are
+local-build only — see [`docs/stack-v022.md`](docs/stack-v022.md).
 
 #### Option B: Build from source
 
+All builds must run on spark01 or spark02. **Never build on homeserver** — vLLM
+C++/CUDA compilation peaks at 64–128 GiB RAM and will OOM and freeze a 29 GiB system.
+
 ```bash
-# NGC 26.03 source build (vLLM main, TurboQuant included)
+# Current forward-stack (NGC 26.05 + vLLM 0.22.1 + FlashInfer v0.6.12 + Transformers 5.10.2):
+docker buildx build -f dockerfiles/active/Dockerfile.v022-d568 \
+  -t vllm-spark:v022-d568-ngc2605-tx5102-vllm022 --load .
+
+# Stable legacy base (NGC 26.03 / vLLM main + TurboQuant):
 docker buildx build -f dockerfiles/legacy/Dockerfile.gemma4 \
   -t vllm-spark:v021-ngc2603 --load .
 
-# vLLM v0.21.0 release-pinned source build
-# (build on a Spark node only — low-RAM hosts can OOM during vLLM C++/CUDA compile)
-docker buildx build -f dockerfiles/legacy/Dockerfile.v022 \
-  -t vllm-spark:v022-vllm021 --load .
-
-# Stacked-upgrade builds (each cached layer-by-layer; rebuild only the diff)
-docker buildx build -f dockerfiles/legacy/Dockerfile.v022-fi0611  -t vllm-spark:v022-fi0611  --load .
-docker buildx build -f dockerfiles/legacy/Dockerfile.v022-ngc2604 -t vllm-spark:v022-ngc2604 --load .
-docker buildx build -f dockerfiles/legacy/Dockerfile.v022-tx581   -t vllm-spark:v022-tx581   --load .
-docker buildx build -f dockerfiles/legacy/Dockerfile.v022-trt37   -t vllm-spark:v022-trt37   --load .
-docker buildx build -f dockerfiles/legacy/Dockerfile.v022-nccl234 -t vllm-spark:v022-nccl234 --load .
-
-# Active builds:
-docker buildx build -f dockerfiles/active/Dockerfile.v022-d568    -t vllm-spark:v022-d568    --load .
-# DeepSeek-V4-Flash derivative (FROM v022-d568 + SM12x DSV4 patches).
-# Build on a Spark node; see docs/dsv4-flash-tp2.md §1.
-docker buildx build -f dockerfiles/active/Dockerfile.dsv4-d568    -t vllm-spark:dsv4-d568    --load .
+# DeepSeek-V4-Flash derivative (FROZEN — reproduce only; build on spark node):
+docker buildx build -f dockerfiles/active/Dockerfile.dsv4-d568 \
+  -t vllm-spark:dsv4-d568 --load .
 ```
 
-Build arguments:
+Build arguments for `Dockerfile.v022-d568`:
 
 | Argument | Default | Description |
 |---|---|---|
-| `BUILD_JOBS` | 16 | Parallel build jobs |
-| `FLASHINFER_REF` | v0.6.9 | FlashInfer git ref |
-| `VLLM_COMMIT` | 95995bbe | vLLM source commit |
-| `TORCH_CUDA_ARCH` | 12.1a | Target CUDA arch (Blackwell) |
+| `NGC_TAG` | `26.05-py3` | NGC PyTorch base image tag |
+| `BUILD_JOBS` | `16` | Parallel build jobs |
+| `VLLM_COMMIT` | `ad7125a431e176d4161099480a66f0169609a690` | vLLM source commit |
+| `VLLM_VERSION` | `0.22.1` | Version for setuptools-scm pretend |
+| `FLASHINFER_REF` | `v0.6.12` | FlashInfer git ref |
+| `TRANSFORMERS_VER` | `5.10.2` | Transformers version |
+| `TORCH_CUDA_ARCH` | `12.1a` | Target CUDA arch (Blackwell) |
 
-### 1. Choose a Model Preset
+### 2. Choose a Model Preset
 
 Single-Spark presets ship with `CLUSTER_MODE=single` and TP=1 (zero RDMA setup).
 Dual-Spark presets ship with `CLUSTER_MODE=dual-rdma` and TP=2.
@@ -126,7 +146,7 @@ Edit `MODEL_PATH` in `.env` to point to your local model weights directory:
 sed -i 's|\[model_path\]|/home/user/models|' .env
 ```
 
-### 2. Start Services
+### 3. Start Services
 
 #### Single Spark — TP=1 (default, no Ray, no RDMA)
 
@@ -175,34 +195,12 @@ MASTER_PORT=29501        # only used in mp mode
 
 For DSV4 measurements, Ray and mp showed similar decode peak only in the measured no-MTP configuration on our GB10 setup. Stronger claims require additional latency, prefill, and stability metrics. See [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md) §5 for the data.
 
-### 3. Verify
+### 4. Verify
 
 ```bash
 curl http://localhost:8000/health      # single
 curl http://spark01:8000/health        # dual-rdma
 ```
-
-## Current serving paths
-
-| Path | Status | Image | Backend | Config |
-|---|---|---|---|---|
-| `dsv4-d568` | Primary DeepSeek-V4-Flash baseline (frozen) | `ghcr.io/bjk110/vllm-spark:dsv4-d568` (FROM `v022-d568`) | `ray` (default) or `mp` | `presets/dsv4-flash-fp8-tp2.env` |
-| `unholy-fusion` | Experimental high-prefill alternative | `aidendle94/sparkrun-vllm-ds4-gb10:production-ready` (mirror: `ghcr.io/bjk110/vllm-spark:unholy-fusion-prod-ready`) | `mp` (hardcoded) | `.env.unholy-fusion` + `compose/docker-compose.unholy.yml` |
-| `v022-d568` | Forward-stack validation base | `ghcr.io/bjk110/vllm-spark:v022-d568` | — | base for `v022-*` presets and `dsv4-d568` |
-| `v021-ngc2603` / `v021-tq` | Production default for most existing presets; required for `*-tq` (TurboQuant) presets | `ghcr.io/bjk110/vllm-spark:v021-ngc2603` / `v021-tq` | — | most `presets/*.env` |
-
-> **DSV4 path summary**: For DeepSeek-V4-Flash, use `dsv4-d568` as the primary
-> path. Users who specifically want higher prefill throughput can try the
-> experimental `unholy-fusion` path. Earlier jasl-based DSV4 image notes are
-> kept only for historical reference.
-
-Component-level versions (vLLM / FlashInfer / Transformers / Triton / NCCL /
-digests), the full `v021` / `v022` / legacy stack lineage, and the
-`unholy-fusion` kernel/runtime details are documented in
-[`docs/software-stack.md`](docs/software-stack.md). See also
-[`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md) (DSV4 build, recipe, and
-benchmark sweep) and [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md)
-(unholy-fusion configuration, switching procedure, and benchmark comparison).
 
 ## Presets and model paths
 
@@ -239,21 +237,6 @@ recipe / image / topology in its header comment.
 | `qwen3.6-27b-prismascout-nvfp4-tp2.env` (+ `-v022`) | rdtand/Qwen3.6-27B-PrismaSCOUT-Blackwell-NVFP4-BF16-vllm | NVFP4 mixed-precision (ViT NVFP4 + LM NVFP4 + BF16 sidecars) | dual-rdma | 2 | v022-vllm021 | MTP `n=3`; **v022 preset requires `--mm-encoder-tp-mode data`** (see [`docs/software-stack.md`](docs/software-stack.md)) for ViT MLP K-align |
 | `dsv4-flash-fp8-tp2.env` | deepseek-ai/DeepSeek-V4-Flash | FP8 (E4M3 128×128 block, official) | dual-rdma | 2 | **dsv4-d568** or **unholy-fusion** | DSV4 sparse MLA + Lightning Indexer + fp8_ds_mla KV + MTP heads. Full guide: [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md). Alternative: unholy-fusion image (`aidendle94/sparkrun-vllm-ds4-gb10:production-ready`) — 2× prefill speedup via B12X_MOE kernel, capped at MAX_NUM_SEQS=4 / MAX_MODEL_LEN=262144. See [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md). |
 
-## Container images
-
-The current recommended serving paths are:
-
-| Path | Status | Image selection | Config |
-|---|---|---|---|
-| `dsv4-d568` | Frozen primary DeepSeek-V4-Flash baseline | `ghcr.io/bjk110/vllm-spark:dsv4-d568` | `presets/dsv4-flash-fp8-tp2.env` |
-| `unholy-fusion` | Experimental high-prefill path | `aidendle94/sparkrun-vllm-ds4-gb10:production-ready` (mirror: `ghcr.io/bjk110/vllm-spark:unholy-fusion-prod-ready`) | `.env.unholy-fusion` + `compose/docker-compose.unholy.yml` |
-
-Older image tags, Git commit mappings, and image history are documented in
-[`docs/images.md`](docs/images.md).
-
-Maintainer-only Git tag and archived branch notes are documented in
-[`docs/release-management.md`](docs/release-management.md).
-
 ## Repository layout
 
 ```
@@ -265,8 +248,8 @@ vllm-spark/
 ├── .env.example                   # Full configuration template
 ├── dockerfiles/                   # All Dockerfiles; see dockerfiles/README.md
 │   ├── active/                        # Current active build targets (build from repo root with . as context)
-│   │   ├── Dockerfile.v022-d568           # Forward-stack validation base (NGC 26.04 stack)
-│   │   └── Dockerfile.dsv4-d568           # DeepSeek-V4-Flash derivative (FROM v022-d568)
+│   │   ├── Dockerfile.v022-d568           # Forward-stack base (NGC 26.05 + vLLM 0.22.1 + FlashInfer v0.6.12 + Transformers 5.10.2)
+│   │   └── Dockerfile.dsv4-d568           # DeepSeek-V4-Flash derivative (FROM v022-d568; FROZEN)
 │   └── legacy/                        # Historical / intermediate / specialized variants
 │       ├── Dockerfile                     # NGC 26.01 era (vLLM 0.18.x, historical)
 │       ├── Dockerfile.gemma4              # v021-ngc2603 unified build
@@ -421,7 +404,7 @@ echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 
 | Document | Covers |
 |---|---|
-| [`docs/software-stack.md`](docs/software-stack.md) | Full image/stack lineage: `dsv4-d568`, `v022-d568`, `v021` series, and legacy stacks, with component versions and digests |
+| [`docs/software-stack.md`](docs/software-stack.md) | Full image/stack lineage: `v022-d568-ngc2605-tx5102-vllm022`, `dsv4-d568`, `v022-d568`, `v021` series, and legacy stacks, with component versions and digests |
 | [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md) | DeepSeek-V4-Flash (`dsv4-d568`) build, deployment recipe, and 9-way benchmark sweep |
 | [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md) | `unholy-fusion` configuration, switching procedure, operational limits, and benchmark comparison vs `dsv4-d568` |
 | [`docs/model-serving-validation-history.md`](docs/model-serving-validation-history.md) | Historical stack validation notes and benchmark results (Gemma 4, Qwen3.5 122B, 397B INT4, PrismaQuant, Qwen3.6-35B, TurboQuant KV sweep) |

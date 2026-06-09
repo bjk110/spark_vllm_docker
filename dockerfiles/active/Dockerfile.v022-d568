@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 # =========================================================================
 # vLLM on NVIDIA DGX Spark (GB10, SM121) — v022-d568 image
-# (vLLM SM121 FP8 cherry-pick D — stacked on v022-nccl234)
+# Stack: NGC 26.05 + vLLM 0.22.1 + FlashInfer v0.6.12 + Transformers 5.10.2
 #
 # Cherry-picks vLLM PR #35568 (commit 06d020bb6, "Fix SM121 (DGX Spark)
 # exclusion from Marlin/CUTLASS FP8 paths") onto the v0.21.0 release.
@@ -18,24 +18,20 @@
 # unaffected; FP8 presets (wangzhang-abliterix-FP8) should see the new paths
 # activated.
 #
-# Upstream upgrade history (stacked):
+# Current stack:
+#   - vLLM:         ad7125a431e (v0.22.1 + DSV4 MTP HC bugfix PR#42320)
+#   - FlashInfer:   v0.6.12
+#   - NGC base:     26.05-py3 (PyTorch 2.12.0a0, CUDA 13.2)
+#   - Transformers: 5.10.2
+#   - Triton:       3.7.0
+#   - NCCL:         2.30.4+cuda13.2 (bundled in NGC 26.05; pip install kept for LD_LIBRARY_PATH)
 #
-# Upgrade from v022-trt37:
-#   - vLLM:        ad7125a4 (v0.21.0)                       [unchanged]
-#   - FlashInfer:  v0.6.11.post3                             [unchanged]
-#   - NGC base:    26.04-py3 (PyTorch 2.12.0a0)              [unchanged]
-#   - Transformers: 5.8.1                                     [unchanged]
-#   - Triton:      3.7.0                                      [unchanged]
-#   - NCCL:        2.29.7 -> 2.30.4 (2026-04-22)
-#                    * NGC 26.04 bundles 2.29.7 at /usr/lib/aarch64-linux-gnu/.
-#                    * pip nvidia-nccl-cu13==2.30.4 installs under
-#                      /usr/local/lib/python3.12/dist-packages/nvidia/nccl/lib/.
-#                    * LD_LIBRARY_PATH override makes PyTorch dlopen the newer one.
-#                    * Risk: PyTorch 2.12 linked at build time against NCCL 2.29
-#                      ABI; ABI break would surface as segfault at first allreduce.
-#                    * Risk: RDMA NCCL plugin (libnccl-net.so) loaded from
-#                      /opt/hpcx/nccl_rdma_sharp_plugin/ — confirm it accepts the
-#                      newer libnccl ABI.
+# Required .env variables (NGC 26.05 specifics — not needed in older images):
+#   NCCL_NET=Socket                              # HPC-X RDMA plugin init() fails; force TCP
+#   FLASHINFER_CUDA_ARCH_LIST=12.1               # NGC 26.05 base sets ""; FlashInfer crash fix
+#   VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=1   # docker-compose :- passes ""; int() fix
+#   VLLM_USE_RAY_V2_EXECUTOR_BACKEND=0           # v1 executor stable on GB10
+#   VLLM_NCCL_SO_PATH=/usr/lib/aarch64-linux-gnu/libnccl.so.2
 #
 # fix_pytorch211_compat.py is KEPT for now — if NGC 26.04 finally bundles a
 # PyTorch with `register_opaque_type(hoist=True)` intact, the script's strip
@@ -64,12 +60,10 @@
 #   - flashinfer_cache.patch        (FlashInfer build-time, optional)
 #
 # Build:
-#   docker buildx build -f Dockerfile.v022-d568 \
-#     -t ghcr.io/bjk110/vllm-spark:v022-d568 --load .
-#
-# Verify:
-#   docker run --rm --gpus all ghcr.io/bjk110/vllm-spark:v022-vllm021 \
-#     /opt/scripts/verify_runtime.sh
+#   docker buildx build -f dockerfiles/active/Dockerfile.v022-d568 \
+#     -t vllm-spark:v022-d568-ngc2605-tx5102-vllm022 --load .
+# GHCR: ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022
+#   digest sha256:2c52c885e48cffd15097291a0926a51401ecb95d169e6831bb63a4fda6dda8a5
 # =========================================================================
 
 ARG NGC_TAG=26.05-py3
@@ -174,7 +168,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git ninja-build ccache && \
     rm -rf /var/lib/apt/lists/*
 
-# Clone vLLM and pin to exact commit (v0.21.0 release)
+# Clone vLLM and pin to exact commit (v0.22.1 + DSV4 MTP HC bugfix PR#42320)
 RUN git clone https://github.com/vllm-project/vllm.git /workspace/vllm-src && \
     cd /workspace/vllm-src && \
     git checkout ${VLLM_COMMIT} && \
@@ -213,11 +207,10 @@ RUN --mount=type=cache,id=ccache-v022,target=/root/.ccache \
 # =========================================================================
 # STAGE 3: Runner
 # =========================================================================
-ARG NGC_TAG=26.04-py3
 FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
-LABEL org.opencontainers.image.description="vLLM v0.21.0+PR#35568 (SM121 FP8) + FlashInfer v0.6.11.post3 + NGC 26.04 (PyTorch 2.12.0a0) + Transformers 5.8.1 + Triton 3.7.0 + NCCL 2.30.4 on DGX Spark (GB10/SM121)"
+LABEL org.opencontainers.image.description="vLLM 0.22.1 (SM121 FP8) + FlashInfer v0.6.12 + NGC 26.05 (PyTorch 2.12.0a0, CUDA 13.2) + Transformers 5.10.2 + Triton 3.7.0 + NCCL 2.30.4 on DGX Spark (GB10/SM121)"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 ARG TORCH_CUDA_ARCH
@@ -294,7 +287,7 @@ RUN python3 /tmp/apply_sm121_patches.py || echo "[patch] SM121 partial"
 COPY patches/turboquant/apply_turboquant_fixes.py /tmp/
 RUN python3 /tmp/apply_turboquant_fixes.py
 
-# split_module(tuple_return=...) compat — NGC 26.04 PyTorch 2.12.0a0 alpha
+# split_module(tuple_return=...) compat — NGC PyTorch 2.12.0a0 alpha
 # is older than the upstream commit that added tuple_return, so vLLM's static
 # is_torch_equal_or_newer("2.12.0.dev") check is wrong here. Probe the actual
 # signature at runtime instead.
@@ -303,17 +296,17 @@ RUN python3 /tmp/patch_split_module_compat.py
 
 RUN uv pip uninstall triton-kernels 2>/dev/null || true
 
-# ---- Triton 3.7.0 override (NGC 26.04 bundles 3.6.0) ----
+# ---- Triton 3.7.0 override (NGC base bundles 3.6.0) ----
 # PyTorch 2.12 torch._inductor was built against Triton 3.6 internals; this
-# upgrade is exploratory. v0.6.11.post3 FlashInfer doesn't pin Triton.
+# upgrade is exploratory. FlashInfer v0.6.12 doesn't pin Triton.
 ARG TRITON_VER=3.7.0
 RUN uv pip install triton==${TRITON_VER} --upgrade --no-deps --system && \
     python3 -c "import triton; print(f'[triton] installed {triton.__version__}')"
 
-# ---- NCCL 2.30.4 override (NGC 26.04 bundles 2.29.7 under /usr/lib/aarch64-linux-gnu) ----
-# pip nvidia-nccl-cu13 installs libnccl.so.2 under site-packages/nvidia/nccl/lib/.
-# LD_LIBRARY_PATH prefix steers PyTorch's dlopen to the newer lib without touching
-# the system one (rollback-friendly).
+# ---- NCCL 2.30.4 (NGC 26.05 already bundles 2.30.4+cuda13.2; pip kept for LD_LIBRARY_PATH) ----
+# NGC 26.05 ships NCCL 2.30.4+cuda13.2 in /usr/lib/aarch64-linux-gnu. The pip
+# install is kept so site-packages LD_LIBRARY_PATH stays populated consistently.
+# VLLM_NCCL_SO_PATH in .env points to the system library directly.
 ARG NCCL_VER=2.30.4
 RUN uv pip install nvidia-nccl-cu13==${NCCL_VER} --upgrade --no-deps --system && \
     NCCL_LIB_DIR=$(find /usr/local/lib/python3.12/dist-packages/nvidia/nccl/lib /usr/local/lib/python3.12/dist-packages/nvidia_nccl_cu13/lib 2>/dev/null | grep -m1 'lib$') && \
