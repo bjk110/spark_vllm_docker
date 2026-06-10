@@ -98,8 +98,7 @@ local-build only — see [`docs/stack-v022.md`](docs/stack-v022.md).
 
 #### Option B: Build from source
 
-All builds must run on spark01 or spark02. **Never build on homeserver** — vLLM
-C++/CUDA compilation peaks at 64–128 GiB RAM and will OOM and freeze a 29 GiB system.
+All builds must run on spark01 or spark02.
 
 ```bash
 # Current forward-stack (NGC 26.05 + vLLM 0.22.1 + FlashInfer v0.6.12 + Transformers 5.10.2):
