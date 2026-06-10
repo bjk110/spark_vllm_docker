@@ -31,6 +31,8 @@ services:
       # ---- Model-specific env vars (0 = disabled) ----
       - VLLM_MARLIN_USE_ATOMIC_ADD=${VLLM_MARLIN_USE_ATOMIC_ADD:-0}
       - VLLM_USE_FLASHINFER_MOE_FP4=${VLLM_USE_FLASHINFER_MOE_FP4:-0}
+      - VLLM_NVFP4_GEMM_BACKEND=${VLLM_NVFP4_GEMM_BACKEND:-}
+      - VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND:-}
       # ---- DeepSeek-V4 Flash specific (empty = unset, no effect on other models) ----
       - VLLM_ALLOW_LONG_MAX_MODEL_LEN=${VLLM_ALLOW_LONG_MAX_MODEL_LEN:-}
       - VLLM_TRITON_MLA_SPARSE=${VLLM_TRITON_MLA_SPARSE:-}
@@ -90,6 +92,11 @@ services:
       - MTP_NUM_TOKENS=${MTP_NUM_TOKENS:-1}
       # HPC-X RDMA NCCL plugin path - allows pip NCCL to find IB/RoCE net plugin
       - LD_LIBRARY_PATH=/opt/hpcx/nccl_rdma_sharp_plugin/lib:/usr/local/lib/python3.12/dist-packages/nvidia/nccl/lib:/usr/local/lib/python3.12/dist-packages/torch/lib:/usr/local/lib/python3.12/dist-packages/torch_tensorrt/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+      # Extend NCCL watchdog timeout for slow first-time Triton JIT compilation
+      - TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=7200
+      # Extend Ray timeouts to survive Triton JIT CPU saturation on head node
+      - RAY_gcs_rpc_server_reconnect_timeout_s=7200
+      - RAY_num_heartbeats_timeout=7200
     deploy:
       resources:
         reservations:
@@ -101,6 +108,7 @@ services:
     volumes:
       - ${MODEL_PATH}:${MODEL_CONTAINER_PATH}:ro
       - ./.cache/vllm:/root/.cache/vllm
+      - ./cache/triton:/root/.triton
       - ./cache/unholy-jit:/cache/jit
       - ./cache/unholy-hf:/cache/huggingface
       - /sys/class/infiniband:/sys/class/infiniband:ro
@@ -176,6 +184,8 @@ services:
       # ---- Model-specific env vars (0 = disabled) ----
       - VLLM_MARLIN_USE_ATOMIC_ADD=${VLLM_MARLIN_USE_ATOMIC_ADD:-0}
       - VLLM_USE_FLASHINFER_MOE_FP4=${VLLM_USE_FLASHINFER_MOE_FP4:-0}
+      - VLLM_NVFP4_GEMM_BACKEND=${VLLM_NVFP4_GEMM_BACKEND:-}
+      - VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND:-}
       # ---- DeepSeek-V4 Flash specific (empty = unset, no effect on other models) ----
       - VLLM_ALLOW_LONG_MAX_MODEL_LEN=${VLLM_ALLOW_LONG_MAX_MODEL_LEN:-}
       - VLLM_TRITON_MLA_SPARSE=${VLLM_TRITON_MLA_SPARSE:-}
@@ -203,6 +213,11 @@ services:
       - MTP_NUM_TOKENS=${MTP_NUM_TOKENS:-1}
       # HPC-X RDMA NCCL plugin path - allows pip NCCL to find IB/RoCE net plugin
       - LD_LIBRARY_PATH=/opt/hpcx/nccl_rdma_sharp_plugin/lib:/usr/local/lib/python3.12/dist-packages/nvidia/nccl/lib:/usr/local/lib/python3.12/dist-packages/torch/lib:/usr/local/lib/python3.12/dist-packages/torch_tensorrt/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+      # Extend NCCL watchdog timeout for slow first-time Triton JIT compilation
+      - TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=7200
+      # Extend Ray timeouts to survive Triton JIT CPU saturation on head node
+      - RAY_gcs_rpc_server_reconnect_timeout_s=7200
+      - RAY_num_heartbeats_timeout=7200
     deploy:
       resources:
         reservations:
@@ -214,6 +229,7 @@ services:
     volumes:
       - ${MODEL_PATH}:${MODEL_CONTAINER_PATH}:ro
       - ./.cache/vllm:/root/.cache/vllm
+      - ./cache/triton:/root/.triton
       - ./cache/unholy-jit:/cache/jit
       - ./cache/unholy-hf:/cache/huggingface
       - /sys/class/infiniband:/sys/class/infiniband:ro

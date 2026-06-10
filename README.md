@@ -235,6 +235,8 @@ recipe / image / topology in its header comment.
 | `gemma4-31b-it.env` | google/gemma-4-31B-it | BF16 dense multimodal | single | 1 | v022-d568 | `--limit-mm-per-prompt {"image":1,"audio":0,"video":0}` (audio still beta in vLLM 0.21) |
 | `qwen3.6-27b-prismascout-nvfp4-tp2.env` (+ `-v022`) | rdtand/Qwen3.6-27B-PrismaSCOUT-Blackwell-NVFP4-BF16-vllm | NVFP4 mixed-precision (ViT NVFP4 + LM NVFP4 + BF16 sidecars) | dual-rdma | 2 | v022-vllm021 | MTP `n=3`; **v022 preset requires `--mm-encoder-tp-mode data`** (see [`docs/software-stack.md`](docs/software-stack.md)) for ViT MLP K-align |
 | `dsv4-flash-fp8-tp2.env` | deepseek-ai/DeepSeek-V4-Flash | FP8 (E4M3 128×128 block, official) | dual-rdma | 2 | **dsv4-d568** or **unholy-fusion** | DSV4 sparse MLA + Lightning Indexer + fp8_ds_mla KV + MTP heads. Full guide: [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md). Alternative: unholy-fusion image (`aidendle94/sparkrun-vllm-ds4-gb10:production-ready`) — 2× prefill speedup via B12X_MOE kernel, capped at MAX_NUM_SEQS=4 / MAX_MODEL_LEN=262144. See [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md). |
+| `step37-flash-fp8-tp2.env` | stepfun-ai/Step-3.7-Flash-FP8 | FP8 block (e4m3, 128×128, official) | dual-rdma | 2 | v022-d568-ngc2605-tx5102-vllm022-step3p7 | 198B sparse MoE VLM. `MAX_NUM_SEQS=1` (GB10 121GiB UMA memory ceiling, §3 of guide). Full guide: [`docs/step3.7-flash-tp2.md`](docs/step3.7-flash-tp2.md) |
+| `step37-flash-nvfp4-tp2.env` | stepfun-ai/Step-3.7-Flash-NVFP4 | NVFP4 (modelopt) + FP8 KV | dual-rdma | 2 | v022-d568-ngc2605-tx5102-vllm022-step3p7 | Requires `patches/patch_step3p7_nvfp4_input_scale.py` (missing `expert_params_mapping.input_scale` causes NaN logits otherwise). `MAX_NUM_SEQS=4` verified. Full guide: [`docs/step3.7-flash-tp2.md`](docs/step3.7-flash-tp2.md) |
 
 ## Repository layout
 
@@ -276,10 +278,13 @@ vllm-spark/
 │   ├── gemma4-31b-it.env             # Gemma 4 31B IT BF16 dense multimodal (single, TP1; v022-d568)
 │   ├── qwen3.6-35b-a3b.env           # Qwen3.6-35B-A3B BF16 hybrid MoE (single, TP1; v022-d568)
 │   ├── dsv4-flash-fp8-tp2.env        # DeepSeek-V4-Flash official FP8 (dual-rdma, TP2; dsv4-d568)
+│   ├── step37-flash-fp8-tp2.env      # Step-3.7-Flash FP8 block (dual-rdma, TP2; step3p7)
+│   ├── step37-flash-nvfp4-tp2.env    # Step-3.7-Flash NVFP4 + FP8 KV (dual-rdma, TP2; step3p7)
 │   └── qwen3.6-35b-fp16.env           # ⚗️ Qwen3.6 FP16 experimental (single, TP1)
 ├── .env.unholy-fusion             # unholy-fusion config (MAX_NUM_SEQS=4, mp backend, B12X_MOE=1)
 ├── docs/                          # Technical notes, stack guides, and status documents
 │   ├── dsv4-flash-tp2.md             # DSV4-Flash: build, recipe, 9-way benchmark sweep
+│   ├── step3.7-flash-tp2.md          # Step-3.7-Flash: FP8/NVFP4 dual-Spark serving + benchmark comparison
 │   └── unholy-fusion-benchmark.md    # Interpreted unholy-fusion serving result analysis and DSV4 comparison
 ├── benchmarks/                    # Raw benchmark artifacts and experiment outputs; see benchmarks/README.md
 │   └── llama-benchy/              # Raw llama-benchy result files; see benchmarks/llama-benchy/README.md

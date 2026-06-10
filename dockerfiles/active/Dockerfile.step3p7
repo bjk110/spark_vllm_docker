@@ -1,0 +1,26 @@
+# =============================================================================
+# step3p7 support layer on top of v022-d568-ngc2605-tx5102-vllm022
+#
+# Adds Step3p7ForConditionalGeneration (Step-3.7-Flash) native vLLM support.
+# All other Step3 infrastructure (step3_vl.py, step3p5.py, transformers_utils,
+# configs, processors) is already present in vLLM 0.22.1. Only step3p7.py
+# (the thin wrapper) and its registry entry were missing.
+#
+# Build tag : vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7
+# Build host: spark01 or spark02 (aarch64 GB10/SM121)
+# =============================================================================
+
+FROM ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022
+
+COPY patches/step3p7.py \
+     /usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/step3p7.py
+
+COPY patches/patch_registry_step3p7.py /tmp/patch_registry_step3p7.py
+
+RUN python3 /tmp/patch_registry_step3p7.py && rm /tmp/patch_registry_step3p7.py
+
+# Fix NVFP4 ModelOpt MoE input_scale loading (NaN logits root cause).
+# See patches/patch_step3p7_nvfp4_input_scale.py for details.
+COPY patches/patch_step3p7_nvfp4_input_scale.py /tmp/patch_step3p7_nvfp4_input_scale.py
+
+RUN python3 /tmp/patch_step3p7_nvfp4_input_scale.py && rm /tmp/patch_step3p7_nvfp4_input_scale.py
