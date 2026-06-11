@@ -25,6 +25,63 @@ can't bind to a RoCE IP that doesn't exist on this host. Fix:
    `CLUSTER_MODE=single: VLLM_HOST_IP=127.0.0.1, NCCL_IB_DISABLE=1, NCCL/GLOO/UCX ifname cleared`
    on a clean single-Spark start.
 
+## Empty optional env vars (`${VAR:-}` defaults, issue #14)
+
+`docker-compose.yml` forwards many optional knobs into the container as
+`${VAR:-}`. If a preset doesn't set `VAR`, the container still gets
+`VAR=""` — an env var that is **set to an empty string**, not unset. Some
+vLLM / FlashInfer / Triton-DG env parsers treat those very differently from a
+truly-unset var:
+
+- `VLLM_NVFP4_GEMM_BACKEND=""` → `ValueError: Invalid value '' for
+  VLLM_NVFP4_GEMM_BACKEND` (enum-validated env var)
+- `FLASHINFER_CUDA_ARCH_LIST=""` → `flashinfer/compilation_context.py` does
+  `arch.split(".")` → `ValueError: not enough values to unpack (expected 2,
+  got 1)`
+- `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=""` → `invalid literal for int()
+  with base 10: ''`, which can leave CUDA-graph capture under-provisioned and
+  the EngineCore gets OOM-killed during graph capture
+
+**Fix (already applied as of this writing — pull latest `main`):**
+`entrypoints/entrypoint.sh` runs `unset_empty_optional_envs()` at startup,
+before anything else, and `unset`s any of ~24 known optional env vars
+(`VLLM_NVFP4_GEMM_BACKEND`, `VLLM_ATTENTION_BACKEND`,
+`VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS`, `FLASHINFER_CUDA_ARCH_LIST`,
+`TORCH_CUDA_ARCH_LIST`, the B12X/NCCL/DG-JIT toggles, etc.) if they were
+forwarded as an empty string. This makes vLLM/FlashInfer fall back to their
+normal "unset" defaults instead of crashing on `""`. If you're still hitting
+one of the errors above, confirm your image's `/entrypoint.sh` actually
+contains `unset_empty_optional_envs` (older images baked the entrypoint in,
+so a `docker compose pull`/restart with an old image won't pick up a `main`
+fix — rebuild or bind-mount the updated `entrypoints/entrypoint.sh`).
+
+**NVFP4 on GB10/sm_121 — pin explicit values, don't rely on defaults:**
+presets that pass `--quantization nvfp4` (runtime NVFP4, e.g.
+`qwen3.5-122b-nvfp4*.env`) genuinely exercise the FlashInfer NVFP4 GEMM and
+CUDA-graph profiling paths, so set these explicitly rather than letting the
+sanitizer unset them:
+
+```bash
+VLLM_NVFP4_GEMM_BACKEND=flashinfer-cutlass
+FLASHINFER_CUDA_ARCH_LIST=12.1
+TORCH_CUDA_ARCH_LIST=12.1a
+VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=1
+```
+
+**Diagnostic command** — render the final env that a preset produces (after
+`${VAR:-}` substitution) without starting a container:
+
+```bash
+MODEL_PATH=/tmp docker compose --env-file presets/<preset>.env --profile head config \
+  | grep -E "VLLM_NVFP4_GEMM_BACKEND|VLLM_ATTENTION_BACKEND|FLASHINFER_CUDA_ARCH_LIST|TORCH_CUDA_ARCH_LIST|VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS"
+```
+
+A value of `""` here is fine for the entrypoint sanitizer to handle, but for
+NVFP4 presets it should instead show the explicit values above. Run
+`bash scripts/check-empty-env.sh` to check all presets at once — it fails
+only if a runtime-NVFP4 preset is missing one of the four pins, and prints
+informational notes for everything else.
+
 ## Model path and preset issues
 
 - `MODEL_PATH` must point to a local model-weight directory — `presets/*.env`

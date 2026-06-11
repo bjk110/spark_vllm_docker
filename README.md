@@ -300,7 +300,8 @@ vllm-spark/
 └── scripts/
     ├── run-cluster-node.sh        # Manual Ray cluster bootstrap
     ├── verify_imports.py          # Build-time import verification
-    └── verify_runtime.sh          # Full GPU verification
+    ├── verify_runtime.sh          # Full GPU verification
+    └── check-empty-env.sh         # Lint presets for empty optional env vars (issue #14)
 ```
 
 ## Architecture

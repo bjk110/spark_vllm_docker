@@ -1,6 +1,54 @@
 #!/bin/bash
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Empty optional env var sanitizer
+# ---------------------------------------------------------------------------
+# docker-compose.yml forwards many optional knobs as `${VAR:-}`, so a preset
+# that doesn't set VAR results in VAR being *set to an empty string* in the
+# container, not unset. Some vLLM / FlashInfer / Triton-DG env parsers treat
+# "set to empty string" differently from "unset" -- e.g. an enum-validated
+# env var raises `ValueError: Invalid value '' for VLLM_NVFP4_GEMM_BACKEND`,
+# or `flashinfer/compilation_context.py` does `arch.split(".")` on an empty
+# FLASHINFER_CUDA_ARCH_LIST and raises `ValueError: not enough values to
+# unpack`. Unset these vars when empty so vLLM/FlashInfer fall back to their
+# normal "unset" defaults. See GitHub issue #14.
+unset_empty_optional_envs() {
+    local name
+    for name in "$@"; do
+        if [ -n "${!name+x}" ] && [ -z "${!name}" ]; then
+            echo "[entrypoint] Unsetting empty optional env: ${name}"
+            unset "${name}"
+        fi
+    done
+}
+
+unset_empty_optional_envs \
+    VLLM_NVFP4_GEMM_BACKEND \
+    VLLM_ATTENTION_BACKEND \
+    VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS \
+    VLLM_USE_BREAKABLE_CUDAGRAPH \
+    VLLM_ALLOW_LONG_MAX_MODEL_LEN \
+    VLLM_TRITON_MLA_SPARSE \
+    FLASHINFER_CUDA_ARCH_LIST \
+    FLASHINFER_DISABLE_VERSION_CHECK \
+    TORCH_CUDA_ARCH_LIST \
+    TILELANG_CLEANUP_TEMP_FILES \
+    DG_JIT_USE_NVRTC \
+    DG_JIT_NVCC_COMPILER \
+    DG_JIT_PRINT_COMPILER_COMMAND \
+    VLLM_USE_B12X_MOE \
+    VLLM_USE_B12X_MHC \
+    VLLM_USE_B12X_FP8_GEMM \
+    VLLM_USE_B12X_SPARSE_INDEXER \
+    VLLM_USE_B12X_WO_PROJECTION \
+    NCCL_NET \
+    NCCL_CUMEM_ENABLE \
+    NCCL_CROSS_NIC \
+    NCCL_IGNORE_CPU_AFFINITY \
+    VLLM_NCCL_SO_PATH \
+    VLLM_CACHE_ROOT
+
 # Apply Qwen3.5 MoE text-only patches (abliterated models only)
 # Set APPLY_TEXT_ONLY_SHIM=1 in .env to enable
 if [ "${APPLY_TEXT_ONLY_SHIM:-0}" = "1" ] && [ -f /patches/qwen/patch_qwen35_moe_text.py ]; then
