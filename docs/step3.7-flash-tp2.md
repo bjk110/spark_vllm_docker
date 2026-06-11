@@ -241,7 +241,53 @@ At c=1 single-stream, the two variants perform similarly. If concurrent users
 | Multiple concurrent users (2-4) | **NVFP4** (`MAX_NUM_SEQS=4`, FP8 KV cache) |
 | Memory headroom priority | NVFP4 (~50GB/GPU vs FP8 ~97GB/GPU) |
 
-## 7. References
+## 7. Known Issue: Korean / Non-ASCII Output Garbling (resolved)
+
+Symptom (observed via OpenWebUI, 2026-06-10): Korean prompts produced
+unrelated/hallucinated output, and the `reasoning`/`content` fields contained
+literal byte-level BPE markers (`Ġ`, `Ċ`) instead of spaces/newlines —
+rendering as garbled text.
+
+- **Cause**: the checkpoint's `tokenizer_config.json` declares
+  `"tokenizer_class": "LlamaTokenizerFast"`. Under transformers 5.10.2 (this
+  image's version), `AutoTokenizer.from_pretrained()` detects an "incorrect
+  regex pattern" (same family as the
+  [mistralai/Mistral-Small-3.1-24B-Instruct-2503 tokenizer issue](https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503/discussions/84#69121093e8b480e709447d5e))
+  and silently falls back to the **slow** `LlamaTokenizer`
+  (SentencePiece-based). The slow tokenizer (a) drops non-ASCII (Korean) text
+  during encoding — `/tokenize` on `"한국의 수도는 어디?"` returned only
+  `[0, 33]` (BOS + trailing `?`, the Korean text vanished) — and (b) doesn't
+  reverse GPT2's byte-to-unicode mapping during decoding, leaking `Ġ`/`Ċ`
+  markers into the output.
+- **Fix**: in `tokenizer_config.json` on the model weight directory (on every
+  node), change only:
+  ```
+  "tokenizer_class": "LlamaTokenizerFast"
+  ```
+  to:
+  ```
+  "tokenizer_class": "PreTrainedTokenizerFast"
+  ```
+  This makes `AutoTokenizer` resolve to the Rust fast tokenizer instead. The
+  underlying `tokenizer.json` is correct and does not need changes. Restart
+  the vLLM containers (worker then head) after editing.
+- **Verification**:
+  ```bash
+  curl -s http://<head_node_ip>:8000/tokenize \
+    -H "Content-Type: application/json" \
+    -d '{"model":"stepfun-ai/Step-3.7-Flash-FP8","prompt":"한국의 수도는 어디?"}'
+  # expect ~8 tokens, not [0, 33]
+  ```
+  A `/v1/chat/completions` request with a Korean prompt should return relevant
+  Korean `reasoning`/`content` with no `Ġ`/`Ċ` artifacts.
+- The `[transformers] ... incorrect regex pattern ... fix_mistral_regex=True`
+  warning still prints at startup even after this fix — it appears benign
+  (vLLM resolves the fast tokenizer via a different path regardless).
+- Verified on the FP8 variant (2026-06-11). Apply the same edit to the NVFP4
+  checkpoint if/when it's deployed, since it likely ships the same
+  `tokenizer_config.json`.
+
+## 8. References
 
 - [`presets/step37-flash-fp8-tp2.env`](../presets/step37-flash-fp8-tp2.env)
 - [`presets/step37-flash-nvfp4-tp2.env`](../presets/step37-flash-nvfp4-tp2.env)
