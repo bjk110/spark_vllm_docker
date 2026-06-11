@@ -16,6 +16,8 @@ dockerfiles/
 |---|---|---|
 | `Dockerfile.v022-d568` | `v022-d568` | Forward-stack validation base (NGC 26.04 + vLLM 0.21.0 + SM121 FP8 cherry-pick). General-purpose base for non-DSV4 model presets. **On GHCR.** |
 | `Dockerfile.dsv4-d568` | `dsv4-d568` | Primary DeepSeek-V4-Flash image path. `FROM v022-d568` + SM12x DSV4 vLLM patches (sparse MLA, Lightning Indexer, fp8_ds_mla KV, MTP). **On GHCR. Currently frozen — do not update casually.** |
+| `Dockerfile.v022-d568-fi-aot` | `v022-d568-fi-aot` | `FROM v022-d568` + FlashInfer SM120/SM121 AOT kernel prebake (7 specs, AOT-promoted to skip runtime ninja). Drop-in replacement for `v022-d568`. See [`docs/flashinfer-aot-prebake.md`](../docs/flashinfer-aot-prebake.md). |
+| `Dockerfile.v022-d568-fi-aot-extra` | `v022-d568-fi-aot` | Idempotent addendum on top of `Dockerfile.v022-d568-fi-aot` (re-promotes 2 general FA2/sampling specs). Same output tag — strict superset. |
 
 Build commands (always build from **repo root** with `.` as context):
 
@@ -23,6 +25,7 @@ Build commands (always build from **repo root** with `.` as context):
 # Build on a Spark node (spark01 or spark02) — homeserver has insufficient RAM
 docker buildx build -f dockerfiles/active/Dockerfile.v022-d568  -t vllm-spark:v022-d568  --load .
 docker buildx build -f dockerfiles/active/Dockerfile.dsv4-d568  -t vllm-spark:dsv4-d568  --load .
+docker buildx build -f dockerfiles/active/Dockerfile.v022-d568-fi-aot -t vllm-spark:v022-d568-fi-aot --load .
 ```
 
 `COPY patches/...`, `COPY scripts/...`, and other relative paths inside these Dockerfiles

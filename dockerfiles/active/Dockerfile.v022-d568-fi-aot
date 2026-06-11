@@ -1,0 +1,81 @@
+# syntax=docker/dockerfile:1.6
+# =========================================================================
+# vLLM on NVIDIA DGX Spark (GB10, SM121) — v022-d568-fi-aot image
+#
+# Thin overlay on v022-d568 (FlashInfer 0.6.11.post3) that pre-builds
+# FlashInfer's AOT kernel cache for SM120/SM121 (FLASHINFER_CUDA_ARCH_LIST=12.1
+# -> arch dir "121a") at IMAGE BUILD time, baking the result into
+# /root/.cache/flashinfer/0.6.11.post3/121a/cached_ops/.
+#
+# Why: on first MoE-model startup on GB10 (Qwen3.6-35B-A3B, abliterix NVFP4,
+# PrismaSCOUT NVFP4, Gemma4-31B, etc. — all v022-d568 presets), FlashInfer
+# JIT-compiles fused_moe_120 (CUTLASS grouped-GEMM MoE for SM120/121) plus
+# related gemm_sm120 / fp4_quantization_sm121 modules during post-weight-load
+# encoder-cache profiling. With ninja's default -j$(nproc)=20 on spark01/02,
+# ~16 concurrent nvcc jobs (each several GiB) push mem+swap to ~168/184GiB —
+# right at the GB10 121GiB-UMA safety ceiling (170GiB). Pre-baking this cache
+# at build time, with ninja parallelism limited via MAX_JOBS, moves this cost
+# to build time (where it can be throttled) and avoids the runtime spike.
+#
+# Scope: NOT flashinfer.aot's full gen_all_modules() defaults — that config
+# generates 696 jit specs (full FA2/FA3 attention head-dim/dtype sweeps, XQA,
+# selective-state-update/mamba, comm, etc.) with NO prebuilt cubins to skip
+# (FLASHINFER_AOT_DIR doesn't exist in this install), i.e. ALL 696 would need
+# building from scratch -- many hours, not "moderate".
+#
+# Instead this prebuilds just the 5 SM120/SM121-specific CUTLASS modules that
+# gen_all_modules() adds when has_sm120/has_sm121 (159 source files total):
+#   - fp4_quantization_121    (FP4 KV/weight quant, sm121)
+#   - fused_moe_120           (CUTLASS grouped-GEMM MoE -- the module observed
+#                               JIT-compiling at runtime for Qwen3.6-35B-A3B,
+#                               96 sources, the dominant cost)
+#   - gemm_sm120              (CUTLASS GEMM, sm120/121, 28 sources)
+#   - fp4_gemm_cutlass_sm120  (CUTLASS FP4 GEMM, used by VLLM_USE_FLASHINFER_MOE_FP4
+#                               presets e.g. wangzhang-122b-abliterix-nvfp4-tp2, 17 sources)
+#   - mxfp8_gemm_cutlass_sm120 (11 sources)
+# This directly covers the MoE/GEMM/FP4 kernel paths used across the
+# v022-d568 presets (Qwen3.5/3.6, Gemma4, abliterix FP8/NVFP4, PrismaSCOUT
+# NVFP4) without the impractical 696-module full sweep.
+#
+# Additionally prebuilds 2 general (non-SM120-specific) modules observed to
+# still JIT-compile at runtime during post-weight-load profiling for
+# Qwen3.6-35B-A3B (kv_cache_dtype=fp8, head_dim_qk=head_dim_vo=256, FA2
+# backend), found by diffing /root/.cache/flashinfer contents before/after
+# a verification run on the first fi-aot build (13 sources total):
+#   - batch_prefill_with_kv_cache (fa2, q=bf16, kv=e4m3, o=bf16, idx=i32,
+#     head_dim 256/256, posenc=NONE, no SWA/logits-cap/f16qk) -- 10 sources
+#   - sampling -- 3 sources
+#
+# Build (spark01/spark02 only — see CLAUDE.md build-location rule):
+#   docker buildx build -f dockerfiles/active/Dockerfile.v022-d568-fi-aot \
+#     -t vllm-spark:v022-d568-fi-aot --load .
+#
+# To use: set VLLM_IMAGE=vllm-spark:v022-d568-fi-aot in the relevant preset
+# .env (drop-in replacement for v022-d568 — same vLLM/FlashInfer/Transformers
+# versions, only the FlashInfer AOT cache is added).
+# =========================================================================
+
+FROM ghcr.io/bjk110/vllm-spark:v022-d568
+
+# FLASHINFER_CUDA_ARCH_LIST persists to runtime (selects the "121a" cache
+# arch dir both at build time here and when vLLM/FlashInfer run later).
+ENV FLASHINFER_CUDA_ARCH_LIST=12.1
+
+# Limit ninja parallelism during THIS BUILD ONLY to bound peak memory.
+# Each nvcc/CUTLASS template-instantiation job can use ~5-8GiB RSS; with
+# MAX_JOBS=4, peak stays well under the 121GiB UMA + 63GiB swap ceiling
+# (~32-64GiB vs. the ~130GiB seen with ninja's default -j20 at runtime).
+# IMPORTANT: MAX_JOBS must NOT be set via ENV (would persist into the
+# runtime image and throttle vLLM's own FlashInfer JIT parallelism for any
+# residual runtime-only kernel builds, e.g. fused_moe_120's moe_gemm_kernels
+# variants whose codegen depends on GPU presence and can't be fully
+# pre-baked at build time without GPU access).
+ARG FI_AOT_MAX_JOBS=4
+
+COPY dockerfiles/scripts/flashinfer_aot_build.py /opt/flashinfer_aot_build.py
+
+# Redirection (not a pipe) so a non-zero exit from python actually fails the build.
+RUN MAX_JOBS=${FI_AOT_MAX_JOBS} python3 /opt/flashinfer_aot_build.py > /opt/flashinfer_aot_build.log 2>&1 \
+    || (tail -100 /opt/flashinfer_aot_build.log; echo "[flashinfer-aot] BUILD FAILED"; exit 1) && \
+    echo "[flashinfer-aot] build complete, cached .so files:" && \
+    find /root/.cache/flashinfer -name "*.so" | tee -a /opt/flashinfer_aot_build.log

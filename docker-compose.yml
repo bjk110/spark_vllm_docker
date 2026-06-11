@@ -88,6 +88,14 @@ services:
       - VLLM_NCCL_SO_PATH=${VLLM_NCCL_SO_PATH:-}
       - VLLM_CACHE_ROOT=${VLLM_CACHE_ROOT:-}
       - FLASHINFER_CUDA_ARCH_LIST=${FLASHINFER_CUDA_ARCH_LIST:-}
+      # Caps ninja parallelism for any FlashInfer JIT compiles that happen
+      # at runtime (e.g. fused_moe_120 CUTLASS codegen re-validation on
+      # GB10). Empty = ninja default (-j$(nproc)), which can spawn ~60
+      # concurrent nvcc/cicc procs and spike mem+swap toward the 170GiB
+      # UMA ceiling. Set e.g. MAX_JOBS=4 to bound this to ~109GiB.
+      - MAX_JOBS=${MAX_JOBS:-}
+      - FLASHINFER_NVCC_THREADS=${FLASHINFER_NVCC_THREADS:-}
+      - FLASHINFER_JIT_VERBOSE=${FLASHINFER_JIT_VERBOSE:-}
       - VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=${VLLM_SPARSE_INDEXER_MAX_LOGITS_MB:-256}
       - MTP_NUM_TOKENS=${MTP_NUM_TOKENS:-1}
       # HPC-X RDMA NCCL plugin path - allows pip NCCL to find IB/RoCE net plugin
@@ -209,6 +217,14 @@ services:
       - VLLM_NCCL_SO_PATH=${VLLM_NCCL_SO_PATH:-}
       - VLLM_CACHE_ROOT=${VLLM_CACHE_ROOT:-}
       - FLASHINFER_CUDA_ARCH_LIST=${FLASHINFER_CUDA_ARCH_LIST:-}
+      # Caps ninja parallelism for any FlashInfer JIT compiles that happen
+      # at runtime (e.g. fused_moe_120 CUTLASS codegen re-validation on
+      # GB10). Empty = ninja default (-j$(nproc)), which can spawn ~60
+      # concurrent nvcc/cicc procs and spike mem+swap toward the 170GiB
+      # UMA ceiling. Set e.g. MAX_JOBS=4 to bound this to ~109GiB.
+      - MAX_JOBS=${MAX_JOBS:-}
+      - FLASHINFER_NVCC_THREADS=${FLASHINFER_NVCC_THREADS:-}
+      - FLASHINFER_JIT_VERBOSE=${FLASHINFER_JIT_VERBOSE:-}
       - VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=${VLLM_SPARSE_INDEXER_MAX_LOGITS_MB:-256}
       - MTP_NUM_TOKENS=${MTP_NUM_TOKENS:-1}
       # HPC-X RDMA NCCL plugin path - allows pip NCCL to find IB/RoCE net plugin

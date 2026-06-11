@@ -4,6 +4,25 @@ All notable changes to `vllm-spark` (GHCR image + repo presets). Most recent on
 top. See `git log` for the full commit history; this file is curated to describe
 what users see (image tag, behavior, breaking changes) rather than every commit.
 
+## `v022-d568-fi-aot` — FlashInfer AOT kernel prebake (2026-06-11)
+
+- **What**: New optional image `v022-d568-fi-aot`, a drop-in replacement for
+  `v022-d568`. Pre-builds 7 FlashInfer SM120/SM121 kernel modules at image
+  build time and promotes each `.so` from `spec.jit_library_path` to
+  `spec.aot_path`, so `spec.is_aot=True` at runtime and `build_and_load()`
+  skips ninja for those modules (notably `fused_moe_120`).
+- **Validated**: dual-node RDMA TP=2 with `Qwen/Qwen3.6-35B-A3B` — Ray join,
+  model load, profiling, and CUDA graph capture all completed with zero
+  `ninja`/`nvcc`/`cicc`/`ptxas` processes for the 7 prebaked specs;
+  `/health` and `/v1/completions` both OK on both nodes.
+- **Scope**: only the 7 specs listed in
+  [`docs/flashinfer-aot-prebake.md`](docs/flashinfer-aot-prebake.md) are
+  AOT-promoted — other FlashInfer module/dtype/shape combinations still
+  JIT-compile on first use as before.
+- **User impact**: no required action. To use, set
+  `VLLM_IMAGE=vllm-spark:v022-d568-fi-aot` (or the GHCR tag) in place of
+  `v022-d568` in any preset `.env`.
+
 ## v021-tq — Qwen3.5 hybrid codegen workaround (`3070f9a`, 2026-04-26)
 
 - **What**: All `*-tq.env` presets that exercise Qwen3.5 hybrid models (i.e.

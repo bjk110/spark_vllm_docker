@@ -32,6 +32,11 @@ For release-by-release detail and patch-by-patch status, see
 Component versions, stack lineage, and image digests → [`docs/software-stack.md`](docs/software-stack.md).
 Image tag → Git-ref mapping → [`docs/images.md`](docs/images.md).
 
+> **Optional**: `v022-d568-fi-aot` is a validated drop-in replacement for
+> `v022-d568` with FlashInfer SM120/SM121 kernels AOT-prebaked (avoids runtime
+> ninja/nvcc for those kernels) — see
+> [`docs/flashinfer-aot-prebake.md`](docs/flashinfer-aot-prebake.md).
+
 ## Hardware and topology
 
 | Topology | Node | Role | GPU | Memory | Interconnect | Backend |
