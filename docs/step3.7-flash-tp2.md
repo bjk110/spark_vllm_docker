@@ -259,18 +259,18 @@ rendering as garbled text.
   `[0, 33]` (BOS + trailing `?`, the Korean text vanished) — and (b) doesn't
   reverse GPT2's byte-to-unicode mapping during decoding, leaking `Ġ`/`Ċ`
   markers into the output.
-- **Fix**: in `tokenizer_config.json` on the model weight directory (on every
-  node), change only:
+- **Fix**: run
+  [`patches/patch_step3p7_tokenizer_class.py`](../patches/patch_step3p7_tokenizer_class.py)
+  against `tokenizer_config.json` on the model weight directory, on every node
+  that holds a copy of the weights:
+  ```bash
+  python3 patches/patch_step3p7_tokenizer_class.py /path/to/Step-3.7-Flash-FP8/tokenizer_config.json
   ```
-  "tokenizer_class": "LlamaTokenizerFast"
-  ```
-  to:
-  ```
-  "tokenizer_class": "PreTrainedTokenizerFast"
-  ```
-  This makes `AutoTokenizer` resolve to the Rust fast tokenizer instead. The
-  underlying `tokenizer.json` is correct and does not need changes. Restart
-  the vLLM containers (worker then head) after editing.
+  This changes only `"tokenizer_class": "LlamaTokenizerFast"` to
+  `"tokenizer_class": "PreTrainedTokenizerFast"` (with a `.bak-tokenizer-class`
+  backup), making `AutoTokenizer` resolve to the Rust fast tokenizer instead.
+  The underlying `tokenizer.json` is correct and does not need changes.
+  Restart the vLLM containers (worker then head) after editing.
 - **Verification**:
   ```bash
   curl -s http://<head_node_ip>:8000/tokenize \

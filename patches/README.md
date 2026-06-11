@@ -60,6 +60,7 @@ Status labels:
 | `unknown/apply_patches_in_container.py` | build helper | Unknown / needs verification | Manual patch orchestrator designed to run inside a container (`docker exec`). No Dockerfile reference. Likely an early SM121 bringup tool before patches were baked into Dockerfiles |
 | `unknown/apply_patches_round2.py` | build helper | Unknown / needs verification | Batch patch tool for a second round of SM121 patches (PR #2, #3, #6, #7, #9 in early numbering). No Dockerfile reference; predates current unified `sm121/apply_sm121_patches.py` |
 | `unknown/fix_cuda13_memcpy_batch.py` | CUDA / runtime | Unknown / needs verification | CUDA 13 memcpy batch fix. No Dockerfile reference; origin and applicability not confirmed. Verify before removing |
+| `patch_step3p7_tokenizer_class.py` | Step-3.7-Flash / tokenizer | Standby | Not applied during build -- edits a model checkpoint's `tokenizer_config.json` (`tokenizer_class: LlamaTokenizerFast` -> `PreTrainedTokenizerFast`) to fix Korean/non-ASCII encode+decode under transformers 5.10.2. Run manually once per node per model directory. See `docs/step3.7-flash-tp2.md` §7 |
 
 ---
 
