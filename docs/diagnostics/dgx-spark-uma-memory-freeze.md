@@ -916,3 +916,171 @@ numa_maps,maps}` require the same UID or `CAP_SYS_PTRACE`). The script now:
 For any future attempt where proc_maps/smaps data is required (e.g. to
 resolve §14's open question about mapping categories during the
 15:05:08-15:09:00 window), run `sudo ./scripts/diag/trace-memory.sh ...`.
+
+## 16. Attempt 12 results (2026-06-12) -- fixed KV cache memory isolation
+
+**Purpose:** §14 narrowed the suspect window for the ~38GB head-node-only
+decline to KV cache profiling / GPU KV cache allocation / engine startup
+(15:05:08-15:09:00, overlapping `Available KV cache memory` and `GPU KV
+cache size`). Attempt 12 tests this directly by replacing vLLM's
+automatic KV-cache-size derivation (driven by `GPU_MEMORY_UTILIZATION`)
+with a fixed, explicit KV cache size via `--kv-cache-memory-bytes`, while
+keeping everything else identical to Attempt 11A (EP disabled,
+`GPU_MEMORY_UTILIZATION=0.85`, Ray safety knobs, `--enforce-eager`,
+`MAX_MODEL_LEN=8192`/`MAX_NUM_SEQS=4`/`MAX_NUM_BATCHED_TOKENS=8192`, sudo
+`trace-memory.sh`/`memory-guard.sh` on both nodes, clean reboot
+beforehand).
+
+**Env used:**
+[`.env.step37-fi-aot-tp2-ep-off-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-kv8g-debug)
+-- identical to
+[`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug)
+(Attempt 11A) plus one added arg:
+
+```
+--kv-cache-memory-bytes 8589934592   (= 8 GiB)
+```
+
+`--kv-cache-memory-bytes` support was confirmed via `vllm serve
+--help=CacheConfig` (not listed in the default top-level `--help`; vLLM
+0.22 groups CLI args by config class and requires `--help=<GroupName>`).
+
+**Timeline (UTC):**
+
+| Event | Time |
+|---|---|
+| Weight loading started | 15:39:21 |
+| Weight loading 14/14 completed, head/rank0 (141.5s) | 15:41:44 |
+| Weight loading 14/14 completed, worker/rank1 (165.4s) | 15:42:10 |
+| `Initial free memory ..., reserved 8.0 GiB memory for KV Cache as specified by kv_cache_memory_bytes config and skipped memory profiling` (rank0) | 15:43:39 |
+| Same log line (rank1) | 15:44:38 |
+| `GPU KV cache size: 174,504 tokens` (3 padding layers, ~9.09% waste) | 15:44:39 |
+| `Application startup complete` (API server ready) | 15:46:21 |
+| Inference test (`/v1/completions`) succeeded | ~15:48 |
+
+Weight loading (2m21s on rank0) was comparable to Attempt 11A's 2m17s.
+`Application startup complete` was reached **4m37s after weight-loading
+completion** (15:41:44 -> 15:46:21), notably faster than Attempt 11A's
+~5m50s (15:03:10 -> 15:09:00).
+
+**Key log lines confirming the fixed-KV / skip-profiling path:**
+
+```
+INFO 06-12 15:43:39 [gpu_worker.py:387] Initial free memory 111.93 GiB,
+reserved 8.0 GiB memory for KV Cache as specified by kv_cache_memory_bytes
+config and skipped memory profiling. This does not respect the
+gpu_memory_utilization config. ...
+
+INFO 06-12 15:44:39 [kv_cache_utils.py:1733] GPU KV cache size: 174,504 tokens
+INFO 06-12 15:44:39 [kv_cache_utils.py:1734] Maximum concurrency for 8,192
+tokens per request: 21.30x
+```
+
+No `Available KV cache memory: X GiB` line was printed at all in this run
+-- the `kv_cache_memory_bytes` path **skips the memory-profiling step
+entirely**, which is the step that produced that line in Attempt 11A.
+
+**Memory behavior -- decline shrank substantially and became more
+symmetric.**
+
+| Time (UTC) | spark01/head MemAvailable | spark02/worker MemAvailable |
+|---|---|---|
+| 15:41:13 (mid weight-load, 9/14) | ~54.85 GiB | ~50.34 GiB |
+| 15:45:05 (post KV-size determination) | ~42.30 GiB | ~42.40 GiB |
+| 15:48:05 (post `Application startup complete`) | ~40.78 GiB | ~43.43 GiB |
+| 15:49:43 | ~40.17 GiB | ~42.87 GiB |
+| 15:54:05 (final, stable) | **40.13 GiB** | **42.85 GiB** |
+
+spark01/head: ~54.85 GiB -> ~40.13 GiB, **~14.7 GB total** -- vs. Attempt
+11A's ~38 GB. spark02/worker: ~50.34 GiB -> ~42.85 GiB, **~7.5 GB total**
+-- vs. Attempt 11A's essentially-flat behavior. Both nodes plateaued by
+15:54:05 (< 50 MB drift over the prior 4+ minutes).
+
+**Comparison with Attempt 11A:**
+
+| | Attempt 11A (auto KV) | Attempt 12 (fixed KV 8GiB) |
+|---|---|---|
+| KV cache memory determination | profiled (`Available KV cache memory: 37.8 GiB`) | skipped (fixed, no profiling log) |
+| `GPU KV cache size` | 790,438 tokens | 174,504 tokens |
+| head (spark01) decline | ~38 GB (51.9 -> 13.86 GiB) | ~14.7 GB (54.85 -> 40.13 GiB) |
+| worker (spark02) decline | ~flat (~17-17.8 GiB range) | ~7.5 GB (50.34 -> 42.85 GiB) |
+| weight-load -> startup-complete | ~5m50s | ~4m37s |
+| Ray OOM / guard trip / host freeze | none | none |
+
+**Interpretation.**
+
+- **KV cache memory profiling / automatic KV allocation is now the
+  strongest root-cause candidate** for the head-node-only ~38GB decline
+  identified in Attempts 09/10b/11A. Replacing the profiled/derived KV
+  size (37.8 GiB, 790,438 tokens) with a small fixed value (8 GiB,
+  174,504 tokens) and skipping profiling entirely cut the head-node
+  decline by more than half (~38GB -> ~14.7GB).
+- **EP/all-to-all is confirmed not to be the sole cause** (already shown
+  in §14; reaffirmed here since EP remains off).
+- **Reducing `max_model_len`/`max_num_seqs`/`max_num_batched_tokens` alone
+  (Attempt 10b's low-kv variant) was insufficient** to prevent the
+  decline/collapse, but **directly fixing
+  `--kv-cache-memory-bytes`** -- which changes *how* vLLM sizes and
+  allocates the KV cache, not just the logical token budget -- was
+  effective. This points at the KV-cache *allocation/profiling
+  mechanism* itself (not merely the resulting cache size) as a major
+  contributor.
+- **The decline pattern changed from head-only to more symmetric
+  head/worker**: head still declines somewhat more (~14.7GB vs ~7.5GB),
+  but worker is no longer flat. This suggests the profiled-KV-allocation
+  path had a head/rank0-specific extra cost on top of a smaller
+  baseline cost shared by both ranks; with profiling skipped, mostly the
+  shared baseline cost remains.
+- **The remaining ~14.7GB head decline is not fully explained by
+  RayWorkerWrapper + EngineCore RSS alone** (combined ~4.3 GiB, see
+  below). It should be treated as baseline engine/Ray/CUDA/model-load
+  overhead (e.g. CUDA context/driver allocations, Ray object store,
+  other Ray subprocess RSS, page-cache effects from the 120GB checkpoint
+  read) rather than a single identifiable allocation -- further isolation
+  would require per-process accounting across *all* container processes,
+  not just EngineCore/RayWorkerWrapper.
+
+**proc_maps / smaps results (sudo capture succeeded).** Unlike Attempt
+11A (§14, all 0 bytes), running `trace-memory.sh` with `sudo` produced
+non-empty `smaps_rollup`/`maps_summary`/`numa_maps` for root-owned
+container processes on both nodes:
+
+| Process | Rss | Pss | Swap |
+|---|---|---|---|
+| `VLLM::EngineCore` (spark01/head) | 664.6 MB | 595.5 MB | 246 MB |
+| `ray::RayWorkerWrapper` rank0 (spark01/head) | 3.66 GB | 3.59 GB | 676 MB |
+| `ray::RayWorkerWrapper` rank1 (spark02/worker) | 3.86 GB | 3.82 GB | 509 MB |
+
+`maps_summary` mapping-category breakdown for `RayWorkerWrapper`:
+
+| Category | rank0 (head) | rank1 (worker) |
+|---|---|---|
+| `anonymous` | count=855, ~1.8 TB | count=851, ~839 GB |
+| `cuda_nccl_lib` | ~645 MB | ~645 MB |
+| `deleted` (memfd/unlinked-lib-like) | ~4.92 GB | ~4.92 GB |
+| `nvidia_dev` | ~200 MB | ~200 MB |
+| `infiniband_dev` | -- | 24 KB |
+| `dev_shm` | 80 KB | 8 KB |
+| `other` | ~5.75 GB | ~5.74 GB |
+
+**The dominant `anonymous` category (~1.8 TB rank0 / ~839 GB rank1) is
+virtual address space only, not physical memory** -- `smaps_rollup`'s
+`Rss`/`Pss` for the same processes are only ~3.7-3.9 GB. This is
+consistent with §11.2's earlier VSZ=790.6GiB finding for
+`RayWorkerWrapper` and is most likely CUDA UVM / `expandable_segments`
+virtual-address-space over-reservation, which does not by itself explain
+the GB-scale `MemAvailable` decline. The actually-resident contributors
+(EngineCore + RayWorkerWrapper RSS, ~4.3 GiB combined on head) account for
+only a fraction of the ~14.7GB head decline; the rest remains
+unattributed to a single process from this data and likely reflects
+distributed overhead across the full container process tree plus
+page-cache/driver-level effects.
+
+**Preserved artifacts:**
+
+- `spark01:~/docker/vllm-spark/.local/diag/diag-spark01-attempt12-20260613-005641.tar.gz`
+- `spark02:~/docker/vllm-spark/.local/diag/diag-spark02-attempt12-20260613-005641.tar.gz`
+
+Both containers were stopped cleanly (`docker compose ... down`, exit code
+0) and `trace-memory.sh`/`memory-guard.sh` were stopped with `SIGTERM` on
+both nodes (no orphaned processes).
