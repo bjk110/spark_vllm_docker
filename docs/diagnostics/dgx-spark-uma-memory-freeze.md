@@ -314,15 +314,17 @@ sudo systemctl reboot
 | [`.env.step37-fi-aot-tp2-ep-off-debug`](../../.env.step37-fi-aot-tp2-ep-off-debug) | `--enable-expert-parallel` removed — EP isolation |
 | [`.env.step37-fi-aot-tp2-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ray-tuned-debug) | Ray dashboard off + object-store bound + memory monitor re-enabled |
 | [`.env.step37-fi-aot-tp2-low-kv-debug`](../../.env.step37-fi-aot-tp2-low-kv-debug) | Reduced `MAX_MODEL_LEN`/`MAX_NUM_SEQS`/`MAX_NUM_BATCHED_TOKENS`, same util |
-| [`.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug) | Attempt 10: low-kv-debug's reduced context/batch knobs + ray-tuned-debug's Ray object-store/dashboard/memory-monitor knobs, combined |
+| [`.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug) | Attempt 10b: low-kv-debug's reduced context/batch knobs + ray-tuned-debug's Ray object-store/dashboard/memory-monitor knobs, combined |
+| [`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug) | Attempt 11A: ep-off-debug + ray-tuned-debug's Ray memory-monitor safety net, combined |
 
-All five are **disposable/debug** — not promoted/stable presets. None of
+All six are **disposable/debug** — not promoted/stable presets. None of
 them are claimed to fix the underlying issue; they exist to narrow down
 *where* the ~20GB+ growth comes from.
 
-See §9 (Attempt 09 results) and §10 (Attempt 10 plan) below for the most
-recent findings and the rationale for the combined
-`low-kv-ray-tuned-debug` variant.
+See §9 (Attempt 09 results), §10 (Attempt 10 plan), §11 (Attempt 10
+results) and §12 (Attempt 11 plan) below for the most recent findings and
+the rationale for the combined `low-kv-ray-tuned-debug` and
+`ep-off-ray-tuned-debug` variants.
 
 ## 9. Attempt 09 (2026-06-12) — first non-freezing capture
 
@@ -497,3 +499,280 @@ Based on §9:
    `ps_topRSS.log` for per-process RSS growth during the ~6-minute window
    and the decline itself -- this is the one diagnostic signal Attempt 09
    could not provide.
+
+## 11. Attempt 10 results (2026-06-12)
+
+### 11.1 Attempt 10a -- INVALID (`vm.min_free_kbytes` set too high)
+
+Before the §10 run, `vm.min_free_kbytes` was raised to roughly 6GiB on both
+nodes as an extra safety margin (intent: give the kernel more reclaim
+headroom before a collapse). This made the kernel's own free-memory
+accounting reject `init_device()`'s pre-init memory check immediately --
+the run failed before reaching the EP marker or weight loading, i.e.
+**before the phenomenon under investigation could even start**. Attempt 10a
+produced no signal about the collapse and is **invalid** -- do not cite it
+as evidence either way.
+
+Fix: `vm.min_free_kbytes` was reverted back to its default (`45156`,
+confirmed via `sysctl vm.min_free_kbytes` on both nodes after Attempt 10b --
+see §11.2) before re-running. **Do not set `vm.min_free_kbytes` to ~6GiB on
+these hosts** -- it breaks `init_device()`'s pre-init check independent of
+this bug.
+
+### 11.2 Attempt 10b -- non-freezing capture with `low-kv-ray-tuned-debug`
+
+With `vm.min_free_kbytes` reverted (`45156`, `vm.swappiness=1` on both
+nodes) and `.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug` (§8), the run
+reached its intended path: weight loading completed, the EP marker
+appeared on both ranks, and the run ended in a **clean, logged Ray-level
+OOM error** rather than a host freeze.
+
+**Timeline (UTC):**
+
+| Event | Time |
+|---|---|
+| EP marker ("Expert parallelism is enabled"), both ranks | 14:15:45 / 14:15:46 |
+| Weight loading window | 14:15:55 -> ~14:21:35 |
+| Ray memory monitor kills `RayWorkerWrapper` (node0) | 14:21:41 |
+| `vllm-spark-head` exits (EngineCore init failure) | shortly after 14:21:41 |
+
+**EP-marker -> crash timing: 5m56s** (14:15:45 -> 14:21:41), vs Attempt 09's
+**5m46s**. The two are within 10 seconds of each other despite very
+different `MAX_MODEL_LEN`/`MAX_NUM_SEQS`/`MAX_NUM_BATCHED_TOKENS` (8192/4/8192
+in Attempt 09 vs 4096/2/2048 here) -- **strongly suggests a roughly
+deterministic, time-based (or weight-loading-completion-based) trigger,
+largely independent of the low-KV knobs.**
+
+**Crash signature** (`vllm-spark-head` log tail, ~14:21:41 UTC):
+
+```
+ray.exceptions.OutOfMemoryError: 1 worker(s) were killed due to the node
+running low on memory. Memory on the node (IP: 10.10.10.1) was 110.41GB /
+121.63GB (0.907749), which exceeds the memory usage threshold of 0.900000.
+
+RuntimeError: Engine core initialization failed. See root cause above.
+Failed core proc(s): {}
+```
+
+i.e. **Ray's own memory monitor** (`RAY_memory_usage_threshold=0.90`,
+`RAY_memory_monitor_refresh_ms=100`) killed the `RayWorkerWrapper` actor on
+node0 once node0's total memory crossed 90% of 121.63GiB, which then
+propagated as an `EngineCore` initialization failure and a clean
+`Exited(1)` for `vllm-spark-head`. **The host did not freeze.**
+
+**Fine-grained collapse trajectory (node0 / spark01, `meminfo.log`, KST =
+UTC+9, so 23:21:xx KST = 14:21:xx UTC):**
+
+| Time (KST) | MemAvailable |
+|---|---|
+| 23:21:34.674 | 50,786,168 KB (~48.4 GiB) |
+| 23:21:36.716 | 45,623,876 KB (~43.5 GiB) |
+| 23:21:38.777 | 33,956,664 KB (~32.4 GiB) |
+| 23:21:40.834 | 19,981,540 KB (~19.1 GiB) -- peak decline rate ~7 GB/s |
+| 23:21:42.893 | 14,336,072 KB (~13.7 GiB) |
+| 23:21:43 -- 23:21:51 | oscillates 13.8 -- 14.4 GiB |
+| 23:21:53 onward | stabilizes ~15.15 -- 15.2 GiB (flat for 75+ s) |
+
+Total: **~37GB drop in ~17 seconds**, bottoming out around 13.7GiB before
+recovering slightly and holding at ~15.2GiB once Ray's kill completed and
+the container exited. The post-run `free -m` snapshot taken in this
+postmortem (well after the run) still shows spark01 at
+`available=14805MB` -- consistent with this ~15.2GiB stabilization point
+persisting until reboot.
+
+**cgroup-external pattern -- 2nd independent confirmation.** Exactly as in
+Attempt 09 (§9.5), `docker stats` for `vllm-spark-head` *decreased* during
+the collapse while host `MemAvailable` cratered:
+
+| Time (KST) | `vllm-spark-head` MEM USAGE |
+|---|---|
+| 23:21:27.670 | 10.24 GiB |
+| 23:21:34.694 | 3.5 GiB |
+| 23:21:41.734 | 1.173 GiB |
+| 23:21:48.773 | 1.546 GiB |
+
+i.e. the container's own cgroup memory accounting was *falling* throughout
+the same window where host `MemAvailable` dropped ~37GB. This is the
+**second independent confirmation** (Attempt 09 + Attempt 10b) that the
+growth driving the collapse is **outside** `vllm-spark-head`'s cgroup --
+most likely NVIDIA UVM/driver-level unified memory or a similar
+host-global allocation not charged to the container's cgroup.
+
+**Low-KV result.** Reducing `MAX_MODEL_LEN`/`MAX_NUM_SEQS`/
+`MAX_NUM_BATCHED_TOKENS` from 8192/4/8192 (Attempt 09) to 4096/2/2048
+(Attempt 10b):
+  - did **not** prevent the collapse,
+  - did **not** meaningfully change the ~6-minute EP-marker-to-crash delay
+    (5m46s vs 5m56s), and
+  - therefore makes **KV-cache reservation / CPU-side bookkeeping sized by
+    these knobs an unlikely *primary* trigger** for the collapse. It may
+    still be a secondary/contributing factor, but it is not the dominant
+    one.
+
+**Ray memory-monitor result.** `RAY_memory_usage_threshold=0.90` +
+`RAY_memory_monitor_refresh_ms=100` (the "ray-tuned" knobs) converted what
+was an unresponsive-host freeze in Attempt 09 into a **controlled,
+logged Ray-level OOM crash** in Attempt 10b -- at a much higher
+`MemAvailable` floor (~13.8GiB here vs Attempt 09's ~3.8-5.5GiB). **These
+two Ray knobs should remain enabled (`RAY_memory_usage_threshold=0.90`,
+`RAY_memory_monitor_refresh_ms=100`) for all future dangerous diagnostic
+runs on this stack** -- they cost nothing when the collapse doesn't happen,
+and turn a freeze into a diagnosable crash when it does.
+
+**`ps_topRSS.log` result (first successful capture, post-§9.7 fix).** At
+23:21:39.425 KST (just before the Ray kill), the top-RSS snapshot on
+spark01 showed:
+
+| Process | host PID | container PID | RSS | VSZ |
+|---|---|---|---|---|
+| `ray::RayWorkerWrapper` | 105727 | 1880 | ~1.02 GiB (1,071,660 KB) | **~790.6 GiB (829,302,508 KB)** |
+| `vllm` (APIServer, pid 102478) | -- | -- | 194,452 KB -> 547,836 KB (rising during teardown) | -- |
+| `VLLM::EngineCore` (pid 104324) | -- | -- | 112,240 KB -> 403,460 KB (rising during teardown) | -- |
+
+By 23:21:54.474 KST, all `vllm`/Ray processes were gone (container exited).
+
+`RayWorkerWrapper`'s **VSZ=~790.6GiB is ~6.5x the entire 121.63GiB UMA
+pool**, while its RSS was only ~1.02GiB. **VSZ is virtual address-space
+reservation, not physical memory** -- it does not by itself explain the
+~37GB *physical* `MemAvailable` drop. But a reservation this large (likely
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` virtual-address
+over-commit, and/or NCCL/RDMA registered-memory virtual mappings) is
+consistent with a process that *could* trigger a large physical-page
+commit if a significant fraction of that virtual space gets touched/backed
+around the EP-marker-to-crash window. **Next run must capture
+`/proc/<pid>/smaps_rollup` (Rss/Pss/Anonymous/Locked/Swap, etc.) and a
+categorized `/proc/<pid>/maps` summary for `RayWorkerWrapper` (and
+`EngineCore`) BEFORE Ray kills the worker**, to distinguish "huge VSZ,
+small RSS, irrelevant" from "huge VSZ, RSS ramping fast in the final
+seconds, this is the mechanism." This is implemented in
+`scripts/diag/trace-memory.sh`'s new proc_maps sampler (§13).
+
+**node1 (spark02/worker) stability.** `meminfo.log` on spark02 oscillated
+53.8-58.0GB `MemAvailable` throughout, then **jumped to 61.03GB at
+23:21:43.675 KST and stayed flat** -- i.e. node1 *released* resources at
+almost exactly the moment node0's corresponding worker was killed, rather
+than itself collapsing. `docker stats` for `vllm-spark-worker` stayed flat
+at ~1.23GiB (1.01%) throughout. The postmortem `free -m` snapshot in this
+session shows spark02 at `available=60115MB`, consistent with this
+~61GB stabilization point. **Node1/the worker rank was unaffected** -- the
+collapse is node0/head/rank0-specific in this run, as in Attempt 09.
+
+**Diagnostics housekeeping note.** In this run's postmortem, `docker
+compose down` was executed on both containers *before* `docker logs
+vllm-spark-head`/`vllm-spark-worker` were saved to a file, so the full
+container logs are not recoverable for Attempt 10b (only the excerpts
+above, captured in-session before removal, and `trace-memory.sh`'s
+independent meminfo/free/ps/docker-stats/kernel logs, which are unaffected
+and are the primary data source above). **For Attempt 11, save full
+`docker compose ... logs --no-color > ...` to a file BEFORE running
+`down`.** See `.local/diag/docker-logs-NOTE-attempt10b.txt` in each node's
+tarball for details.
+
+## 12. Attempt 11 plan
+
+Two isolation experiments, in priority order. Both **keep the Ray
+memory-monitor safety net** (`RAY_INCLUDE_DASHBOARD=false`,
+`RAY_OBJECT_STORE_MEMORY_BYTES=4294967296`,
+`RAY_memory_usage_threshold=0.90`, `RAY_memory_monitor_refresh_ms=100`,
+`RAY_DASHBOARD_MAX_EVENTS_TO_CACHE=1000`) and `memory-guard.sh
+--threshold-mb 8192 --interval 0.1` per §11.2's finding that these
+knobs convert a freeze into a diagnosable crash at no cost. **Do not set
+`vm.min_free_kbytes=6GiB`** (§11.1). **Reboot both nodes before each run**
+(GB10 UMA reclaim, see §10 step 1).
+
+### 12A. EP-off + Ray-tuned isolation (`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`)
+
+**Goal:** determine whether `--enable-expert-parallel` (EP all-to-all / MoE
+expert-routing workspace) is the trigger for the ~6-minute-post-EP-marker
+collapse, independent of the Ray safety net.
+
+Based on `.env.step37-fi-aot-tp2-ep-off-debug` (§8) +
+the Attempt 10b Ray-tuned knobs above, see
+[`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug)
+for the full file and rationale. `--enable-expert-parallel` is removed (as
+in `ep-off-debug`), `--enforce-eager` is retained, and
+`MAX_MODEL_LEN`/`MAX_NUM_SEQS`/`MAX_NUM_BATCHED_TOKENS` are left at
+`ep-off-debug`'s existing 8192/4/8192 (not Attempt 10b's low-kv
+4096/2/2048).
+
+**`GPU_MEMORY_UTILIZATION`: primary Attempt 11A run uses 0.85** (Attempt
+10b's value), **not** `ep-off-debug`'s 0.80 -- so that EP-off is the
+*only* new variable vs. Attempt 10b / the EP-enabled baseline. `0.80` was
+`ep-off-debug`'s choice for a *different* reason (headroom for EP-off's ~2x
+per-rank MoE weight footprint, 288 experts/rank instead of 144) and mixing
+it in here would confound "did EP-off change anything?" with "did lowering
+util change anything?".
+
+- If `init_device()`'s pre-init check **fails at 0.85 with EP off**, that is
+  itself a **valid Attempt 11A result** -- do not lower
+  `GPU_MEMORY_UTILIZATION` in the primary env to "fix" it.
+- **Only then**, retry as **Attempt 11A-fallback** with a separate env at
+  `GPU_MEMORY_UTILIZATION=0.80` (e.g.
+  `.env.step37-fi-aot-tp2-ep-off-ray-tuned-gpu080-debug`).
+- **Results from the 0.80 fallback must NOT be interpreted as a pure
+  EP-only isolation** -- both EP (off) and `GPU_MEMORY_UTILIZATION`
+  (0.85->0.80) changed relative to Attempt 10b, so a collapse/no-collapse
+  result there cannot distinguish "EP-off fixed it" from "lower util fixed
+  it".
+
+**Interpretation (primary, 0.85):**
+
+| Result | Implication |
+|---|---|
+| EP-off removes the collapse (no EP marker phase / no ~6min decline / clean steady state) | EP / all-to-all / MoE expert-routing workspace is the key trigger |
+| EP-off still shows the same ~6min collapse | Issue is more likely in the rank0 / `RayWorkerWrapper` / UVM / CUDA virtual-address path independent of EP (consistent with §11.2's VSZ=790.6GiB finding) |
+| `init_device()` pre-init memory check fails at 0.85 | EP-off's ~2x per-rank MoE weight footprint (288 experts/rank instead of 144) pushed memory requirements over `GPU_MEMORY_UTILIZATION=0.85` -- a clean, fast, diagnosable failure; report as-is, then run Attempt 11A-fallback at 0.80 (see above) |
+| node0-only Ray OOM again | Head/rank0 asymmetry persists independent of EP |
+| node1 also becomes unstable | Points to a common UVM/weight-loading path, not head-specific |
+
+### 12B. Head/worker role-swap with low-kv-ray-tuned
+
+**Goal:** determine whether the failure follows the Ray **head/API node**
+role, the vLLM **rank0** role, or the **physical node** (spark01), by
+swapping which physical node runs the head/rank0 role while keeping
+`.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug`'s settings (the
+proven-non-freezing Attempt 10b config). See §6 for the exact
+head/worker role-swap command pattern (swap `HEAD_ROCE_IP` /
+`WORKER_ROCE_IP` and which physical node runs `--profile head` vs
+`--profile worker`).
+
+| Result | Implication |
+|---|---|
+| Collapse now happens on spark02 (the new head/rank0) | Role-bound (head/rank0), not spark01-hardware-specific |
+| Collapse still happens on spark01 (now the worker) | spark01-hardware-specific (e.g. a marginal DIMM, firmware, or driver-state difference between the two GB10 boards) |
+| Collapse happens on both | Not a simple head-vs-worker or hardware asymmetry; revisit §11.2's UVM/VSZ hypothesis as the primary path regardless of role |
+
+## 13. `trace-memory.sh` proc_maps sampler (added 2026-06-12)
+
+To capture the data §11.2 identified as missing -- per-process memory-map
+detail for `RayWorkerWrapper`/`EngineCore`/vLLM processes *before* Ray
+kills them during a collapse -- `scripts/diag/trace-memory.sh` now runs an
+additional background sampler (enabled by default, `--no-proc-maps` to
+disable):
+
+- Every `--proc-maps-interval` seconds (default 2s; `--proc-maps-burst-interval`,
+  default 0.5s, once `MemAvailable` < `--proc-maps-threshold-mb`, default
+  32768MB), it identifies up to `--proc-maps-max-pids` (default 8)
+  highest-RSS host-namespace processes matching `--proc-maps-pattern`
+  (default `RayWorkerWrapper|EngineCore|vllm|python`).
+- For each candidate PID, writes timestamped snapshots under
+  `<out-dir>/proc_maps/pid_<pid>_<comm>/`:
+  - `status-<ts>.log` -- raw `/proc/<pid>/status`
+  - `smaps_rollup-<ts>.log` -- `Rss`, `Pss`, `Shared_Clean`, `Shared_Dirty`,
+    `Private_Clean`, `Private_Dirty`, `Anonymous`, `Locked`, `Swap` fields
+    extracted from `/proc/<pid>/smaps_rollup`
+  - `limits-<ts>.log` -- raw `/proc/<pid>/limits`
+  - `numa_maps-<ts>.log` -- `/proc/<pid>/numa_maps`, capped at 1MB
+  - `maps_summary-<ts>.log` -- `/proc/<pid>/maps` summarized by category
+    (`anonymous`, `deleted`, `nvidia_dev`, `infiniband_dev`, `dev_shm`,
+    `memfd`, `cuda_nccl_lib`, `other`) with per-category mapping count and
+    total size in KB, instead of a raw (potentially huge) dump
+- Rotation: keeps only the newest `--proc-maps-max-snapshots` (default 20)
+  snapshots per PID per file kind.
+- Permission-denied / unreadable files are logged to `notes.log` and
+  skipped; the sampler continues.
+- Runs in the host PID namespace (the script is not containerized), so
+  recorded PIDs are host-namespace PIDs directly usable with `/proc/<pid>`.
+- Designed to be lightweight (no `cp -r`, no raw `maps`/full `numa_maps`
+  dumps) so it does not itself meaningfully add to memory pressure during a
+  collapse.
