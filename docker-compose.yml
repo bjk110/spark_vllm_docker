@@ -78,7 +78,18 @@ services:
       - VLLM_USE_B12X_SPARSE_INDEXER=${VLLM_USE_B12X_SPARSE_INDEXER:-}
       - VLLM_USE_B12X_WO_PROJECTION=${VLLM_USE_B12X_WO_PROJECTION:-}
       - RAY_DEDUP_LOGS=0
-      - RAY_memory_monitor_refresh_ms=0
+      - RAY_memory_monitor_refresh_ms=${RAY_memory_monitor_refresh_ms:-0}
+      # ---- Ray head/object-store tuning (diagnostic knobs, see
+      # docs/diagnostics/dgx-spark-uma-memory-freeze.md). Empty = unset,
+      # preserves current behavior.
+      #   RAY_INCLUDE_DASHBOARD=false           -> ray start --include-dashboard=false (head only)
+      #   RAY_OBJECT_STORE_MEMORY_BYTES=<bytes> -> ray start --object-store-memory=<bytes>
+      #   RAY_memory_usage_threshold=<0-1>      -> Ray memory-monitor kill threshold
+      #   RAY_DASHBOARD_MAX_EVENTS_TO_CACHE=<n> -> dashboard event cache cap
+      - RAY_INCLUDE_DASHBOARD=${RAY_INCLUDE_DASHBOARD:-}
+      - RAY_OBJECT_STORE_MEMORY_BYTES=${RAY_OBJECT_STORE_MEMORY_BYTES:-}
+      - RAY_memory_usage_threshold=${RAY_memory_usage_threshold:-}
+      - RAY_DASHBOARD_MAX_EVENTS_TO_CACHE=${RAY_DASHBOARD_MAX_EVENTS_TO_CACHE:-}
       # ---- unholy-fusion: NCCL / RoCE tuning ----
       - NCCL_NET=${NCCL_NET:-}
       - NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-}
@@ -182,7 +193,12 @@ services:
       - VLLM_USE_BREAKABLE_CUDAGRAPH=${VLLM_USE_BREAKABLE_CUDAGRAPH:-}
       - VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=${VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS:-}
       - VLLM_USE_RAY_V2_EXECUTOR_BACKEND=${VLLM_USE_RAY_V2_EXECUTOR_BACKEND:-1}
-      - RAY_memory_monitor_refresh_ms=0
+      - RAY_memory_monitor_refresh_ms=${RAY_memory_monitor_refresh_ms:-0}
+      # ---- Ray object-store tuning (diagnostic knobs, see
+      # docs/diagnostics/dgx-spark-uma-memory-freeze.md). Empty = unset,
+      # preserves current behavior.
+      - RAY_OBJECT_STORE_MEMORY_BYTES=${RAY_OBJECT_STORE_MEMORY_BYTES:-}
+      - RAY_memory_usage_threshold=${RAY_memory_usage_threshold:-}
       # ---- unholy-fusion / B12X kernels (empty = unset, no effect on jasl image) ----
       - VLLM_USE_B12X_MOE=${VLLM_USE_B12X_MOE:-}
       - VLLM_USE_B12X_MHC=${VLLM_USE_B12X_MHC:-}

@@ -47,7 +47,9 @@ unset_empty_optional_envs \
     NCCL_CROSS_NIC \
     NCCL_IGNORE_CPU_AFFINITY \
     VLLM_NCCL_SO_PATH \
-    VLLM_CACHE_ROOT
+    VLLM_CACHE_ROOT \
+    RAY_memory_usage_threshold \
+    RAY_DASHBOARD_MAX_EVENTS_TO_CACHE
 
 # Apply Qwen3.5 MoE text-only patches (abliterated models only)
 # Set APPLY_TEXT_ONLY_SHIM=1 in .env to enable
@@ -201,11 +203,21 @@ if [ "${ROLE}" = "worker" ]; then
             # Join Ray cluster and block
             ray stop --force 2>/dev/null || true
             rm -rf /tmp/ray 2>/dev/null || true
+            RAY_WORKER_CMD=(
+                ray start
+                --address="${HEAD_ROCE_IP}:${RAY_PORT}"
+                --node-ip-address="${WORKER_ROCE_IP}"
+            )
+            # Diagnostic: bound the Ray plasma object store size. See
+            # docs/diagnostics/dgx-spark-uma-memory-freeze.md
+            if [ -n "${RAY_OBJECT_STORE_MEMORY_BYTES:-}" ]; then
+                RAY_WORKER_CMD+=(--object-store-memory="${RAY_OBJECT_STORE_MEMORY_BYTES}")
+            fi
+            RAY_WORKER_CMD+=(--block)
             echo "[entrypoint] Starting Ray WORKER → ${HEAD_ROCE_IP}:${RAY_PORT}"
-            exec ray start \
-                --address="${HEAD_ROCE_IP}:${RAY_PORT}" \
-                --node-ip-address="${WORKER_ROCE_IP}" \
-                --block
+            echo "[entrypoint] Ray worker command: ${RAY_WORKER_CMD[*]}"
+            echo "[entrypoint] Ray memory env: RAY_memory_monitor_refresh_ms=${RAY_memory_monitor_refresh_ms:-<unset>} RAY_memory_usage_threshold=${RAY_memory_usage_threshold:-<unset>}"
+            exec "${RAY_WORKER_CMD[@]}"
             ;;
         mp)
             # SPMD: each node runs `vllm serve`; worker adds --headless.
@@ -271,10 +283,25 @@ if [ "${TP_SIZE}" -ge 2 ]; then
         ray)
             # ---- Ray: start head, wait for workers, then serve ----
             echo "[entrypoint] Starting Ray HEAD (TP_SIZE=${TP_SIZE})..."
-            ray start --head --port="${RAY_PORT}" \
-                --node-ip-address="${HEAD_ROCE_IP}" \
-                --dashboard-host=0.0.0.0 \
+            RAY_HEAD_CMD=(
+                ray start --head --port="${RAY_PORT}"
+                --node-ip-address="${HEAD_ROCE_IP}"
                 --disable-usage-stats
+            )
+            # Diagnostic: disable the Ray dashboard (and its event cache) on
+            # the head node, or bound the plasma object store size. See
+            # docs/diagnostics/dgx-spark-uma-memory-freeze.md
+            if [ "${RAY_INCLUDE_DASHBOARD:-}" = "false" ] || [ "${RAY_INCLUDE_DASHBOARD:-}" = "0" ]; then
+                RAY_HEAD_CMD+=(--include-dashboard=false)
+            else
+                RAY_HEAD_CMD+=(--dashboard-host=0.0.0.0)
+            fi
+            if [ -n "${RAY_OBJECT_STORE_MEMORY_BYTES:-}" ]; then
+                RAY_HEAD_CMD+=(--object-store-memory="${RAY_OBJECT_STORE_MEMORY_BYTES}")
+            fi
+            echo "[entrypoint] Ray head command: ${RAY_HEAD_CMD[*]}"
+            echo "[entrypoint] Ray memory env: RAY_memory_monitor_refresh_ms=${RAY_memory_monitor_refresh_ms:-<unset>} RAY_memory_usage_threshold=${RAY_memory_usage_threshold:-<unset>} RAY_DASHBOARD_MAX_EVENTS_TO_CACHE=${RAY_DASHBOARD_MAX_EVENTS_TO_CACHE:-<unset>}"
+            "${RAY_HEAD_CMD[@]}"
 
             echo "[entrypoint] Waiting for ${TP_SIZE} node(s) to join Ray cluster..."
             while true; do

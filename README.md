@@ -419,6 +419,7 @@ echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 | [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md) | `unholy-fusion` configuration, switching procedure, operational limits, and benchmark comparison vs `dsv4-d568` |
 | [`docs/model-serving-validation-history.md`](docs/model-serving-validation-history.md) | Historical stack validation notes and benchmark results (Gemma 4, Qwen3.5 122B, 397B INT4, PrismaQuant, Qwen3.6-35B, TurboQuant KV sweep) |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md) | Model-path and stack-specific troubleshooting (Docker Compose checks, `dsv4-d568` / `unholy-fusion` / Qwen issues, logs and verification commands) |
+| [`docs/diagnostics/dgx-spark-uma-memory-freeze.md`](docs/diagnostics/dgx-spark-uma-memory-freeze.md) | Diagnostic runbook for DGX Spark UMA host-memory freezes during dual-node vLLM/Ray/EP startup |
 | [`docs/images.md`](docs/images.md) | Container image tag history and image-to-preset / Git-ref mapping |
 | [`docs/release-management.md`](docs/release-management.md) | Maintainer-only Git tag creation, branch structure, and archived branch notes |
 

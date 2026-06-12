@@ -5,6 +5,12 @@ notes that were previously spread across the top-level `README.md`. For the
 general Quick Start flow (image pull/build, preset selection, starting
 services), see [`README.md` § Quick Start](../README.md#quick-start).
 
+For dual-node `TP_SIZE=2` + `DISTRIBUTED_BACKEND=ray` +
+`--enable-expert-parallel` deployments where a node becomes unresponsive
+(SSH banner-exchange timeout, ping still works) during startup, see the
+diagnostic runbook:
+[`docs/diagnostics/dgx-spark-uma-memory-freeze.md`](diagnostics/dgx-spark-uma-memory-freeze.md).
+
 ## General Docker Compose checks
 
 ### `[c10d] The server socket on [::ffff:10.10.10.1]:<port> has timed out, will retry.`
