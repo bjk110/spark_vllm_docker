@@ -55,6 +55,7 @@ Timeline (from repeated attempts):
 | 6 | 0.85 | 1599 MB | — | watchdog kill |
 | 7 | 0.85 (THRESH=500MB) | 142 MB | ~5576 MB | watchdog kill (caught at 142MB) |
 | 8 | 0.70 | not captured | — | **full host freeze**, watchdog could not react |
+| 9 | 0.85 (ep-debug, memory-guard THRESH=4096MB, 0.1s) | 3810 MB | ~8290 MB (no trip) | **first non-freezing capture** — `docker kill vllm-spark-head`, SSH stayed responsive, avail stabilized ~5.3-5.5GB. See §9. |
 
 Lowering `GPU_MEMORY_UTILIZATION` from 0.88 to 0.70 (≈+18 GB extra
 headroom at 0.70 vs 0.85) did **not** stop the head-node decline, and the
@@ -313,7 +314,186 @@ sudo systemctl reboot
 | [`.env.step37-fi-aot-tp2-ep-off-debug`](../../.env.step37-fi-aot-tp2-ep-off-debug) | `--enable-expert-parallel` removed — EP isolation |
 | [`.env.step37-fi-aot-tp2-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ray-tuned-debug) | Ray dashboard off + object-store bound + memory monitor re-enabled |
 | [`.env.step37-fi-aot-tp2-low-kv-debug`](../../.env.step37-fi-aot-tp2-low-kv-debug) | Reduced `MAX_MODEL_LEN`/`MAX_NUM_SEQS`/`MAX_NUM_BATCHED_TOKENS`, same util |
+| [`.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug) | Attempt 10: low-kv-debug's reduced context/batch knobs + ray-tuned-debug's Ray object-store/dashboard/memory-monitor knobs, combined |
 
-All four are **disposable/debug** — not promoted/stable presets. None of
+All five are **disposable/debug** — not promoted/stable presets. None of
 them are claimed to fix the underlying issue; they exist to narrow down
 *where* the ~20GB+ growth comes from.
+
+See §9 (Attempt 09 results) and §10 (Attempt 10 plan) below for the most
+recent findings and the rationale for the combined
+`low-kv-ray-tuned-debug` variant.
+
+## 9. Attempt 09 (2026-06-12) — first non-freezing capture
+
+Run: `.env.step37-fi-aot-tp2-ep-debug`, Experiment A (spark01=head,
+spark02=worker), `scripts/diag/trace-memory.sh` and
+`scripts/diag/memory-guard.sh --threshold-mb 4096 --interval 0.1` active on
+both nodes. Raw traces preserved as
+`.local/diag/diag-spark01-attempt09-*.tar.gz` and
+`.local/diag/diag-spark02-attempt09-*.tar.gz` on each node.
+
+### 9.1 Outcome: memory-guard worked, host did not freeze
+
+For the first time in 9 attempts, `memory-guard.sh` killed
+`vllm-spark-head` **before** the host became unresponsive. SSH stayed up
+throughout; `MemAvailable` dropped to ~3.81GB at the trip, then recovered
+and stabilized around **5.3-5.5GB** after the kill. No reboot was strictly
+required to keep SSH alive, but see §10 for why a reboot is still
+recommended before the next attempt.
+
+### 9.2 ~6-minute timing reconfirmed
+
+- `expert_map_manager.py` "Expert parallelism is enabled... Local/global
+  number of experts: 144/288" logged at **13:01:08 UTC**.
+- The steep `MemAvailable` decline began at **13:06:54 UTC** — **5m46s**
+  later, consistent with the "~6 minutes" pattern from prior attempts.
+
+### 9.3 New finding: the decline is two-phase, not one smooth slope
+
+High-frequency (`0.2s`) `meminfo.log` sampling (host-local times, KST):
+
+| Phase | Window | `MemAvailable` | Rate |
+|---|---|---|---|
+| Phase 1 | 22:06:54 - 22:06:58 (~4s) | 52.9 GB -> 30 GB | ~5.7 GB/s |
+| Plateau | 22:06:58 - 22:07:03 (~5s) | ~30 GB (flat) | ~0 |
+| Phase 2 | 22:07:03 - 22:07:15 (~12s) | 30.3 GB -> 3.0 GB | accelerating, up to ~3.6 GB/s near the end |
+| Trip | 22:07:15.322 | 3810 MB | `memory-guard.sh` kills `vllm-spark-head` |
+| Post-kill | 22:07:16.4 onward | ~5.5 GB (stable) | — |
+
+The ~5s plateau around 30GB between the two phases was not visible in
+earlier lower-frequency captures. It suggests two distinct allocation
+events ~9 seconds apart, not one continuous ramp.
+
+### 9.4 CORRECTION: Shmem / SUnreclaim / swap deltas are teardown artifacts, not root-cause indicators
+
+A previous pass over this same run's `memory-guard.sh` pre-kill/post-kill
+`/proc/meminfo` snapshots noted large deltas in `Shmem` (-418MB),
+`SUnreclaim` (-2GB), and `SwapFree` (+6.5-6.8GB freed) and floated these as
+candidate growth sources (Ray object store / `/dev/shm`, kernel
+slab/UVM/RDMA buffers, swap usage).
+
+The full `meminfo.log` trace shows this was **wrong**: all three values are
+essentially flat through Phase 1, the plateau, and Phase 2 (e.g. `shmem`
+stays at 487744 -> ~418512 the whole decline, only dropping to 40 at
+22:07:16.194 -- i.e. **after** the kill at 22:07:15.322). The large deltas
+previously reported are **container-teardown effects** (the killed
+container's `/dev/shm` segments and slab caches being released, plus
+`swapoff`-like swap-in reversal as the killed process's swapped pages are
+freed), not signals present during the actual decline. **Do not use
+Shmem/SUnreclaim/swap as the primary signal for "what's growing" in future
+attempts** — see §9.5 for what the data actually shows.
+
+### 9.5 MOST IMPORTANT FINDING: the ~41GB growth is outside the `vllm-spark-head` container's cgroup
+
+`docker_stats.log` (5s snapshots) for `vllm-spark-head` during the same
+window:
+
+| Time | Container MEM USAGE |
+|---|---|
+| 22:06:46 | 11.3 GiB |
+| 22:06:53 | 8.49 GiB |
+| 22:07:00 | 4.01 GiB |
+| 22:07:07 | 1.54 GiB |
+| 22:07:15 | (killed, gone) |
+
+The container's **own cgroup memory usage was *decreasing*** throughout
+Phase 1 and Phase 2 -- the opposite of what you'd expect if a process
+inside the container were the thing ballooning.
+
+Meanwhile, host-wide `free + cached` (a reasonable proxy for
+`MemAvailable` on this kernel) dropped from ~50.5GB (22:06:50) to ~9.2GB
+(22:07:13) -- a **~41GB** drop. Since the container's own accounted memory
+*fell* by ~10GB over the same interval, the ~41GB of "disappearing"
+host memory is **not** accounted to the `vllm-spark-head` cgroup at all.
+
+This is strong evidence against:
+
+- Ray object store / `/dev/shm` (would show in Shmem, see §9.4 -- flat)
+- Python heap / Ray actor heap inside the container (would show in the
+  container's own cgroup memory -- it *decreased*)
+- normal process RSS growth inside the container (same reasoning)
+
+...and points toward allocations that live **outside any container
+cgroup**, most plausibly:
+
+- **NVIDIA UVM / driver-level unified-memory allocation** -- on GB10's
+  UMA architecture, GPU-visible unified memory pages can be accounted to
+  the host kernel / `nvidia-uvm` driver rather than to the requesting
+  process's cgroup.
+- **KV cache reservation / CPU-side block-table bookkeeping** sized by
+  `MAX_MODEL_LEN` / `MAX_NUM_SEQS` / `MAX_NUM_BATCHED_TOKENS`, if that
+  bookkeeping is allocated via a path (e.g. pinned/mapped host memory for
+  GPU DMA) that bypasses normal cgroup accounting.
+- **NCCL/RDMA buffer registration** for EP all-to-all setup -- RDMA memory
+  registration (`ibv_reg_mr`) pins physical pages and is typically not
+  cgroup-accounted the same way as regular anonymous memory.
+
+### 9.6 `--enforce-eager` was already active -- CUDA graph capture ruled out
+
+`ep-debug`'s `VLLM_EXTRA_ARGS` already includes `--enforce-eager`. CUDA
+graph capture (a leading suspect in earlier write-ups of this issue) was
+therefore **not** running during this attempt, yet the same two-phase
+decline occurred. CUDA graph capture is ruled out as the (sole) cause.
+
+### 9.7 Bug found: `ps_topRSS.log` was empty for the entire run
+
+`scripts/diag/trace-memory.sh`'s top-RSS sampler used
+`ps -eo pid,ppid,comm,rss,shr,stat,wchan:32 --sort=-rss 2>/dev/null`. On
+this host's `procps-ng 4.0.4`, `shr` is not a valid `-o` field
+(`error: unknown user-defined format specifier "shr"`), so every
+invocation failed and `2>/dev/null` silently discarded the error -- all 174
+snapshot headers in `ps_topRSS.log` were followed by zero process lines.
+**Per-process RSS growth during the ~6-minute pre-decline window and the
+two-phase decline itself was not captured for Attempt 09.**
+
+Fixed (this commit): the sampler now uses
+`ps -eo pid,ppid,user,comm,rss,vsz,stat,wchan:32 --sort=-rss` (no `shr`,
+which doesn't exist on this `procps-ng`) and no longer suppresses stderr
+(`2>&1` into `ps_topRSS.log`), so a future field error is visible in the
+log instead of producing silent empty snapshots.
+
+Separately, `trace-memory.sh`'s header and the auto-stop-timer comment both
+referred to a `trap cleanup INT TERM` that was never actually registered --
+`SIGTERM`/`SIGINT` terminated the script via bash's default disposition
+without running `cleanup()`, leaving background loggers as orphaned
+processes and skipping `final_snapshot.log`. This is also fixed (the `trap
+cleanup INT TERM` call is now present after the `cleanup()` definition).
+Attempt 09's loggers were stopped and finalized manually (see the
+`diag-*-attempt09-*.tar.gz` tarballs).
+
+## 10. Attempt 10 plan
+
+Based on §9:
+
+1. **Reboot both nodes first.** After the Attempt 09 emergency kill,
+   `MemAvailable` settled around ~5.2-5.5GB on both spark01 and spark02 --
+   tight enough that starting a new attempt from this state risks tripping
+   `memory-guard.sh` almost immediately for unrelated reasons. Per
+   [`docs/step3.7-flash-tp2.md`](../step3.7-flash-tp2.md) §2, `sudo
+   systemctl reboot` (not combined with `pkill` in the same ssh
+   invocation) is the only confirmed clean GB10 UMA reclaim.
+
+2. **Use `.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug`** (new, see §8) --
+   combines low-kv-debug's reduced `MAX_MODEL_LEN`/`MAX_NUM_SEQS`/
+   `MAX_NUM_BATCHED_TOKENS` (targets the KV-cache-bookkeeping hypothesis
+   from §9.5) with ray-tuned-debug's Ray object-store/dashboard/
+   memory-monitor knobs (a safety net / additional signal, even though
+   §9.5 makes Ray object store a less likely root cause than before).
+
+3. **Raise the memory-guard threshold to 8192MB** (was 4096MB):
+
+   ```bash
+   ./scripts/diag/memory-guard.sh --threshold-mb 8192 --interval 0.1 &
+   ```
+
+   4096MB gave the kill command only a narrow window before the host-wide
+   stall in Attempt 09 (trip at 3810MB, Phase 2's last ~3 seconds dropped
+   from ~9.5GB to ~3.0GB). 8192MB trips earlier in the decline, giving more
+   margin if `low-kv-ray-tuned-debug` doesn't fully prevent the decline
+   but only slows it.
+
+4. Re-run `trace-memory.sh` (now fixed -- see §9.7) on both nodes and check
+   `ps_topRSS.log` for per-process RSS growth during the ~6-minute window
+   and the decline itself -- this is the one diagnostic signal Attempt 09
+   could not provide.

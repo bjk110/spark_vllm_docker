@@ -146,10 +146,15 @@ PIDS+=("$!")
 {
     while true; do
         echo "=== $(date '+%T.%3N') ==="
-        ps -eo pid,ppid,comm,rss,shr,stat,wchan:32 --sort=-rss 2>/dev/null | head -50
+        # NOTE: "shr" is not a valid -o field on procps-ng 4.0.4 ("unknown
+        # user-defined format specifier") and silently produced empty
+        # snapshots when stderr was discarded. Use vsz instead, and merge
+        # stderr into PS_LOG (no 2>/dev/null) so a future field error is
+        # visible in the log rather than producing silent empty snapshots.
+        ps -eo pid,ppid,user,comm,rss,vsz,stat,wchan:32 --sort=-rss | head -50
         sleep "$PS_INTERVAL"
     done
-} >> "$PS_LOG" 2>/dev/null &
+} >> "$PS_LOG" 2>&1 &
 PIDS+=("$!")
 
 # ---------------------------------------------------------------------------
@@ -222,6 +227,11 @@ cleanup() {
     } > "${OUT_DIR}/final_snapshot.log" 2>/dev/null
     echo "[trace-memory] output dir: ${OUT_DIR}"
 }
+# Register the trap referenced by the header comment and the auto-stop timer
+# below -- without this, SIGTERM/SIGINT terminate the main script via bash's
+# default disposition without running cleanup(), leaving the background
+# loggers as orphaned processes and skipping final_snapshot.log.
+trap cleanup INT TERM
 # ---------------------------------------------------------------------------
 # Optional auto-stop timer. $$ is the top-level script PID even from a
 # background subshell, so this triggers the same `trap cleanup TERM` path
