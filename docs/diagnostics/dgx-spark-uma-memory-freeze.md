@@ -1084,3 +1084,182 @@ page-cache/driver-level effects.
 Both containers were stopped cleanly (`docker compose ... down`, exit code
 0) and `trace-memory.sh`/`memory-guard.sh` were stopped with `SIGTERM` on
 both nodes (no orphaned processes).
+
+## 17. Attempt 13 results (2026-06-12) -- EP-on + fixed KV cache re-isolation
+
+**Purpose:** Attempt 12 (§16) showed that `--kv-cache-memory-bytes` (fixed
+KV, profiling skipped) cuts the head-node decline from ~38GB to ~14.7GB
+with EP **disabled**. Attempt 13 re-enables EP while keeping fixed KV
+8GiB, to determine whether fixed KV alone is sufficient to prevent the
+original EP-on host-freeze/Ray-OOM failure (§1), or whether EP-on
+introduces an additional, independent memory-pressure path.
+
+**Env used:**
+[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug)
+-- identical to Attempt 12's
+[`.env.step37-fi-aot-tp2-ep-off-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-kv8g-debug)
+plus `--enable-expert-parallel` re-enabled. Configuration:
+
+- `--enable-expert-parallel` (EP on)
+- `TP_SIZE=2`, `DISTRIBUTED_BACKEND=ray`
+- `GPU_MEMORY_UTILIZATION=0.85`
+- `--kv-cache-memory-bytes 8589934592` (fixed KV, 8 GiB)
+- `RAY_memory_usage_threshold=0.90`
+- `RAY_memory_monitor_refresh_ms=100`
+- `memory-guard.sh --threshold-mb 8192`
+- `trace-memory.sh` run with `sudo` (proc_maps/smaps capture enabled, per
+  §15) on both nodes
+
+**Timeline (UTC):**
+
+| Event | Time |
+|---|---|
+| Weight loading started | 16:14:04 |
+| `[EP Rank 0/2] ... Local/global number of experts: 144/288` (spark01) | during startup, before weight loading |
+| `[EP Rank 1/2] ... Local/global number of experts: 144/288` (spark02) | during startup, before weight loading |
+| Weight loading 14/14 completed (`Loading weights took 343.02 seconds`) | 16:19:49 |
+| `Using 'MARLIN' NvFp4 MoE backend out of potential backends: ['VLLM_CUTLASS', 'MARLIN', 'EMULATION']` | 16:19:51 |
+| `Using MoEPrepareAndFinalizeNoDPEPModular` | 16:19:51 |
+| Ray OOM: RayWorkerWrapper rank0 killed | 16:19:58 |
+| `EngineCore failed to start` / `Engine core initialization failed` | 16:19:58 |
+
+EP markers were correct and identical in shape to Attempt 13's pre-crash
+state: `[EP Rank 0/2] Expert parallelism is enabled. Expert placement
+strategy: linear. Local/global number of experts: 144/288` (rank0,
+experts 0-143) and `[EP Rank 1/2] ... 144/288` (rank1, experts 144-287).
+`init_device` passed on both ranks. Weight loading reached 14/14 on both
+ranks (343.02s on rank0/head).
+
+**The run crashed before reaching any KV-cache-related log line.** Neither
+`Initial free memory ..., reserved 8.0 GiB memory for KV Cache ... skipped
+memory profiling` (the fixed-KV/skip-profiling log from Attempt 12) nor
+`GPU KV cache size: ...` ever appeared. The failure occurred entirely
+within the **9-second window between weight-loading completion (16:19:49)
+and Ray OOM (16:19:58)**, during MoE backend setup.
+
+**Ray OOM detail:**
+
+```
+ray.exceptions.OutOfMemoryError: 1 worker(s) were killed due to the node running low on memory.
+Memory on the node (IP: 10.10.10.1, ID: d47bda435b751d12bfe0a3f4509bd80e7e17b0f1b15bfad1397704f5) was
+109.73GB / 121.63GB (0.902205), which exceeds the memory usage threshold of 0.900000.
+... Actor(6d86283d43fe50bdad0bbab101000000) pid=1879, actual memory used=0.44GB ...
+(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+```
+
+spark02 (worker) lost its Ray GCS connection immediately after:
+`[rank1]:[W612 16:19:58...] TCPStore.cpp:125 [c10d] recvValue failed ...
+Connection was likely closed. Did the remote server shutdown or crash?`
+
+**Memory behavior -- sharp, head-only collapse within ~10 seconds:**
+
+| Time (UTC) | spark01/head MemAvailable | spark02/worker MemAvailable |
+|---|---|---|
+| 16:14:00 (weight loading start) | ~113.2 GiB (115884 MB) | ~116.7 GiB (119541 MB) |
+| 16:19:40 (mid-MoE-setup) | ~48.6 GiB (49755 MB) | ~54.2 GiB (55500 MB) |
+| 16:19:50 (just after weight-load-complete) | ~49.1 GiB (50288 MB) | ~52.7 GiB (54013 MB) |
+| 16:20:00 (post-OOM) | **~13.6 GiB (13915 MB)** | ~58.2 GiB (59561 MB) |
+| 16:20:30 (settled) | ~14.0 GiB (14379 MB) | ~58.1 GiB (59525 MB) |
+
+spark01/head dropped from ~49.1 GiB to ~13.6 GiB available **within 10
+seconds** (16:19:50 -> 16:20:00) -- a ~35.5 GB collapse, comparable in
+both speed and shape to the original §1 head-only decline pattern, but
+occurring during MoE backend init rather than KV-cache profiling.
+spark02/worker stayed flat-to-improving throughout (~52.7 -> ~58.2 GiB),
+i.e. **no symmetric decline this time** -- unlike Attempt 12 where both
+nodes declined.
+
+`memory-guard.sh` (threshold 8192 MB) did **not** trip on either node:
+spark01's available recovered to ~14.0-14.4 GB after Ray's kill, never
+crossing the 8192 MB guard threshold. **Ray's memory monitor intervened
+first**, at 90.22% usage -- almost identical to Attempts 09/10b's ~90.77%.
+
+No host freeze occurred; SSH remained fully responsive on both nodes
+throughout.
+
+**smaps evidence (RayWorkerWrapper rank0/rank1, sudo `trace-memory.sh`
+high-frequency burst capture 16:19:15-16:19:58):**
+
+| Process | Time (UTC) | Rss | Anonymous | Private_Dirty | Swap |
+|---|---|---|---|---|---|
+| rank0 (spark01, pid 44471) | 16:19:15.996 (pre weight-load-complete) | ~5.77 GiB | ~4.69 GiB | ~5.20 GiB | 0 |
+| rank0 (spark01, pid 44471) | 16:19:58.039 (kill in progress) | ~0.49 GiB | ~0.31 GiB | ~0.41 GiB | ~1.67 GiB |
+| rank1 (spark02, pid 11340) | 16:19:49.053 | ~4.74 GiB | ~3.96 GiB | ~4.47 GiB | 0 |
+| rank1 (spark02, pid 11340) | 16:19:58.581 (last sample, survivor) | ~6.17 GiB | ~5.32 GiB | ~5.83 GiB | 0 |
+
+Both `RayWorkerWrapper` processes (rank0 on spark01, rank1 on spark02)
+ballooned to **~5-6.5 GiB RSS, predominantly `Anonymous`/`Private_Dirty`**
+(i.e. real, resident physical memory -- not virtual-only) within the
+~9-43 second window spanning weight-load-complete to Ray OOM. rank0's
+final sample shows the process mid-kill (RSS collapsing, partially
+swapped out); rank1's last sample (the surviving rank) shows the peak,
+~6.17 GiB.
+
+**maps_summary mapping-category comparison (rank0 vs rank1, near OOM):**
+
+| Category | rank0 (spark01) @ 16:19:58.039 | rank1 (spark02) @ 16:19:58.581 |
+|---|---|---|
+| `nvidia_dev` | 67 mappings, ~108 MB | 66 mappings, ~106 MB |
+| `infiniband_dev` | 3 mappings, 12 KB | 3 mappings, 12 KB |
+| `cuda_nccl_lib` | 32 mappings, ~645 MB | 32 mappings, ~645 MB |
+| `anonymous` (VSZ) | ~819 GB | ~602 GB |
+| `deleted` | 61, ~4.75 GB | 61, ~4.75 GB |
+
+No meaningful rank0/rank1 asymmetry in `/dev/nvidia*`, `/dev/infiniband*`,
+or CUDA/NCCL library mappings. The `anonymous` VSZ figures (~600-819 GB)
+remain far larger than actual RSS (~0.5-6.5 GiB) and should **not** be
+treated as physical memory usage -- consistent with §16's
+`expandable_segments`/CUDA-UVM virtual-reservation finding.
+
+**Interpretation.**
+
+- **Fixed KV cache (Attempt 12's fix) is necessary but not sufficient**
+  with EP enabled. It still solves/reduces the *automatic KV-cache
+  profiling* memory-pressure path (the run never even reached that stage
+  here, so that path cannot have contributed to this failure), but
+  **EP-on introduces a separate, independent memory spike during MoE
+  backend initialization** that fixed KV does not address.
+- The observed log context at the moment of the spike --
+  `Using 'MARLIN' NvFp4 MoE backend ...` /
+  `Using MoEPrepareAndFinalizeNoDPEPModular` -- points at **MARLIN NVFP4
+  MoE weight preparation/repacking or backend workspace initialization**
+  as the proximate trigger. This is phrased deliberately as "weight
+  preparation/repacking or backend workspace initialization" rather than
+  asserting that expert-routing workspace allocation alone is the proven
+  cause; the exact sub-step within MARLIN NVFP4 MoE setup that allocates
+  ~5-6 GiB per rank has not been isolated further.
+- **The memory spike occurs on both ranks** (rank0 ~5.77 GiB, rank1 ~6.17
+  GiB peak RSS, both predominantly Anonymous/Private_Dirty) -- this is not
+  a head/rank0-only phenomenon at the process level.
+- **spark01 (head) crosses the Ray 0.90 threshold first and alone**
+  because it carries lower baseline headroom: in addition to its
+  RayWorkerWrapper (rank0), it also hosts the Ray head/GCS/dashboard, the
+  EngineCore, and the OpenAI-compatible API server. spark02 (worker) has
+  only its RayWorkerWrapper (rank1) and raylet, so the same ~6 GiB spike
+  there does not push it over 90% of 121.63 GiB.
+- **Ray's memory monitor (threshold 0.90) is confirmed as the operative
+  host-freeze safety guard** for this failure mode: it intervened (killed
+  rank0's RayWorkerWrapper, 90.22%) well before `memory-guard.sh`'s 8192
+  MB threshold was reached (spark01 available bottomed at ~13.6 GiB =
+  ~13,915 MB, recovering to ~14.0-14.4 GB) and well before any host
+  freeze. This is consistent with -- and reaffirms -- Attempts 09/10b's
+  ~90.77% Ray-OOM ratio as the same underlying failure mode.
+- **This separates two previously-conflated memory-pressure paths**:
+  (1) automatic KV-cache profiling/allocation (addressed by Attempt 12's
+  fixed KV), and (2) EP-on MoE backend initialization (not addressed by
+  fixed KV, and not yet isolated to a specific backend/code path beyond
+  "MARLIN NVFP4 MoE setup"). The next isolation step should vary the MoE
+  backend alone (EP-on, fixed KV 8GiB, all else unchanged) to test whether
+  path (2) is specific to the MARLIN NVFP4 MoE backend.
+
+**Preserved artifacts:**
+
+- `spark01:~/docker/vllm-spark/.local/diag/diag-spark01-attempt13-20260613-082329.tar.gz`
+- `spark02:~/docker/vllm-spark/.local/diag/diag-spark02-attempt13-20260613-082331.tar.gz`
+
+The head container exited with an error (`EngineCore failed to start`,
+Ray OOM); the worker container remained "Up" but disconnected from the
+head's GCS (TCPStore recv errors) and was torn down cleanly afterward
+(`docker compose ... down`, exit code 0). `trace-memory.sh`/
+`memory-guard.sh` were stopped with `SIGTERM` on both nodes (no orphaned
+processes).
