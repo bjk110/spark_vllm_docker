@@ -776,3 +776,143 @@ disable):
 - Designed to be lightweight (no `cp -r`, no raw `maps`/full `numa_maps`
   dumps) so it does not itself meaningfully add to memory pressure during a
   collapse.
+
+## 14. Attempt 11A results (2026-06-12)
+
+**Purpose:** §12A's EP-off + Ray-tuned isolation at
+`GPU_MEMORY_UTILIZATION=0.85`
+([`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug)),
+to determine whether `--enable-expert-parallel` (EP all-to-all / MoE
+expert-routing workspace) is required to trigger the ~6-minute delayed
+host-memory decline seen in Attempts 09 and 10b. `vm.min_free_kbytes` was
+kept at its normal default (`45156`, not the invalid ~6GiB from §11.1), and
+the Ray safety knobs (`RAY_memory_usage_threshold=0.90`,
+`RAY_memory_monitor_refresh_ms=100`, etc.) remained enabled.
+
+**Timeline (UTC):**
+
+| Event | Time |
+|---|---|
+| `init_device()` pre-init memory check passes at 0.85, EngineCore initialized | 15:00:26 |
+| Weight loading started | 15:00:53 |
+| Weight loading 14/14 completed (2m17s) | 15:03:10 / 15:03:11 |
+| `Available KV cache memory: 37.8 GiB` | 15:05:08 |
+| `GPU KV cache size: 790,438 tokens` (padding-layer warning) | 15:06:07 |
+| `Application startup complete` (API server ready) | 15:09:00 |
+| Inference test (`/v1/completions`) succeeded | 15:14:42 |
+| Trace ended (clean shutdown) | 15:15:08 |
+
+**EP marker absent, as expected.** Logs show normal EP-rank bookkeeping
+(`parallel_state.py:1735`) but no "Expert parallelism is enabled" line on
+either rank, confirming `--enable-expert-parallel` was correctly removed.
+
+**`init_device()` passed at 0.85** -- no pre-init "Free memory ... is less
+than desired GPU memory utilization" failure. The §12A
+init_device-fails-at-0.85 branch did not occur; no fallback env was needed.
+
+**Weight loading 14/14 completed in 2m17s** (15:00:53 -> 15:03:10/11),
+notably faster than Attempt 10b's 5m40s despite EP-off loading ~2x the
+per-rank MoE weights (288 experts/rank vs 144). This timing difference is
+not yet explained but is orthogonal to the memory-decline question below.
+
+**Memory behavior -- the ~6-minute decline persists despite EP-off.**
+
+| Time (UTC) | spark01/head MemAvailable | spark02/worker MemAvailable |
+|---|---|---|
+| 15:03:19 (post weight-load) | ~51.9 GiB | ~54.3 GiB |
+| 15:03:50 | ~48.7 GiB | -- |
+| 15:07:18 | ~19.1 GiB | ~17 GiB |
+| 15:09:00 (`Application startup complete`) | ~15.45 GiB | ~17.8 GiB |
+| 15:14:07 (steady) | ~15.31 GiB | ~17.75 GiB |
+| 15:14:42 (post-inference) | ~14.52 GiB | ~17.58 GiB |
+| 15:15:08 (final) | **13.86 GiB** | 16.75 GiB |
+
+spark01/head dropped **~51.9 GiB -> ~13.86 GiB, ~38 GB total** -- almost the
+same magnitude as Attempt 10b's ~37GB collapse. spark02/worker stayed
+comparatively flat (~54 -> ~17 GiB initial settle, then essentially flat
+~17.0-17.8 GiB).
+
+Final memory usage on spark01: `(127,535,272 - 14,525,992) / 127,535,272 ≈
+0.886`, i.e. **just under** Ray's `memory_usage_threshold=0.90` (Attempt
+10b's crash occurred at 0.9077). **No Ray OOM occurred and no host freeze
+occurred.** The API server reached `Application startup complete` and
+served a real `/v1/completions` request successfully (10 tokens generated,
+`finish_reason: length`; output text was garbled due to the separately
+tracked tokenizer_class issue, unrelated to this memory investigation).
+
+**Interpretation.**
+
+- **EP-off did NOT eliminate the underlying ~38GB memory decline** -- it
+  occurred over the same ~6-minute window (weight-loading completion ->
+  `Application startup complete`, 15:03:10 -> 15:09:00, ~5m50s, matching
+  Attempts 09/10b's 5m46s/5m56s EP-marker-to-crash delay) and at almost the
+  same magnitude as Attempt 10b's ~37GB.
+- **EP / all-to-all / MoE expert-routing workspace is unlikely to be the
+  sole root cause.** The only measurable difference vs. Attempt 10b is that
+  the final usage (0.886) landed just under the 0.90 Ray threshold instead
+  of just over it (0.9077) -- a margin of only ~1.8GB. EP-off may have
+  **lowered or smoothed the peak just enough to avoid crossing the Ray
+  threshold**, without removing the underlying growth.
+- **The suspect window now shifts to KV cache profiling / GPU KV cache
+  allocation / engine startup** (15:05:08-15:09:00, overlapping
+  `Available KV cache memory` / `GPU KV cache size` / padding-layer log
+  lines), and/or CUDA UVM and rank0/`RayWorkerWrapper`-specific
+  virtual-memory behavior (§11.2's VSZ=790.6GiB finding) -- **not EP setup
+  alone**.
+- **node0/head-only asymmetry persists independent of EP**: spark01 lost
+  ~38GB while spark02 stayed essentially flat, consistent with Attempts
+  09/10b.
+- **node1/worker remained stable** throughout (~54 -> ~17 GiB initial
+  settle, then flat).
+- Ray memory monitor result is **N/A this run** -- usage stayed under
+  threshold, so no Ray-level intervention was needed (but the margin was
+  only ~1.8GB, i.e. very close).
+
+**proc_maps sampler result (first live run of §13's sampler).** The sampler
+correctly entered burst mode (`MemAvailable` < 32768MB threshold) and
+identified the relevant candidate PIDs by name/pattern match, e.g. on
+spark01: `VLLM::EngineCor` (EngineCore), `ray::RayWorkerW` (RayWorkerWrapper),
+`vllm`, `raylet`, `gcs_server`, and supporting `python`/`ray` processes (8
+PIDs tracked, matching `--proc-maps-max-pids`). `status-<ts>.log` and
+`limits-<ts>.log` were captured correctly for these PIDs.
+
+However, **`smaps_rollup-<ts>.log`, `numa_maps-<ts>.log`, and
+`maps_summary-<ts>.log` were all 0 bytes** for these PIDs. All of the
+relevant container processes run as `Uid=0` (root) inside the container,
+which maps to host UID 0; `trace-memory.sh` was run as the non-root host
+user (`bjk110`, UID 1000), which lacks permission to read
+`/proc/<pid>/{smaps_rollup,numa_maps,maps}` for UID-0 processes. This
+permission failure was **not logged to `notes.log`** for these PIDs (silent
+0-byte files) -- see §15 for the fix. **No mapping-category data
+(anonymous/`/dev/nvidia*`/`/dev/infiniband*`/`/dev/shm`/memfd/CUDA-NCCL-lib)
+could be obtained from this run.** The next diagnostic run that needs this
+data **must run `trace-memory.sh` with `sudo`**.
+
+**Preserved artifacts:**
+
+- `spark01:~/docker/vllm-spark/.local/diag/diag-spark01-attempt11a-20260613-001531.tar.gz`
+- `spark02:~/docker/vllm-spark/.local/diag/diag-spark02-attempt11a-20260613-001531.tar.gz`
+
+Both containers were stopped cleanly (`docker compose ... down`, exit code
+0) and `trace-memory.sh`/`memory-guard.sh` were stopped with `SIGTERM`
+(`final_snapshot.log` written on both nodes).
+
+## 15. `trace-memory.sh` sudo requirement for proc maps / smaps (added 2026-06-12, post-Attempt-11A)
+
+Attempt 11A (§14) showed that `smaps_rollup`/`numa_maps`/`maps_summary` are
+silently written as 0-byte files when `trace-memory.sh` runs as a non-root
+user against root-owned container processes (`/proc/<pid>/{smaps_rollup,
+numa_maps,maps}` require the same UID or `CAP_SYS_PTRACE`). The script now:
+
+- documents in its `--help` output and header comments that **proc_maps /
+  smaps capture for root-owned container processes requires running the
+  script with `sudo`** -- `meminfo`/`free`/`docker stats`/`ps_topRSS`
+  sampling continues to work fine without `sudo`.
+- explicitly checks readability of `/proc/<pid>/{smaps_rollup,maps,
+  numa_maps}` before extracting, and on failure writes a
+  `permission denied or unreadable: <path> (PID <pid>, uid mismatch? try
+  sudo)`-style line to `notes.log` instead of leaving a silent 0-byte file.
+
+For any future attempt where proc_maps/smaps data is required (e.g. to
+resolve §14's open question about mapping categories during the
+15:05:08-15:09:00 window), run `sudo ./scripts/diag/trace-memory.sh ...`.

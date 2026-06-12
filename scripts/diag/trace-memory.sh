@@ -50,6 +50,16 @@
 # final Ray log snapshot and kernel-log tail (if collected) are copied into
 # the output directory, and the directory path is printed.
 #
+# PERMISSIONS / sudo: meminfo, free, docker stats, and top-RSS sampling work
+# fine as a non-root user. However, the proc_maps sampler's
+# smaps_rollup/maps/numa_maps capture for root-owned container processes
+# (e.g. vLLM/Ray processes inside a Docker container, typically UID 0) is
+# only readable by root or a process with CAP_SYS_PTRACE. If this script is
+# run as a non-root user, those three files will be unreadable for UID-0
+# PIDs; this is logged to proc_maps/notes.log (one line per unreadable path)
+# rather than silently producing 0-byte files. Run with `sudo` if you need
+# smaps_rollup/maps/numa_maps data for root-owned processes.
+#
 # IMPORTANT: run this script, do not `source`/`.` it. It sets `set -uo
 # pipefail`, installs a `trap cleanup INT TERM`, and (with --duration) sends
 # SIGTERM to "$$" to stop itself -- if sourced, "$$" is your interactive
@@ -176,6 +186,31 @@ summarize_maps_file() {
             for (c in count) printf "%-16s count=%-6d size_kb=%d\n", c, count[c], size[c]
         }
     ' "$src" > "$dst" 2>/dev/null
+}
+
+# Capture one /proc/<pid>/<kind> file into $dst, dispatching to the right
+# extractor. bash's `-r` test (access(R_OK)) can report /proc/<pid>/* as
+# readable by file-mode bits even when the kernel's ptrace_scope / Yama LSM
+# check makes the actual read() return EACCES for a UID-0 process read by a
+# non-root user -- in that case `cp`/`grep`/`awk` silently produce an empty
+# file with `2>/dev/null`. So after the capture attempt, check whether $dst
+# actually has content; if not, log a permission note (with a sudo hint) to
+# notes.log and remove the empty placeholder instead of leaving a silent
+# 0-byte file.
+capture_proc_file() {
+    local kind="$1" src="$2" dst="$3" pid="$4" ts="$5"
+    if [ -r "$src" ]; then
+        case "$kind" in
+            smaps_rollup) extract_smaps_rollup "$src" "$dst" ;;
+            maps_summary) summarize_maps_file "$src" "$dst" ;;
+            numa_maps)    head -c 1048576 "$src" > "$dst" 2>/dev/null ;;
+            *)            cp "$src" "$dst" 2>/dev/null ;;
+        esac
+    fi
+    if [ ! -s "$dst" ]; then
+        rm -f "$dst"
+        echo "${ts} pid=${pid} ${kind}: permission denied or unreadable (${src}, PID ${pid}, uid mismatch? try sudo)" >> "${OUT_DIR}/notes.log"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -330,35 +365,11 @@ if [ "$NO_PROC_MAPS" -eq 0 ]; then
                 pid_dir="${PROC_MAPS_DIR}/pid_${pid}_${comm}"
                 mkdir -p "$pid_dir" 2>/dev/null
 
-                if [ -r "/proc/$pid/status" ]; then
-                    cp "/proc/$pid/status" "${pid_dir}/status-${ts}.log" 2>/dev/null
-                else
-                    echo "${ts} pid=${pid} status: permission denied or unavailable" >> "${OUT_DIR}/notes.log"
-                fi
-
-                if [ -r "/proc/$pid/smaps_rollup" ]; then
-                    extract_smaps_rollup "/proc/$pid/smaps_rollup" "${pid_dir}/smaps_rollup-${ts}.log"
-                else
-                    echo "${ts} pid=${pid} smaps_rollup: permission denied or unavailable" >> "${OUT_DIR}/notes.log"
-                fi
-
-                if [ -r "/proc/$pid/limits" ]; then
-                    cp "/proc/$pid/limits" "${pid_dir}/limits-${ts}.log" 2>/dev/null
-                else
-                    echo "${ts} pid=${pid} limits: permission denied or unavailable" >> "${OUT_DIR}/notes.log"
-                fi
-
-                if [ -r "/proc/$pid/numa_maps" ]; then
-                    head -c 1048576 "/proc/$pid/numa_maps" > "${pid_dir}/numa_maps-${ts}.log" 2>/dev/null
-                else
-                    echo "${ts} pid=${pid} numa_maps: permission denied or unavailable" >> "${OUT_DIR}/notes.log"
-                fi
-
-                if [ -r "/proc/$pid/maps" ]; then
-                    summarize_maps_file "/proc/$pid/maps" "${pid_dir}/maps_summary-${ts}.log"
-                else
-                    echo "${ts} pid=${pid} maps: permission denied or unavailable" >> "${OUT_DIR}/notes.log"
-                fi
+                capture_proc_file status        "/proc/$pid/status"       "${pid_dir}/status-${ts}.log"       "$pid" "$ts"
+                capture_proc_file smaps_rollup   "/proc/$pid/smaps_rollup" "${pid_dir}/smaps_rollup-${ts}.log" "$pid" "$ts"
+                capture_proc_file limits         "/proc/$pid/limits"       "${pid_dir}/limits-${ts}.log"       "$pid" "$ts"
+                capture_proc_file numa_maps      "/proc/$pid/numa_maps"    "${pid_dir}/numa_maps-${ts}.log"    "$pid" "$ts"
+                capture_proc_file maps_summary   "/proc/$pid/maps"         "${pid_dir}/maps_summary-${ts}.log" "$pid" "$ts"
 
                 # Rotation: keep only the newest PROC_MAPS_MAX_SNAPSHOTS
                 # snapshots per file kind for this PID.
