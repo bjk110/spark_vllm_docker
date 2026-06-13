@@ -2580,3 +2580,178 @@ not a different failure mode).
 
 - `spark01:~/docker/vllm-spark/.local/diag/diag-spark01-attempt16b-20260613-102231.tar.gz`
 - `spark02:~/docker/vllm-spark/.local/diag/diag-spark02-attempt16b-20260613-102230.tar.gz`
+
+---
+
+## 25. Attempt 17 — Controlled first-arriver inversion (2026-06-13)
+
+### 25.1 Purpose
+
+Every prior run (Attempts 13, 15A, 15B, 16A, 16B) showed spark01 completing
+weight loading and entering `MoEPrepareAndFinalizeNoDPEPModular` first, and
+the UMA memory collapse always occurring on spark01's host.  Attempt 16A
+swapped head/worker roles so spark01 became the worker/rank1 and spark02
+became head/rank0, but spark01 still arrived at MoE preparation first.
+This left two hypotheses for why the collapse always occurred on spark01
+confounded:
+
+1. **Physical-node hypothesis** — something specific to spark01's hardware,
+   host runtime, NVMe caching, or driver state causes the collapse
+   regardless of role.
+
+2. **First-arriver hypothesis** — whichever rank enters MARLIN MoE
+   preparation first triggers a local UMA allocation peak on *its own node*,
+   large enough to cross the Ray memory threshold.
+
+Attempt 17 breaks the correlation by inserting a 90-second pre-load delay
+on rank1 (spark01), guaranteeing that spark02/rank0 completes weight loading
+and enters MoE preparation first.
+
+Goals:
+
+- Confirm whether the memory collapse location moves with the first-arriving
+  rank or remains anchored to spark01.
+- Establish MoE preparation entry as the proximate trigger for the host
+  memory event, independently of physical-node or role-based factors.
+
+### 25.2 Controlled configuration
+
+All settings carried forward from Attempt 16A/16B (role-swap baseline):
+
+| Setting | Value |
+|---|---|
+| spark02 | head / rank0 / API / EP rank 0 / experts 0–143 / RoCE 10.10.10.2 |
+| spark01 | worker / rank1 / EP rank 1 / experts 144–287 / RoCE 10.10.10.1 |
+| kernel (both nodes) | 6.17.0-1021-nvidia |
+| driver (both nodes) | 610.43.02 |
+| GPU_MEMORY_UTILIZATION | 0.85 |
+| RAY_memory_usage_threshold | 0.90 |
+| RAY_OBJECT_STORE_MEMORY_BYTES | 1 073 741 824 (1 GiB) |
+| --kv-cache-memory-bytes | 8 589 934 592 (8 GiB fixed) |
+| MoE backend | MARLIN (auto-selected, same as all prior MARLIN attempts) |
+| --enable-expert-parallel | yes |
+| --enforce-eager | yes |
+| MAX_NUM_SEQS | 4 |
+| MAX_MODEL_LEN | 8192 |
+
+Single controlled variable versus Attempt 16B: diagnostic overlay image with
+rank1 90-second pre-load delay hook.
+
+### 25.3 Diagnostic hook
+
+A minimal diagnostic-only patch was applied as a Docker overlay layer on top
+of `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7`:
+
+| Item | Value |
+|---|---|
+| Patched source (inside image) | `/usr/local/lib/python3.12/dist-packages/vllm/model_executor/model_loader/base_loader.py` |
+| Patched method | `BaseModelLoader.load_model()` |
+| Hook position | Immediately before `self.load_weights(model, model_config)` |
+| Activation env var | `VLLM_DIAG_PRE_LOAD_DELAY_RANK=1` |
+| Delay env var | `VLLM_DIAG_PRE_LOAD_DELAY_SECONDS=90` |
+| Guard | Module-level `_DIAG_PRE_LOAD_DELAY_APPLIED` flag; fires at most once per process |
+| Default behaviour | Complete no-op unless both env vars are set; invalid values produce a warning and no-op |
+| Diagnostic image | `sha256:213429d55447075c7bd0eb0e63e1df0a44d551a2f454941372f1d601ccab7ed1` |
+| Image parity | Image ID confirmed identical on both nodes; 119-byte size difference is a known docker-save/load metadata artifact (Classification I) |
+
+The hook logs `[diag-first-arriver] rank=N pre-load delay start/complete/skipped`
+at INFO level via the existing vLLM logger, with UTC timestamp, hostname,
+global rank, TP rank, and elapsed time.
+
+### 25.4 Timeline
+
+**spark01 / rank1 (delayed):**
+
+| Event | Timestamp (UTC) |
+|---|---|
+| Delay start | 2026-06-13T11:05:06.848609Z |
+| Delay complete | 2026-06-13T11:06:36.848805Z |
+| Actual delay | 90.00 s |
+| Weight loading completion | Did not complete — cluster failed before rank1 finished loading |
+| MoE preparation | Not reached |
+
+**spark02 / rank0 (no delay):**
+
+| Event | Timestamp (UTC) |
+|---|---|
+| Delay skipped logged | 11:05:09 UTC |
+| Weight loading completed | 11:11:23 UTC (373.98 s) |
+| `MoEPrepareAndFinalizeNoDPEPModular` | 11:11:26 UTC |
+| Ray OOM termination | 11:11:37 UTC |
+
+### 25.5 Memory collapse on spark02
+
+All measurements from `trace-memory.sh` (0.2 s `meminfo` sampling) on spark02.
+Host time shown in KST (UTC+9); UTC = KST − 9 h.
+
+| KST time | MemAvailable (kB) | MemAvailable (GiB) |
+|---|---|---|
+| 20:11:23.062 | 55 060 004 | ~52.5 |
+| 20:11:25.348 | 53 083 584 | ~50.6 (immediately before MoEPrepare) |
+| 20:11:26.800 | 50 588 404 | ~48.2 |
+| 20:11:28.045 | 47 195 060 | ~45.0 |
+| 20:11:30.332 | 41 312 680 | ~39.4 |
+| 20:11:33.452 | 31 319 276 | ~29.9 |
+| 20:11:35.324 | 21 665 548 | ~20.7 |
+| 20:11:36.579 | 14 175 384 | ~13.5 |
+
+Summary:
+
+- Peak-to-trough decrease: approximately 39 GiB (~52.5 → ~13.5 GiB)
+- Duration: approximately 11.3 seconds
+- Observed average rate: approximately 3.45 GiB/s
+- Observed peak interval (20:11:33–36): approximately 5–6 GiB/s
+- Ray usage at OOM: 109.51 GB / 121.63 GB = 0.900359 (threshold 0.900000)
+- Worker killed: pid=1887, RayWorkerWrapper on spark02 (IP 10.10.10.2)
+
+Note: the 0.2 s sampling resolution means instantaneous-rate figures are
+approximations; direct comparisons with the ~100 ms traces from some earlier
+attempts should be treated cautiously.
+
+### 25.6 Comparison with Attempt 16B
+
+| Dimension | Attempt 16B | Attempt 17 |
+|---|---|---|
+| spark01 role | worker / rank1 | worker / rank1 |
+| spark02 role | head / rank0 | head / rank0 |
+| Pre-load delay on rank1 | none | 90 s |
+| First arriver (weight load + MoE prepare) | spark01 / rank1 | spark02 / rank0 |
+| Collapse node | spark01 (IP 10.10.10.1) | spark02 (IP 10.10.10.2) |
+| Weight loading time (collapsing rank) | 338.30 s | 373.98 s |
+| Ray OOM ratio | 0.901933 | 0.900359 |
+| Fixed KV reached | no | no |
+| Application startup | no | no |
+
+### 25.7 Interpretation
+
+The OOM location moved from spark01 to spark02 in direct correspondence with
+the change in which rank entered MARLIN MoE preparation first.  Spark01
+remained in weight loading when spark02 failed; the collapse did not occur
+on the node that had not yet reached MoE preparation.
+
+Attempt 17 strongly links the failure location to the rank that enters
+MARLIN MoE preparation first.  It does not yet distinguish an
+ordering-dependent race from a deterministic per-rank preparation peak that
+would affect each rank when it reaches the same stage.
+
+The experiment substantially weakens a spark01-specific hardware or
+host-runtime explanation, but one inversion run is not sufficient to claim
+an exclusive root cause.  In particular, it remains open whether:
+
+- Both ranks independently trigger a preparation-time allocation peak large
+  enough to cross the threshold (if so, a fixed-enough threshold would block
+  any two-node run, not only the first arriver).
+- An ordering or coordination dependency causes the first-arriving rank to
+  allocate more than it would if both ranks progressed in step.
+- The approximately 39 GiB event is attributable to PyTorch-managed GPU
+  tensors, raw CUDA or MARLIN-extension workspace, host-pinned buffers,
+  page-cache retention from weight loading, or some combination.
+
+Resolving these questions requires per-marker memory attribution during the
+MoE preparation transition (Attempt 18).
+
+### 25.8 Artifacts
+
+- spark01: `.local/diag/diag-spark01-attempt17-full-20260613T112927Z.tar.gz`
+- spark02: `.local/diag/diag-spark02-attempt17-full-20260613T112927Z.tar.gz`
+- build context: `.local/diag/diag-homeserver-attempt17-build-20260613T112927Z.tar.gz`
