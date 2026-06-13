@@ -2982,6 +2982,372 @@ these are added as requirements for Attempt 19.
   `/tmp/diag-homeserver-attempt18-build-20260613_123342.tar.gz`
 - Build directory: `/tmp/attempt18-marlin-allocation-attribution/`
 
+## 28. Attempt 20 — Sub-function phase tracing inside `ModelOptNvFp4FusedMoE.process_weights_after_loading` (2026-06-13)
+
+### 28.1 Purpose
+
+Attempt 19 established that the cumulative UMA memory growth is bounded to
+`ModelOptNvFp4FusedMoE.process_weights_after_loading`, but that function
+contains three distinct phases:
+
+1. `convert_to_nvfp4_moe_kernel_format(...)` — weight conversion
+2. Eight `replace_parameter(...)` calls — parameter substitution
+3. `make_nvfp4_moe_kernel(...)` + `fused_experts.process_weights_after_loading(layer)` —
+   kernel setup
+
+Attempt 20 adds seven `MO_`-prefixed sub-function markers at the boundaries of
+each phase inside `ModelOptNvFp4FusedMoE.process_weights_after_loading` in
+`modelopt.py`.  This determines which of the three phases is responsible for
+the MemAvailable decline.
+
+### 28.2 Architecture change from Attempt 19
+
+The only code change relative to Attempt 19 is the addition of `modelopt_patch.py`
+in the Dockerfile and the corresponding `diag20_durable_writer.py`.  All
+global (G01–G04) and per-layer (L_before, L_after) markers from Attempt 19
+are retained.  The new markers are:
+
+| Marker | Position |
+|---|---|
+| `MO_entry` | Function entry; records input tensor shapes and byte counts |
+| `MO_before_convert` | Immediately before `convert_to_nvfp4_moe_kernel_format()` call |
+| `MO_after_convert` | Immediately after `convert_to_nvfp4_moe_kernel_format()` returns |
+| `MO_before_replace_params` | Before the first `replace_parameter()` call |
+| `MO_after_replace_params` | After the eighth `replace_parameter()` call |
+| `MO_before_make_kernel` | Before `make_nvfp4_moe_kernel()` call |
+| `MO_exit` | Function exit |
+
+The durable writer for Attempt 20 is `diag20_durable_writer.py` (schema
+version `attempt20-v1`), writing to
+`/tmp/attempt20-modelopt-memory-rank-{N}.jsonl`.  The write mechanism is
+identical to Attempt 19: `os.open(O_DSYNC)` + `os.fdatasync()` per record,
+surviving SIGKILL.
+
+### 28.3 Build
+
+| Property | Value |
+|---|---|
+| Base image | `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-attempt19-durable-marlin-trace-rank1-delay90` |
+| New image | `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-attempt20-modelopt-internal-trace-rank1-delay90` |
+| Image ID | `sha256:795483adb6fd7ebe805319239123971fc939cb428d7d4e5600b7ff98f9d448ce` |
+| Build node | spark01 (aarch64); transferred to spark02 via `docker save | ssh … docker load` |
+| Build directory | `/tmp/attempt20-modelopt-internal-trace/` on homeserver |
+
+The same image ID (`sha256:795483ad`) was confirmed on both spark01 and spark02
+before the run.
+
+### 28.4 Patching mechanism
+
+`modelopt_patch.py` runs once during `docker build`.  It reads
+`/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/quantization/modelopt.py`,
+locates the exact text of `ModelOptNvFp4FusedMoE.process_weights_after_loading`
+using a unique anchor substring (the function docstring), verifies the anchor
+appears exactly once, and replaces the function body in-place.  Any mismatch
+— zero or more-than-one occurrences — causes the build to fail immediately.
+
+### 28.5 Run configuration
+
+Configuration is identical to Attempt 19 except for the image tag.  Key
+parameters:
+
+| Parameter | Value |
+|---|---|
+| Env file | `.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-attempt20-modelopt-internal-trace-debug` |
+| EP roles | spark02=rank0/head/experts 0–143; spark01=rank1/worker/experts 144–287 |
+| Rank-1 pre-load delay | 90 seconds |
+| `MAX_NUM_SEQS` | 4 |
+| `GPU_MEMORY_UTILIZATION` | 0.85 |
+| `MAX_MODEL_LEN` | 8192 |
+| `RAY_memory_usage_threshold` | 0.90 |
+| `VLLM_EXTRA_ARGS` | `--enforce-eager --quantization modelopt --kv-cache-dtype fp8 --enable-expert-parallel --kv-cache-memory-bytes 8589934592` (abridged) |
+
+### 28.6 Output and durable records
+
+SIGKILL was issued by the Ray memory monitor during the 27th call to
+`convert_to_nvfp4_moe_kernel_format()` (transformer layer 29), after
+MemAvailable dropped below the 0.90-threshold kill boundary.
+
+| Node | Rank | Role | JSONL records | Last durable marker |
+|---|---|---|---|---|
+| spark02 | 0 | head / rank0 | 1034 | `MO_before_convert` (layer 29, `layers.29.moe.experts`) |
+| spark01 | 1 | worker / rank1 | 1 | `G01_before_load_weights` |
+
+Rank1 recorded only the G01 global marker.  The 90-second pre-load delay
+caused rank1 to begin weight loading approximately 90 seconds after rank0.
+Rank0 exhausted available UMA before rank1 reached
+`ModelOptNvFp4FusedMoE.process_weights_after_loading`, so no MoE expert
+MO_ or L_ markers appear in rank1's output.
+
+### 28.7 Marker counts (rank0)
+
+| Marker | Expected | Observed | Match |
+|---|---:|---:|---|
+| G01_before_load_weights | 1 | 1 | ✓ |
+| G02_after_load_weights | 1 | 1 | ✓ |
+| G03_before_process_weights_after_loading | 1 | 1 | ✓ |
+| G04_after_process_weights_after_loading | 0 | 0 | ✓ (OOM before G04) |
+| L_before | 424 | 424 | ✓ |
+| L_after | 423 | 423 | ✓ |
+| MO_entry | 27 | 27 | ✓ |
+| MO_before_convert | 27 | 27 | ✓ |
+| MO_after_convert | 26 | 26 | ✓ (27th call killed mid-flight) |
+| MO_before_replace_params | 26 | 26 | ✓ |
+| MO_after_replace_params | 26 | 26 | ✓ |
+| MO_before_make_kernel | 26 | 26 | ✓ |
+| MO_exit | 26 | 26 | ✓ |
+
+All 1034 records parsed without error.  The 27th `MO_entry` and
+`MO_before_convert` were written durably; the 27th `MO_after_convert` was not.
+This confirms the SIGKILL occurred during the 27th invocation of
+`convert_to_nvfp4_moe_kernel_format()`.
+
+### 28.8 Completed modules
+
+Transformer layers 0–2 are dense.  Rank0 processes one
+`ModelOptNvFp4FusedMoE` module per MoE transformer layer (experts 0–143 per
+layer).  Twenty-six modules completed.
+
+Transformer layer 29 is the first module at which SIGKILL fired.  The
+`MO_entry` and `MO_before_convert` markers were durably written (MemAvailable
+≈ 13.557 GiB), and `MO_after_convert` was not.  Layer 29 is counted as
+incomplete and excluded from cumulative phase totals.
+
+### 28.9 Per-phase MemAvailable delta table (26 complete modules)
+
+Deltas are measured between the flanking MO_ marker pairs.  Phase boundaries:
+
+- **Δ convert**: `MO_before_convert` → `MO_after_convert`
+- **Δ replace×8**: `MO_after_convert` → `MO_after_replace_params`
+- **Δ make_kernel**: `MO_after_replace_params` → `MO_exit`
+- **Δ total**: `MO_entry` → `MO_exit`
+
+| TX layer | Δ convert (GiB) | Δ replace×8 (GiB) | Δ make_kernel (GiB) | Δ total (GiB) |
+|---:|---:|---:|---:|---:|
+| 3 | −5.2177 | −0.0174 | −0.0000 | −5.2879 |
+| 4 | −0.4758 | −0.0001 | +0.0000 | −0.4758 |
+| 5 | −2.2726 | −0.0004 | +0.0000 | −2.2729 |
+| 6 | −0.7819 | −0.0003 | −0.0012 | −0.7834 |
+| 7 | −2.2840 | −0.0035 | +0.0000 | −2.2879 |
+| 8 | −0.8259 | −0.0008 | +0.0000 | −0.8268 |
+| 9 | −2.2845 | −0.0004 | +0.0000 | −2.2849 |
+| 10 | −0.8336 | −0.0001 | −0.0008 | −0.8346 |
+| 11 | −2.2721 | −0.0004 | +0.0000 | −2.2711 |
+| 12 | −0.8350 | −0.0002 | −0.0015 | −0.8367 |
+| 13 | −1.6841 | −0.0015 | +0.0000 | −1.6867 |
+| 14 | **+0.3567** | −0.0045 | −0.0102 | **+0.3419** |
+| 15 | **+0.1787** | −0.0152 | −0.0002 | **+0.1613** |
+| 16 | −0.8029 | −0.0002 | +0.0000 | −0.8102 |
+| 17 | −2.1354 | −0.0043 | −0.0167 | −2.1565 |
+| 18 | −0.5698 | −0.0173 | +0.0000 | −0.5947 |
+| 19 | −2.0973 | −0.0010 | +0.0000 | −2.0987 |
+| 20 | −0.6127 | −0.0028 | −0.0075 | −0.6237 |
+| 21 | −2.1296 | −0.0003 | +0.0000 | −2.1299 |
+| 22 | −0.8265 | −0.0002 | −0.0010 | −0.8274 |
+| 23 | −2.2829 | +0.0000 | −0.0013 | −2.2842 |
+| 24 | −0.8344 | −0.0002 | +0.0000 | −0.8345 |
+| 25 | −2.2818 | −0.0002 | +0.0000 | −2.2821 |
+| 26 | −0.8356 | −0.0001 | +0.0000 | −0.8386 |
+| 27 | −2.2729 | −0.0065 | −0.0002 | −2.2796 |
+| 28 | −0.8235 | −0.0002 | −0.0002 | −0.8240 |
+| **29** | **n/a** (SIGKILL mid-flight) | — | — | — |
+| **Sum (layers 3–28)** | **−37.737** | **−0.078** | **−0.041** | **−37.856** |
+| **Mean (layers 3–28)** | **−1.451** | **−0.003** | **−0.002** | **−1.456** |
+
+Phase attribution over the 26 complete modules: `convert_to_nvfp4_moe_kernel_format`
+accounts for −37.737 of the total −37.856 GiB (99.7%).  `replace_parameter`
+and `make_nvfp4_moe_kernel` together account for −0.119 GiB (0.3%).
+
+The cumulative memory growth occurs within calls to
+`convert_to_nvfp4_moe_kernel_format()`.  `replace_parameter` and
+`make_nvfp4_moe_kernel` are negligible contributors.
+
+### 28.10 Tensor inventory
+
+Tensor shapes and byte counts are captured in `MO_entry` and `MO_after_convert`
+`tensor_meta` fields.  Values are uniform across all 26 completed modules;
+only the first module (transformer layer 3) is shown.
+
+**Input tensors to `convert_to_nvfp4_moe_kernel_format()` (from `MO_entry`):**
+
+| Tensor | Shape | dtype | Bytes | GiB |
+|---|---|---|---|---:|
+| `layer.w13_weight` | [144, 2560, 2048] | uint8 | 754,974,720 | 0.703 |
+| `layer.w13_weight_scale` | [144, 2560, 256] | uint8 | 94,371,840 | 0.088 |
+| `layer.w2_weight` | [144, 4096, 640] | uint8 | 377,487,360 | 0.352 |
+| `layer.w2_weight_scale` | [144, 4096, 80] | uint8 | 47,185,920 | 0.044 |
+| `layer.w13_weight_scale_2` (sliced) | — | — | not captured | — |
+| `layer.w13_input_scale` | — | — | not captured | — |
+| `layer.w2_weight_scale_2` | — | — | not captured | — |
+| `layer.w2_input_scale` | — | — | not captured | — |
+| **Captured subtotal** | | | **1,274,019,840** | **1.187** |
+
+**Output tensors from `convert_to_nvfp4_moe_kernel_format()` (from `MO_after_convert`):**
+
+| Tensor | Shape | dtype | Bytes | GiB |
+|---|---|---|---|---:|
+| `w13` (repacked) | [144, 256, 5120] | int32 | 754,974,720 | 0.703 |
+| `w13_scale` (permuted) | [144, 256, 2560] | uint8 | 94,371,840 | 0.088 |
+| `w2` (repacked) | [144, 80, 8192] | int32 | 377,487,360 | 0.352 |
+| `w2_scale` (permuted) | [144, 80, 4096] | uint8 | 47,185,920 | 0.044 |
+| `w13_scale_2`, `a13_scale`, `w2_scale_2`, `a2_scale` | — | — | not captured | — |
+| **Captured subtotal** | | | **1,274,019,840** | **1.187** |
+
+The captured output tensors have the same total byte count as the captured
+input tensors.  The dtype changes (uint8 → int32 for weights; uint8 → uint8
+for scales) with corresponding shape changes, consistent with the Marlin
+repack operation repermuting data within the same byte footprint.
+
+The MARLIN backend in `prepare_nvfp4_moe_layer_for_marlin` sets `a13_scale`
+and `a2_scale` to `None` on entry, so the corresponding `replace_parameter`
+calls for `w13_input_scale` and `w2_input_scale` release those parameters.
+
+### 28.11 Static analysis of `convert_to_nvfp4_moe_kernel_format()`
+
+The function is defined in
+`/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/oracle/nvfp4.py`.
+
+For `NvFp4MoeBackend.MARLIN` (confirmed from runtime `MO_before_convert`
+`tensor_meta.nvfp4_backend`), the function dispatches to
+`prepare_nvfp4_moe_layer_for_marlin()` in the same file.
+
+**Call graph (MARLIN path):**
+
+```
+convert_to_nvfp4_moe_kernel_format()
+  └─ prepare_nvfp4_moe_layer_for_marlin()
+       ├─ marlin_make_workspace_new(device, 4)           [torch.zeros, small, PyTorch allocator]
+       │    └─ stores result in layer.workspace
+       ├─ repack_weight(w13, "w13")
+       │    └─ for i in range(E=144):
+       │         ├─ weight[i].view(torch.int32).T.contiguous()   [new temporary, PyTorch]
+       │         └─ ops.gptq_marlin_repack(b_q_weight, perm, ...)
+       │              └─ torch.ops._C.gptq_marlin_repack(...)    [_C.abi3.so C extension]
+       │    └─ torch.cat(tensor_list)                            [new tensor, PyTorch]
+       ├─ repack_weight(w2, "w2")                        [same pattern]
+       ├─ premute_scales(w13_scale, w13_scale_2, "w13")
+       │    └─ for i in range(E=144):
+       │         ├─ scales[i].T
+       │         ├─ marlin_permute_scales(...)           [marlin_utils.py]
+       │         └─ nvfp4_marlin_process_scales(...)     [nvfp4.py, pure Python/PyTorch]
+       │    └─ torch.cat(tensor_list)
+       │    └─ nvfp4_marlin_process_global_scale(...)
+       └─ premute_scales(w2_scale, w2_scale_2, "w2")    [same pattern]
+```
+
+**Extension:** `torch.ops._C.gptq_marlin_repack` is implemented in
+`/usr/local/lib/python3.12/dist-packages/vllm/_C.abi3.so`.  All returned
+tensors are standard `torch.Tensor` objects.
+
+**Backend:** `NvFp4MoeBackend.MARLIN`; `experts_cls`:
+`vllm.model_executor.layers.fused_moe.experts.marlin_moe.MarlinExperts`.
+
+**Workspace:** `marlin_make_workspace_new` allocates
+`sms × 4` integers via `torch.zeros` on the CUDA device and assigns the
+result to `layer.workspace`.  This attribute persists on the layer object
+for the duration of model lifetime; its size is proportional to the number
+of compute units (tens of kilobytes, not GiB-scale).
+
+**Allocator attribution:** All Python-visible allocations in
+`prepare_nvfp4_moe_layer_for_marlin` use standard PyTorch APIs
+(`torch.zeros`, `.contiguous()`, `torch.cat`).  The only allocation path not
+directly visible from Python is the internal implementation of
+`torch.ops._C.gptq_marlin_repack` in `_C.abi3.so`.
+
+The exact allocator, returned-storage ownership, workspace lifetime, and
+release behavior remain unresolved.
+
+### 28.12 Memory accounting analysis
+
+**`torch.cuda.memory_allocated()` is quasi-constant across modules.**
+At `MO_before_convert`, `memory_allocated` is approximately 58.465 GiB for
+all 27 calls (layers 3–29).  At `MO_after_convert`, it is approximately
+59.652 GiB for all 26 completed calls — a consistent +1.187 GiB, matching the
+captured output tensor subtotal.  Following `replace_parameter`, the value
+returns to approximately 58.465 GiB for the next module's `MO_before_convert`,
+indicating that `replace_parameter` frees the old input parameters and the
+PyTorch caching allocator recycles the allocation bookkeeping.
+
+**MemAvailable declines monotonically despite the quasi-constant `memory_allocated`.**
+The PyTorch caching allocator returns freed pages to its own internal pool
+after `replace_parameter`; whether and when those pages are returned to the
+OS page allocator (and thus reflected in MemAvailable) depends on the CUDA
+driver's behavior on GB10 UMA.  The observed pattern is consistent with pages
+being retained in the driver's memory pool across module transitions.  This is
+not confirmed at the allocator or driver level.
+
+**CUDA free (`mem_get_info`) is not monotonically correlated with MemAvailable.**
+The CUDA free counter increases for some modules (e.g., layer 3: +9.72 GiB)
+and decreases for others, in no consistent pattern relative to the MemAvailable
+decline.  On UMA systems, `mem_get_info` and `/proc/meminfo MemAvailable`
+reflect different accounting views of the same physical pool; their divergence
+is consistent with the PyTorch caching allocator returning previously-reserved
+CUDA pages to the driver at a different rate than new allocations are made,
+but sub-allocator-level tracing is required to confirm this.
+
+**Anomalies at transformer layers 14 and 15.**  These are the only two modules
+with a positive Δ convert (+0.357 GiB and +0.179 GiB respectively), meaning
+MemAvailable increased slightly during their conversion.  The cause of this
+anomaly is not determined from available data.  Possible causes include
+OS page-cache reclaim, the PyTorch caching allocator returning pages to the
+driver during computation, or an interaction with the per-expert loop
+structure for these specific layer configurations.
+
+**Per-loop intermediate tensors.**  `repack_weight` processes E=144 experts
+in a loop.  Each iteration creates a `.contiguous()` temporary and passes it
+to `gptq_marlin_repack`.  These per-iteration tensors are freed within each
+loop iteration; only the final `torch.cat` result persists.  The loop
+structure means that peak memory within convert exceeds the final output
+size, with a transient spike proportional to the temporary tensor size per
+expert.  The magnitude of this transient is not directly observable from
+module-boundary markers.
+
+### 28.13 Classification
+
+**Attempt 20 classification: A — memory growth is bounded to the
+`convert_to_nvfp4_moe_kernel_format()` call interval.  The responsible
+internal operation or allocator is not yet identified.**
+
+Attempt 20 identifies the `convert_to_nvfp4_moe_kernel_format()` call
+boundary as the source interval of the cumulative external memory growth.
+The three flanking phases — entry overhead, `replace_parameter`, and
+`make_nvfp4_moe_kernel` — together account for 0.3% of the measured decline.
+
+The open question for Attempt 21 is why MemAvailable decreases monotonically
+across module boundaries despite the PyTorch caching allocator maintaining a
+quasi-constant `memory_allocated`.  Candidate explanations involve the CUDA
+driver's page-return behavior on UMA and the internal implementation of
+`torch.ops._C.gptq_marlin_repack`.
+
+### 28.14 Interpretation
+
+The per-phase tracing in Attempt 20 narrows the allocation site from
+"within `ModelOptNvFp4FusedMoE.process_weights_after_loading`" (Attempt 19)
+to "within `convert_to_nvfp4_moe_kernel_format()`" specifically.
+
+The static call graph shows that for `NvFp4MoeBackend.MARLIN`, the active
+sub-function is `prepare_nvfp4_moe_layer_for_marlin()`.  That function calls
+`ops.gptq_marlin_repack` 144 times per module (once per expert) and aggregates
+results with `torch.cat`.  All Python-visible allocations use the PyTorch
+caching allocator.  The one sub-Python-layer call path —
+`torch.ops._C.gptq_marlin_repack` in `_C.abi3.so` — is a candidate for
+investigation in Attempt 21, but its internal allocation behavior is not
+observable from Python.
+
+### 28.15 Artifacts
+
+- Rank0 durable JSONL (spark02): `/tmp/attempt20-modelopt-memory-rank-0.jsonl`
+  (1034 records, all valid JSON)
+- Rank1 durable JSONL (spark01): `/tmp/attempt20-modelopt-memory-rank-1.jsonl`
+  (1 record, G01 only)
+- Per-module phase delta CSV: `/tmp/attempt20-analysis/attempt20-mo-deltas.csv`
+- Combined tarball (homeserver):
+  `~/.local/diag/attempt20-modelopt-internal-trace-20260613-142610.tar.gz`
+  (SHA256: `8aa598ae32b1a14eb979884a8fc20651f136f86a127c5a436483bd244953fab3`)
+- Build directory: `/tmp/attempt20-modelopt-internal-trace/`
+- Env file: `.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-attempt20-modelopt-internal-trace-debug`
+
+---
+
 ## 27. Attempt 19 — Durable per-layer ModelOpt NVFP4 tracing (2026-06-13)
 
 ### 27.1 Purpose
