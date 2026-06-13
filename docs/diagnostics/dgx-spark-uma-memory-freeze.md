@@ -2223,3 +2223,211 @@ disconnected from GCS) and was torn down cleanly afterward via
 `docker compose ... down`. `trace-memory.sh`/`memory-guard.sh` were stopped
 with `SIGTERM` on both nodes (no orphaned processes); both nodes show no
 active containers post-cleanup.
+
+## 23. Host-level parity audit and same-kernel alignment investigation (2026-06-13)
+
+**Scope:** read-only investigation only, performed on both nodes after
+Attempt 16A (§22). No reboots, kernel installs/removals, GRUB changes,
+driver reinstalls, sysctl/swap changes, container runs, or vLLM runs were
+performed. This section records findings and a plan; no remediation was
+executed.
+
+### 23.1 Parity matrix
+
+| Item | spark01 | spark02 | Match |
+|---|---|---|---|
+| Running kernel | `6.17.0-1021-nvidia` (#21, built 2026-05-27) | `6.17.0-1008-nvidia` (#8, built 2026-01-21) | **NO** |
+| `/proc/cmdline` extras | `init_on_alloc=0 iommu.passthrough=0 ... earlycon=... crashkernel=1G-:0M initcall_blacklist=tegra234_cbb_init pci=pcie_bus_safe` | `crashkernel=1G-:0M quiet splash vt.handoff=7` | **NO** -- spark01 has several extra boot params not present on spark02 |
+| GRUB top-level menuentry | `'Ubuntu'` (`gnulinux-simple-bb17f2ca-...`) | `'DGX OS GNU/Linux'` (`gnulinux-simple-b68f2c57-...`) | **NO** (cosmetic, but reflects divergent OS-image lineage) |
+| `GRUB_DEFAULT` / timeout | `0` / hidden, 0s | `0` / hidden, 0s | YES |
+| NVIDIA driver / KMD | `610.43.02` | `610.43.02` | YES |
+| CUDA UMD | `13.3` | `13.3` | YES |
+| `nvidia.ko` vermagic | matches running kernel (1021) | matches running kernel (1008) | YES (each matches its own kernel) |
+| BIOS/firmware | `GX10DGX.0105.2026.0505.1153` (2026-05-05) | identical | YES |
+| ConnectX NIC FW (`rocep1s0f0`) | `28.45.4028` | identical | YES |
+| RoCE link (`enp1s0f0np0`) | 200 Gb/s, MTU 9000, `PORT_ACTIVE` | identical | YES |
+| `sysctl vm.*` (swappiness, overcommit_memory/ratio, min_free_kbytes, zone_reclaim_mode, vfs_cache_pressure) | `1 / 0 / 50 / 45156 / 0 / 100` | identical | YES |
+| Swap | `/swap.img`, 64 GiB | identical | YES |
+| NUMA / CPU | 1 node, 20 CPUs, ~124546 MB | identical | YES |
+| NVMe model | `ESL01TBTLCZ-27J2-TYN`, 1 TB, FW `ERFM12.0`, readahead 256 | identical | YES |
+| Root FS | ext4, `/dev/nvme0n1p2`, 917G (84% used) | ext4, `/dev/nvme0n1p2`, 916G (81% used) | YES |
+| Docker server version | `29.2.1` | `29.5.3` | minor diff |
+| `nvidia-container-runtime` `runtimes` list | `["runc","crun"]` | `["docker-runc","runc","crun"]` | minor diff |
+| Operational vLLM image `...step3p7-fi-aot` (`f61c922c9a21`) | present | present | YES |
+| Boot-time dmesg (mlx5/nvidia/rdma init sequence) | identical pattern | identical pattern | YES |
+
+### 23.2 Root cause of the kernel-version divergence
+
+spark01 is running `6.17.0-1021-nvidia`; spark02 is running `6.17.0-1008-nvidia`
+(the kernel/driver difference recorded as a lead in §22.7). The divergence is
+**not** an upstream availability gap -- `linux-image-6.17.0-1021-nvidia`
+(6.17.0-1021.21) is available to spark02 directly from
+`noble-updates`/`noble-security` (confirmed via `apt-cache policy`). The
+divergence is caused by spark02-local apt state:
+
+1. **`/etc/apt/sources.list.d/` is missing the entire DGX repo set on
+   spark02.** spark01 has `dgx.sources`, `spark.sources`,
+   `cuda-compute-repo.sources`, `ai-workbench-desktop.sources`,
+   `canonical-nvidia-ubuntu-nvidia-desktop-edge-noble.sources`,
+   `canonical-nvidia-ubuntu-linux-firmware-mbssid-patches-noble.sources`, and
+   `nvhpc.sources`. spark02 has none of these -- only
+   `cuda-sbsa-ubuntu2404.list`, `docker.list`,
+   `nvidia-container-toolkit.list`, `nv-vulkan-desktop-ppa.sources`, and the
+   stock `ubuntu*.sources`.
+
+2. **As a downstream consequence, spark02 never received the DGX OTA
+   metapackage chain.** spark01 has `dgx-release` (7.5.0), `dgx-repo`
+   (25.10-2), `dgx-spark-ota-update-meta` (26.04.1), `nvidia-dgx-telemetry`
+   (5.22), `dgx-spark-oobe-customize` (0.17.26), `dgx-spark-mlnx-hotplug`
+   (26.01-1), and `nvidia-firmware-580-580.95.05` installed. **None of these
+   packages are installed on spark02.** `dgx-spark-ota-update-meta` is the
+   package whose dependency chain pulled `linux-image-nvidia-hwe-24.04` to
+   1021.21 on spark01.
+
+3. **`linux-image-nvidia-hwe-24.04` / `linux-headers-nvidia-hwe-24.04` are
+   explicitly held on spark02** (`apt-mark showhold` lists both, pinned at
+   `6.17.0-1008.8`, candidate `6.17.0-1021.21`). On spark01 these packages are
+   unheld and installed at 1021.21.
+
+4. **spark02's apt history (`/var/log/apt/history.log`) shows a 2026-06-11
+   driver-version detour that is absent on spark01:**
+   ```
+   2026-06-11 12:47:48  apt-get install -y nvidia-driver-580-open
+   2026-06-11 12:50:10  apt-get install -y --allow-downgrades \
+       nvidia-persistenced=580.159.04-1ubuntu1 nvidia-modprobe=580.159.04-1ubuntu1 \
+       nvidia-settings=580.159.04-1ubuntu1
+   2026-06-11 15:47:03  apt-get install -y --allow-downgrades \
+       nvidia-dkms-open=610.43.02-1ubuntu1 nvidia-kernel-source-open=610.43.02-1ubuntu1 \
+       ... (full 610.43.02 restore)
+   ```
+   This lines up with `[[qwen35moe_arch_driver580_hang]]` (the driver-580
+   hang investigation on 2026-06-11). spark01's apt history for the same
+   period shows only a direct, incremental 610.43.02 component-by-component
+   install with no 580 detour. The apt holds on the HWE kernel meta-package
+   were most likely applied during this driver-580 detour (to prevent a
+   kernel change from compounding the driver-version juggling) and were never
+   released afterward. The missing `dgx-repo` source set is a separate,
+   currently unexplained gap -- it may predate the 06-11 detour (no apt
+   history entry removes these sources, so they were likely either never
+   present on this node's image or removed outside apt, e.g. manually or by
+   an image-customization step before this investigation's history window).
+
+### 23.3 Caveat: current memory-state asymmetry is a transient Attempt-16A artifact, not a host-config difference
+
+While gathering the parity matrix, spark01's current `MemAvailable` was
+observed at **~14-15 GiB** (`free -h`: 107Gi used, only 2.7Gi buff/cache) vs
+spark02's **~58-61 GiB** (63Gi used, 49Gi buff/cache, mostly reclaimable
+page-cache). Both nodes show `system boot` at ~17:18-17:19 (uptime ~1h21m at
+observation time), and **no Ray/vLLM/python processes and no
+RSS-significant processes are running on either node** (top RSS on spark01
+is `dockerd` at 74 MB; `docker ps -a` shows only `portainer_agent`).
+
+spark01's ~107 GiB of unaccounted, non-reclaimable "used" memory with zero
+corresponding process RSS matches
+[[feedback_gb10_uma_memory_recovery]] exactly: spark01 was the
+**worker/rank1** in Attempt 16A and completed weight loading (~75 GB into
+UMA) before its `RayWorkerWrapper` was Ray-OOM-killed and its container was
+torn down via `docker compose down`. The GB10 driver does not release this
+UMA reservation on container stop; only a reboot clears it. spark02 (the
+head/rank0 in Attempt 16A) only reached shard 11/14 before stalling, loaded
+substantially less into UMA, and shows a normal/reclaimable memory profile.
+
+**This asymmetry is a leftover side-effect of Attempt 16A's teardown, not a
+pre-existing or steady-state host-level difference between the two nodes.**
+It does not change the §23.1/23.2 findings (which are static configuration
+facts), but it means **spark01 needs a reboot before any new Attempt is run**
+-- consistent with the existing runbook precedent (reboot both nodes for a
+clean baseline before each attempt).
+
+### 23.4 Same-kernel alignment plan (NOT executed)
+
+**Plan A -- bring spark02 up to `6.17.0-1021-nvidia` (recommended direction):**
+
+1. `sudo apt-mark unhold linux-image-nvidia-hwe-24.04 linux-headers-nvidia-hwe-24.04`
+2. Restore the missing DGX repo source files
+   (`dgx.sources`, `spark.sources`, `cuda-compute-repo.sources`,
+   `ai-workbench-desktop.sources`,
+   `canonical-nvidia-ubuntu-nvidia-desktop-edge-noble.sources`,
+   `canonical-nvidia-ubuntu-linux-firmware-mbssid-patches-noble.sources`,
+   `nvhpc.sources`) -- e.g. copy from spark01's `/etc/apt/sources.list.d/`,
+   checking each file for host-specific tokens/keys before copying.
+3. `sudo apt update`, then review `sudo apt full-upgrade --dry-run` (this
+   will likely pull in `dgx-spark-ota-update-meta` 26.04.1 and its
+   dependents -- `dgx-dashboard` 0.23.3->0.29.0, `dgx-oobe` 0.19.4->0.25.1,
+   `nvidia-dgx-telemetry`, `nvidia-firmware-580-580.95.05`,
+   `dgx-spark-oobe-customize`, `dgx-spark-mlnx-hotplug`, and
+   `linux-image/headers-nvidia-hwe-24.04` -> 1021.21).
+4. Apply the upgrade. The kernel postinst regenerates `grub.cfg` and updates
+   the `/boot/vmlinuz` symlink automatically -- verify the `'DGX OS
+   GNU/Linux'` / `gnulinux-simple-...` menuentry resolves to
+   `vmlinuz-6.17.0-1021-nvidia` afterward (read-only check, no `update-grub`
+   needed manually).
+5. **Reboot spark02** as a standalone maintenance step (not bundled with a
+   vLLM attempt).
+6. Verify: `uname -r` = `6.17.0-1021-nvidia`, `nvidia-smi` driver still
+   `610.43.02`, RoCE link `PORT_ACTIVE` at 200 Gb/s, `journalctl -k -b0`
+   clean (same nvidia/mlx5 init pattern as today's audit).
+
+**Plan B -- roll spark01 back toward spark02's kernel (not recommended):**
+
+- spark01 has `6.17.0-1018-nvidia` installed and bootable (could be selected
+  via a one-time `grub-reboot`), but `6.17.0-1008-nvidia` itself is **not**
+  installed on spark01 (only leftover `linux-modules-nvidia-fs-6.17.0-1008-nvidia`
+  in `rc` state) -- true 1008 parity would mean installing a kernel version
+  that `dgx-spark-ota-update-meta` 26.04.1 has already superseded on this
+  node, likely fighting its dependency constraints. 1018 would only be a
+  partial control (closer to 1008, not identical), and downgrading risks
+  breaking spark01's currently-consistent `dgx-release`/driver/firmware
+  state. Not recommended.
+
+**Recommendation:** Plan A, executed as an independent host-maintenance task
+(its own reboot/validation cycle), separate from the next memory-collapse
+experiment.
+
+### 23.5 Next-experiment recommendation
+
+§22.6 leaves two hypotheses confounded: physical-node-specific
+(spark01-specific driver/kernel/page-cache/NVMe asymmetry) vs.
+first-arriver-rank (whichever rank reaches `MoEPrepareAndFinalizeNoDPEPModular`
+first triggers the collapse on its own node). Three options, in increasing
+order of scope:
+
+- **Option 1 -- Attempt 17, spark02-first ordering, kernels unchanged.**
+  Design a run where spark02 finishes weight loading and enters
+  `MoEPrepareAndFinalizeNoDPEPModular` first (e.g. by staggering container
+  startup order, or investigating whether weight-load order is
+  deterministic/controllable via the existing entrypoint). If the collapse
+  follows to spark02, first-arriver-rank is confirmed and the kernel
+  difference is ruled out as primary cause; if the collapse stays on spark01
+  regardless, the physical-node hypothesis strengthens. This sidesteps the
+  kernel question entirely and requires only a reboot + a new attempt under
+  the current (mismatched) kernels.
+
+- **Option 2 -- Plan A (spark02 -> 1021) first, then re-run Attempt 13/15A's
+  original role assignment (spark01=head) a 5th time under matched kernels.**
+  If the OOM ratio/timing changes materially from Attempts 13/15A
+  (0.902205 / 0.900134, ~9-13s after MoE-prepare), the kernel difference is
+  implicated; if essentially unchanged, kernel version is ruled out and
+  first-arriver-rank becomes the leading hypothesis. Requires the Plan A
+  maintenance window (apt upgrade + reboot + validation) before the attempt.
+
+- **Option 3 -- both:** Plan A, then a same-kernel Attempt with spark02-first
+  ordering. Most informative single experiment (controls for both
+  variables at once), but highest total time cost (maintenance window +
+  full attempt cycle).
+
+No option was executed. This section is investigation and planning only.
+
+### 23.6 Interpretation
+
+§23.2 identifies the root cause of the **kernel-version drift** between
+spark01 and spark02 (incomplete APT/DGX OTA state on spark02, combined with
+held NVIDIA HWE kernel meta-packages). This is a separate, established
+finding from the still-open question in §22.6.
+
+The audit identifies the cause of the kernel-version drift, not the cause of
+the MARLIN memory collapse. The APT/DGX OTA state explains why spark02
+remained on kernel `6.17.0-1008-nvidia`, but it does not yet establish that
+the kernel difference caused the inference failure observed in Attempts
+13/15A/15B/16A. A same-kernel repeat is required before assigning causal
+significance to the kernel difference.
