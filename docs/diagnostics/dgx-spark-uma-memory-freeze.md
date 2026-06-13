@@ -2431,3 +2431,152 @@ remained on kernel `6.17.0-1008-nvidia`, but it does not yet establish that
 the kernel difference caused the inference failure observed in Attempts
 13/15A/15B/16A. A same-kernel repeat is required before assigning causal
 significance to the kernel difference.
+
+## 24. Attempt 16B — Same-kernel role-swap repeat (2026-06-13)
+
+**Purpose:**
+
+- Repeat Attempt 16A with the same role-swap topology.
+- Keep the existing Docker-image asymmetry between spark01 and spark02
+  unchanged.
+- Change only the spark02 running kernel from `6.17.0-1008-nvidia` to
+  `6.17.0-1021-nvidia` (Plan A from §23.4, applied as a standalone
+  maintenance step before this attempt).
+- Determine whether the kernel-version drift recorded in §22.7/§23 materially
+  contributed to the MARLIN/UMA collapse.
+
+### 24.1 Controlled configuration
+
+**Attempt 16A:**
+
+| | Role | Kernel | Image ID |
+|---|---|---|---|
+| spark01 | worker/rank1 | `6.17.0-1021-nvidia` | `sha256:3928025a0c8d...` |
+| spark02 | head/rank0/API | `6.17.0-1008-nvidia` | `sha256:1282550c82a1...` |
+
+**Attempt 16B:**
+
+| | Role | Kernel | Image ID |
+|---|---|---|---|
+| spark01 | worker/rank1 | `6.17.0-1021-nvidia` (unchanged) | `sha256:3928025a0c8d...` (unchanged) |
+| spark02 | head/rank0/API | `6.17.0-1021-nvidia` (aligned via §23.4 Plan A) | `sha256:1282550c82a1...` (unchanged) |
+
+Both nodes now run driver `610.43.02` on kernel `6.17.0-1021-nvidia`. The
+Docker image asymmetry (different image IDs on spark01 vs spark02) is an
+existing, pre-Attempt-16A condition and was deliberately left unchanged in
+this attempt.
+
+**Env used:** the same
+[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-debug)
+as Attempt 16A, unmodified. All other settings unchanged from Attempt 16A:
+
+- `--enable-expert-parallel` (EP on), `TP_SIZE=2`, `DISTRIBUTED_BACKEND=ray`
+- spark02 = head/rank0/API, EP rank 0, experts 0-143, `HEAD_ROCE_IP=10.10.10.2`
+- spark01 = worker/rank1, EP rank 1, experts 144-287, `WORKER_ROCE_IP=10.10.10.1`
+- `MARLIN` NvFp4 MoE backend (auto-selected, no explicit `--moe-backend`)
+- `GPU_MEMORY_UTILIZATION=0.85`
+- `--kv-cache-memory-bytes 8589934592` (fixed KV, 8 GiB)
+- `--enforce-eager`, `--kv-cache-dtype fp8`, `--quantization modelopt`
+- `RAY_OBJECT_STORE_MEMORY_BYTES=1073741824` (1 GiB)
+- `RAY_memory_usage_threshold=0.90` (not raised)
+- `RAY_memory_monitor_refresh_ms=100`
+- `memory-guard.sh --threshold-mb 8192`, `trace-memory.sh --duration 1800`
+  (with `sudo`) active on both nodes
+- both nodes rebooted to a clean baseline before this run; pre-run
+  `MemAvailable` ~123.5 GiB (spark01) / ~123.8 GiB (spark02)
+
+### 24.2 Result
+
+- spark01/rank1 **completed** weight loading:
+  `default_loader.py:397 Loading weights took 338.30 seconds`, at
+  **10:19:33 UTC**.
+- spark02/rank0 **did not complete** weight loading: last recorded progress
+  was **12/14 (86%)** when the run was aborted.
+- spark01/rank1 entered `Using MoEPrepareAndFinalizeNoDPEPModular`
+  (`nvfp4.py:537`) at **10:19:33 UTC** -- the same second as the weight-load
+  completion line.
+- The `MemAvailable` collapse on spark01 began within approximately one
+  second of the `MoEPrepareAndFinalizeNoDPEPModular` entry.
+- Ray OOM occurred on **spark01**:
+  - **10:19:42 UTC**
+  - `109.70GB / 121.63GB` (ratio **0.901933**), threshold `0.900000`
+  - `RayWorkerWrapper pid=341` (rank1) killed
+- The fixed 8 GiB KV-cache reservation was **not** reached.
+- Application startup was **not** reached; `RuntimeError: Engine core
+  initialization failed` was raised and the `vllm-spark-head` container
+  exited with code 1 (~10:19:48 UTC).
+- Inference was not performed.
+
+```
+ray.exceptions.OutOfMemoryError: 1 worker(s) were killed due to the node running low on memory.
+Memory on the node (IP: 10.10.10.1, ID: 250eb58dfea01ec82ffdcbbe1a954c85332552dc3a2d230502c953da) was
+109.70GB / 121.63GB (0.901933), which exceeds the memory usage threshold of 0.900000.
+... RayWorkerWrapper.__init__ pid=341, actual memory used=0.85GB ...
+(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+```
+
+### 24.3 Memory trajectory
+
+The following values were captured via periodic `/proc/meminfo` polling
+(roughly every 12-20 seconds), not a continuous high-frequency trace. The
+higher-frequency `trace-memory.sh` data for this window is preserved in the
+diagnostic tarballs (§24.5) and was not separately analyzed for this section.
+
+- Broad interval: `MemAvailable` on spark01 fell from approximately
+  **55.68 GiB at 10:19:18 UTC** to approximately **15.03 GiB at 10:19:46
+  UTC** -- a decrease of approximately **40.65 GiB over 28 seconds**.
+- Observed collapse interval: from approximately **42.35 GiB at 10:19:34
+  UTC** to approximately **15.03 GiB at 10:19:46 UTC** -- a decrease of
+  approximately **27.32 GiB over 12 seconds**, an observed average of
+  approximately **2.28 GiB/s**.
+- Minimum `MemAvailable` observed on spark01: approximately **15.00 GiB**
+  (15,004,720 kB at 10:19:59 UTC, post-OOM).
+- spark02's `MemAvailable` remained stable in the ~50-53 GiB range
+  throughout (no collapse observed on spark02).
+
+The 2.28 GiB/s coarse average above is **not directly comparable** to
+Attempt 16A's high-resolution figures (§22.2: ~4.95 GiB/s average over
+~7.62s, ~7.55 GiB/s peak over the steepest 1-second window) -- the two were
+measured at different sampling resolutions, and the 16B figure should not be
+read as evidence that the 16B collapse was slower than 16A's.
+
+### 24.4 Attempt 16A versus 16B
+
+| Item | Attempt 16A | Attempt 16B |
+|---|---|---|
+| spark01 kernel | `6.17.0-1021-nvidia` | `6.17.0-1021-nvidia` |
+| spark02 kernel | `6.17.0-1008-nvidia` | `6.17.0-1021-nvidia` |
+| First arriver | spark01/rank1 | spark01/rank1 |
+| Weight-loading time (first arriver) | 340.99s | 338.30s |
+| `MoEPrepareAndFinalizeNoDPEPModular` entry -> Ray OOM | ~8s | ~9s |
+| OOM node | spark01 | spark01 |
+| OOM role | worker/rank1 | worker/rank1 |
+| OOM ratio | 0.901823 | 0.901933 |
+| Fixed KV (8 GiB) reached | no | no |
+| Result | Ray OOM | Ray OOM |
+
+### 24.5 Interpretation
+
+Aligning spark02 from kernel `6.17.0-1008-nvidia` to `6.17.0-1021-nvidia` did
+not materially change the failure location, timing, or Ray memory ratio. The
+1008/1021 kernel-version drift is therefore unlikely to be the primary cause
+of the MARLIN initialization collapse.
+
+The physical-node and first-arriver hypotheses remain confounded because
+spark01 completed weight loading and entered MoE preparation first in both
+Attempt 16A and Attempt 16B.
+
+This does not establish that kernel versions have no effect whatsoever, that
+spark01 hardware is conclusively faulty, or that first-arriver behavior is
+conclusively the root cause -- it only narrows the 1008/1021 kernel
+difference specifically as an unlikely primary cause, under the existing
+Docker-image asymmetry which remained unchanged in this attempt.
+
+**Classification: B** (same fundamental mechanism, magnitude, and node as
+Attempts 13/15A/15B/16A; not a host freeze, not an invalid configuration, and
+not a different failure mode).
+
+**Preserved artifacts:**
+
+- `spark01:~/docker/vllm-spark/.local/diag/diag-spark01-attempt16b-20260613-102231.tar.gz`
+- `spark02:~/docker/vllm-spark/.local/diag/diag-spark02-attempt16b-20260613-102230.tar.gz`
