@@ -1532,3 +1532,206 @@ initialization failed`, code 1); the worker container remained `Up` until
 `trace-memory.sh`/`memory-guard.sh` were stopped with `SIGTERM` on both
 nodes (no orphaned processes). **Reboot recommended before the next run**
 due to the ~56.6 GiB / ~45.9 GiB MemAvailable loss described above.
+
+## 20. Attempt 15A results (2026-06-13) -- Ray object-store margin isolation (4GiB -> 1GiB)
+
+**Purpose:** Attempt 13 (§17) crashed via Ray OOM at usage ratio 0.902205,
+exceeding the `RAY_memory_usage_threshold=0.90` by only ~0.002205
+(~0.27 GiB-equivalent of 121.63 GiB). Backend substitution (Attempts 14A/14B,
+§18-19) showed `MARLIN` is the only NvFp4 MoE backend compatible with this
+deployment's device family, quantization scheme, EP=2 parallel config, and
+`MoEActivation.SWIGLUSTEP` activation -- so the Attempt 13 failure must be
+addressed via memory accounting/margin, not backend choice. Attempt 15A
+targets the Ray object store as the first margin candidate: Ray's
+node-memory-usage ratio is computed against total node memory and may
+include the object store's reserved share of the head node's baseline
+footprint. Attempt 15A reduces `RAY_OBJECT_STORE_MEMORY_BYTES` from 4 GiB to
+1 GiB to determine whether this reservation was responsible for Attempt 13
+crossing the 0.90 threshold.
+
+**Env used:**
+[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug)
+-- identical to Attempt 13's
+[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug)
+except for a single changed variable:
+
+| Variable | Attempt 13 | Attempt 15A |
+|---|---|---|
+| `RAY_OBJECT_STORE_MEMORY_BYTES` | `4294967296` (4 GiB) | `1073741824` (1 GiB) |
+
+All other relevant settings unchanged:
+
+- `--enable-expert-parallel` (EP on), `TP_SIZE=2`, `DISTRIBUTED_BACKEND=ray`
+- `MARLIN` NvFp4 MoE backend (auto-selected, no explicit `--moe-backend`)
+- `GPU_MEMORY_UTILIZATION=0.85`
+- `--kv-cache-memory-bytes 8589934592` (fixed KV, 8 GiB)
+- `--enforce-eager`, `--kv-cache-dtype fp8`, `--quantization modelopt`
+- `RAY_memory_usage_threshold=0.90` (kept at the proven host-freeze safety
+  boundary -- not raised)
+- `RAY_memory_monitor_refresh_ms=100`, `RAY_INCLUDE_DASHBOARD=false`
+- `memory-guard.sh --threshold-mb 8192`
+- `trace-memory.sh` run with `sudo` (proc_maps/smaps capture) on both nodes
+- both nodes rebooted to a clean baseline before this run (per Attempt 14B's
+  recommendation), confirmed `MemAvailable` ~123.5 GB (spark01) / ~123.8 GB
+  (spark02) pre-run
+
+**Object-store verification (Phase 6):** the entrypoint's `ray start`
+command on both head and worker included `--object-store-memory=1073741824`,
+and `raylet.out` confirmed the requested value was actually applied:
+
+```
+Allowing the Plasma store to use up to 1.07374GB of memory.
+create_and_mmap_buffer(1073741832, /dev/shm/plasmaXXXXXX)
+```
+
+This rules out an invalid/silently-rejected configuration -- the 4GiB -> 1GiB
+change was correctly applied on both nodes.
+
+**Timeline (UTC):**
+
+| Event | Time |
+|---|---|
+| `[EP Rank 0/2] ... Local/global number of experts: 144/288` (spark01, rank0) | 02:40:35 |
+| `Using 'MARLIN' NvFp4 MoE backend out of potential backends: ['VLLM_CUTLASS', 'MARLIN', 'EMULATION']` (rank0) | 02:40:35 |
+| `[EP Rank 1/2] ... Local/global number of experts: 144/288` (spark02, rank1) | 02:40:36 |
+| `Using 'MARLIN' NvFp4 MoE backend ...` (rank1) | 02:40:36 |
+| Weight loading 14/14 completed (`Loading weights took 343.74 seconds`) | 02:46:20 |
+| `Using MoEPrepareAndFinalizeNoDPEPModular` (rank0) | 02:46:22 |
+| Ray OOM (rank0 RayWorkerWrapper killed) | 02:46:33 |
+
+EP markers, expert counts (144/288 per rank), and `MARLIN` selection were
+identical in shape to Attempt 13. Weight loading reached 14/14 on both ranks
+(343.74s on rank0/head, vs. 343.02s in Attempt 13). **The run again crashed
+before reaching any KV-cache-related log line** -- the fixed-KV
+skip-profiling log and `GPU KV cache size: ...` never appeared. The failure
+occurred within the **13-second window between weight-loading completion
+(02:46:20) and Ray OOM (02:46:33)**, ~11 seconds after
+`MoEPrepareAndFinalizeNoDPEPModular` (02:46:22) -- i.e. during the same MoE
+backend setup stage as Attempt 13.
+
+**Ray OOM detail:**
+
+```
+ray.exceptions.OutOfMemoryError: 1 worker(s) were killed due to the node running low on memory.
+Memory on the node (IP: 10.10.10.1, ID: 56fdab6863b688fa2307e8b5538f334c0e9051cc4537817e99d5ba68) was
+109.48GB / 121.63GB (0.900134), which exceeds the memory usage threshold of 0.900000.
+... RayWorkerWrapper.__init__ pid=1880, actual memory used=0.37GB ...
+Object store memory usage: [...] objects in use: 0; bytes in use: 0 [...]
+(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+```
+
+spark02 (worker) immediately lost its TCPStore connection after rank0 was
+killed:
+`[rank1]:[W613 02:46:34...] TCPStore.cpp:125 [c10d] recvValue failed ...
+Connection was likely closed. Did the remote server shutdown or crash?`
+
+**Memory behavior:**
+
+| Time (UTC) | spark01/head MemAvailable | spark02/worker MemAvailable |
+|---|---|---|
+| 11:38:58 (baseline, pre-run) | 123501820 kB (~117.78 GiB) | 123787144 kB (~118.03 GiB) |
+| 11:43:59 (spark02's own weight-load RSS peak) | -- | **53358444 kB (~50.88 GiB)** |
+| 11:46:33 (Ray OOM moment, spark01) | **12752732 kB (~12.16 GiB)** | -- |
+| post-crash (settled) | ~15.28 GB | ~60.95 GB (~58.13 GiB) |
+
+spark01/head dropped from ~117.8 GiB to ~12.16 GiB available by the moment of
+Ray's OOM kill -- a collapse of comparable magnitude to Attempt 13's
+~49.1 GiB -> ~13.6 GiB (Attempt 13's pre-collapse baseline was already lower
+at the same relative point because Attempt 13 was not preceded by a fresh
+reboot to the same ~123 GB baseline). spark02/worker's minimum
+(~50.88 GiB, at 11:43:59) occurred *during its own weight-loading RSS spike*,
+well before rank0's OOM at 11:46:33, and spark02 subsequently recovered to
+~58.1 GiB -- matching Attempt 13's pattern of an asymmetric, head-only
+collapse.
+
+**proc_maps evidence (RayWorkerWrapper, sudo `trace-memory.sh`):**
+
+| Process | Time (UTC) | RSS |
+|---|---|---|
+| rank0 (spark01, pid 1880) | 11:46:32.700 (OOM moment) | ~505220 KB (~0.48 GiB) |
+| rank1 (spark02, pid 341) | 11:44:01.073 (own weight-load peak) | ~2792496 KB (~2.66 GiB) |
+
+Unlike Attempt 13 (rank0 ~5.77 GiB, rank1 ~6.17 GiB peak RSS,
+predominantly Anonymous/Private_Dirty), Attempt 15A's `RayWorkerWrapper`
+process RSS values were substantially smaller (rank0 ~0.48 GiB at the OOM
+moment, rank1 ~2.66 GiB at its own peak). Ray's own accounting of the killed
+actor (`actual memory used=0.37GB`) is consistent with rank0's small
+proc-level RSS. **The ~105 GiB difference between spark01's ~117.8 GiB
+baseline and ~12.16 GiB at OOM is therefore not explained by
+`RayWorkerWrapper` process RSS** -- consistent with §19's observation that
+large non-RSS `MemAvailable` losses occur on this platform (UMA-resident
+GPU weight/CUDA-context allocation), though driver-level attribution remains
+unproven.
+
+`memory-guard.sh` (threshold 8192 MB) did **not** trip on either node:
+spark01's available bottomed at ~12.16 GiB (12752732 kB), never crossing the
+8192 MB guard threshold. **Ray's memory monitor intervened first**, at
+90.0134% -- essentially identical to Attempt 13's 90.2205% and
+Attempts 09/10b's ~90.77%.
+
+No host freeze occurred; SSH remained fully responsive on both nodes
+throughout.
+
+**Attempt 13 vs. Attempt 15A comparison:**
+
+| | Attempt 13 (object store 4GiB) | Attempt 15A (object store 1GiB) |
+|---|---|---|
+| `RAY_OBJECT_STORE_MEMORY_BYTES` requested | 4294967296 | 1073741824 |
+| Object store actual (raylet.out) | not measured | confirmed: 1.07374 GB |
+| EP markers (144/288, both ranks) | reached | reached |
+| `MARLIN` selection (both ranks) | reached | reached |
+| Weight loading 14/14 | 343.02s | 343.74s |
+| `MoEPrepareAndFinalizeNoDPEPModular` | reached (16:19:51) | reached (02:46:22) |
+| Fixed-KV reservation | not reached | not reached |
+| Time: weight-load-complete -> Ray OOM | ~9s | ~13s |
+| **Ray node-memory ratio at OOM** | **0.902205** (109.73/121.63 GB) | **0.900134** (109.48/121.63 GB) |
+| Object-store bytes-in-use at OOM | not measured | **0** |
+| rank0 `RayWorkerWrapper` RSS (near OOM) | ~5.77 GiB (pre-kill) / ~0.49 GiB (mid-kill) | ~0.48 GiB (at OOM) |
+| rank1 `RayWorkerWrapper` RSS (own peak) | ~6.17 GiB | ~2.66 GiB |
+| spark01 minimum MemAvailable | ~13.6 GiB (13915 MB) | ~12.16 GiB (12752732 kB) |
+| Ray OOM | yes, rank0 killed | yes, rank0 killed |
+| rank1 TCPStore disconnect | yes | yes |
+| memory-guard trip | no | no |
+| Host freeze / SSH | none / responsive | none / responsive |
+
+**Interpretation.**
+
+- The 4GiB -> 1GiB object-store reduction was **correctly applied and
+  verified** (raylet.out confirms 1.07374 GB allocated).
+- The Ray node-memory-usage ratio decreased by only **~0.0021**
+  (0.902205 -> 0.900134) -- roughly 8% of the 3 GiB reduction's
+  theoretical proportional effect on a 121.63 GiB node
+  (3 GiB / 121.63 GiB ≈ 0.0247).
+- **Object-store bytes-in-use was zero at the moment of the OOM** in
+  Attempt 15A. The object store's *reserved capacity* therefore does not
+  appear to be counted toward Ray's "node memory usage" ratio in a way that
+  tracks its configured size -- reducing the reservation did not free a
+  proportional amount of "used" headroom.
+- **Ray object-store allocation was not the dominant source of the MARLIN
+  EP-on initialization pressure.** Attempt 15A failed via the same
+  fundamental mechanism as Attempt 13: weight loading completes (14/14),
+  `MoEPrepareAndFinalizeNoDPEPModular` is reached, and within ~10-15 seconds
+  the head node's memory-usage ratio crosses 0.90, triggering Ray's memory
+  monitor to kill rank0's `RayWorkerWrapper`, which breaks rank1's TCPStore
+  connection and fails `EngineCore` initialization.
+- This is classified as **insufficient margin** (not an invalid
+  configuration, and not a different failure mode from Attempt 13).
+- The remaining pressure that pushes the ratio from its pre-weight-load
+  baseline (~117.8 GiB available) down to ~12.16 GiB available at the OOM
+  point is, as in Attempt 13/§19, **primarily outside ordinary process RSS
+  accounting** (rank0's `RayWorkerWrapper` RSS was only ~0.48 GiB at the OOM
+  moment) and consistent with CUDA/UMA-side allocation accompanying MARLIN
+  NVFP4 MoE weight preparation/repacking -- but this remains a
+  correlation, not a conclusively proven driver-level attribution.
+
+**Preserved artifacts:**
+
+- `spark01:~/docker/vllm-spark/.local/diag/diag-spark01-attempt15a-20260613-025408.tar.gz`
+- `spark02:~/docker/vllm-spark/.local/diag/diag-spark02-attempt15a-20260613-025409.tar.gz`
+
+The head container exited with an error (`EngineCore failed to start`,
+Ray OOM, code 1); the worker container remained `Up` (disconnected from the
+head's GCS, TCPStore recv errors) and was torn down cleanly afterward
+(`docker compose ... down`, exit code 0). `trace-memory.sh`/
+`memory-guard.sh` were stopped with `SIGTERM` on both nodes (no orphaned
+processes).
