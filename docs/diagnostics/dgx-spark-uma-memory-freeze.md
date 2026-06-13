@@ -1373,3 +1373,162 @@ The head container exited with an error (`ValueError` /
 exited cleanly after the head's failure. `trace-memory.sh`/
 `memory-guard.sh` were stopped with `SIGTERM` on both nodes (no orphaned
 processes). No reboot was required before or after this attempt.
+
+## 19. Attempt 14B results (2026-06-13) -- MoE backend isolation (MARLIN -> FLASHINFER_CUTLASS)
+
+**Purpose:** Attempt 14A (§18) showed that `VLLM_CUTLASS` is rejected by
+`select_nvfp4_moe_backend()` **before** weight loading because its
+`is_supported_config()` requires `ep_size == 1`. Based on static source
+inspection of vLLM 0.22.1 / FlashInfer 0.6.12
+(`vllm/model_executor/layers/fused_moe/experts/flashinfer_cutlass_moe.py`,
+`vllm/model_executor/layers/fused_moe/oracle/nvfp4.py`), `FlashInferExperts`
+(`NvFp4MoeBackend.FLASHINFER_CUTLASS`) appeared to pass all seven
+`is_supported_config()` checks for this deployment (device family 120,
+NVFP4 static/dynamic quant scheme, SILU activation, unconditional parallel-
+config support, `allgather_reducescatter` activation format). Attempt 14B
+replaces `MARLIN` with `FLASHINFER_CUTLASS` while keeping every other
+Attempt 13 setting unchanged, to determine whether `FLASHINFER_CUTLASS`
+can support EP=2 and reduce (or otherwise change) the post-weight-load MoE
+initialization RSS spike that caused Attempt 13's Ray OOM.
+
+**Env used:**
+[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-flashinfer-cutlass-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-flashinfer-cutlass-debug)
+-- identical to Attempt 13's
+[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug)
+plus `--moe-backend flashinfer_cutlass` added to `VLLM_EXTRA_ARGS`.
+Configuration:
+
+- `--enable-expert-parallel` (EP on), `TP_SIZE=2`, `DISTRIBUTED_BACKEND=ray`
+- `GPU_MEMORY_UTILIZATION=0.85`
+- `--kv-cache-memory-bytes 8589934592` (fixed KV, 8 GiB)
+- `--enforce-eager`, `--kv-cache-dtype fp8`, `--quantization modelopt`
+- `RAY_memory_usage_threshold=0.90`, `RAY_memory_monitor_refresh_ms=100`
+- `memory-guard.sh --threshold-mb 8192 --interval 0.1`
+- `trace-memory.sh --duration 1800` run with `sudo` (proc_maps/smaps
+  capture, per §15) on both nodes
+- Only intended change vs. Attempt 13: `--moe-backend flashinfer_cutlass`
+  added to `VLLM_EXTRA_ARGS` (maps to `NvFp4MoeBackend.FLASHINFER_CUTLASS`)
+
+**Timeline (UTC):**
+
+| Time | Event |
+|---|---|
+| 02:02:50 | worker (spark02) container started |
+| 02:03:05 | head (spark01) container started (+15s) |
+| 02:03:22 | Ray cluster connected (`Ray runtime started`) |
+| 02:03:45 | EngineCore initialized (v0.22.1) |
+| 02:04:12 | EP rank0/rank1 expert maps completed -- 144/288 experts per rank, linear placement (both ranks); `FLASHINFER` attention backend selected; `Using 'FLASHINFER_CUTLASS' NvFp4 MoE backend out of potential backends: ['FLASHINFER_TRTLLM', 'FLASHINFER_CUTEDSL', 'FLASHINFER_CUTEDSL_BATCHED', 'FLASHINFER_CUTLASS', 'VLLM_CUTLASS', 'MARLIN', 'EMULATION']` logged on **both** ranks |
+| 02:04:14 | FusedMoE layer construction rejected `MoEActivation.SWIGLUSTEP`; both ranks raised `ValueError` and exited |
+
+**Result:**
+
+- `FLASHINFER_CUTLASS` **passed** the initial backend/device/parallel-config
+  selection -- both ranks logged `Using 'FLASHINFER_CUTLASS' NvFp4 MoE
+  backend out of potential backends: [...]` at 02:04:12.
+- EP initialized correctly and identically to Attempt 13 on both ranks:
+  `[EP Rank 0/2] ... Local/global number of experts: 144/288` (spark01) and
+  `[EP Rank 1/2] ... Local/global number of experts: 144/288` (spark02),
+  linear expert placement.
+- No silent fallback to `MARLIN` occurred.
+- During **actual `FusedMoE` layer construction** (`modelopt.py:1402`,
+  `FusedMoEMethodCls.__init__`),
+  `select_nvfp4_moe_backend()` was called **a second time**, this time with
+  the model's resolved MoE activation. Step-3.7's actual activation is
+  `MoEActivation.SWIGLUSTEP` (a Step3-specific SwiGLU variant), **not**
+  `MoEActivation.SILU`. `FlashInferExperts._supports_activation()` does not
+  include `SWIGLUSTEP`, so this second call raised `ValueError` on both
+  ranks and the engine core crashed.
+- Failure occurred ~84 seconds after container start, **before weight
+  loading started** -- the run never reached `model_loader.load_model`,
+  fixed-KV reservation, GPU KV cache creation, or application startup.
+- No Ray OOM, no `memory-guard.sh` trip (threshold 8192MB, MemAvailable
+  never dropped below ~61 GB), no host freeze, no SSH interruption.
+
+**Root-cause excerpt (verbatim from `vllm-spark-head` log):**
+
+```
+(EngineCore pid=755) [RayWorkerWrapper pid=1880] INFO 06-13 02:04:12 [nvfp4.py:231] Using 'FLASHINFER_CUTLASS' NvFp4 MoE backend out of potential backends: ['FLASHINFER_TRTLLM', 'FLASHINFER_CUTEDSL', 'FLASHINFER_CUTEDSL_BATCHED', 'FLASHINFER_CUTLASS', 'VLLM_CUTLASS', 'MARLIN', 'EMULATION'].
+...
+(EngineCore pid=755) ERROR 06-13 02:04:14 [core.py:1165]     self.nvfp4_backend, self.experts_cls = select_nvfp4_moe_backend(
+(EngineCore pid=755) ERROR 06-13 02:04:14 [core.py:1165]   File ".../fused_moe/oracle/nvfp4.py", line 256, in select_nvfp4_moe_backend
+(EngineCore pid=755) ERROR 06-13 02:04:14 [core.py:1165] ValueError: NvFp4 MoE backend 'FLASHINFER_CUTLASS' does not support the deployment configuration since kernel does not support MoEActivation.SWIGLUSTEP activation.
+```
+
+**Two-stage NVFP4 MoE backend selection.**
+
+`select_nvfp4_moe_backend()` is called twice in this code path:
+
+1. **First call** (logged at `nvfp4.py:231`, 02:04:12) -- evaluated with the
+   device, quantization scheme, parallel-config, and activation-format
+   information available at that stage. `FLASHINFER_CUTLASS` passed and was
+   logged as selected for both ranks.
+2. **Second call** (from `modelopt.py:1402`, inside `FusedMoEMethodCls.__init__`
+   during `FusedMoE` layer construction, 02:04:14) -- evaluated with the
+   model's actual resolved `MoEActivation`. This call rejected
+   `FLASHINFER_CUTLASS` because `MoEActivation.SWIGLUSTEP` is not in its
+   supported-activation list.
+
+**Interpretation.**
+
+- Attempt 14B is classified as **backend runtime/configuration
+  incompatibility**, the same broad category as Attempt 14A (§18), but for
+  a different reason: Attempt 14A failed the *parallel-config* check
+  (`ep_size == 1` required); Attempt 14B failed the *activation* check
+  (`SWIGLUSTEP` unsupported).
+- This is **not** a memory-comparison result. `FLASHINFER_CUTLASS` supports
+  this device (SM121/family 120), this EP=2 configuration, and the
+  `allgather_reducescatter` activation format -- but not this model's MoE
+  activation function. It cannot replace `MARLIN` for Step-3.7-Flash in the
+  current vLLM/FlashInfer build.
+- The Attempt 14B env header's static preflight assumption -- that Step-3.7's
+  `hidden_act="silu"` implies `MoEActivation.SILU` -- was **incorrect**.
+  Step-3.7 resolves to `MoEActivation.SWIGLUSTEP`, a distinct enum value
+  that the static `is_supported_config()` inspection (which only checked the
+  first-call code path) did not surface.
+- No silent fallback occurred; both ranks raised an explicit `ValueError`
+  and exited cleanly with code 1.
+- The run never reached weight loading or the post-load MoE preparation
+  path, so **Attempt 13 remains the only valid MARLIN EP-on memory result**.
+- **Separate observation (not a memory-comparison result):** despite failing
+  before weight loading, host `MemAvailable` fell substantially during the
+  ~84s the run was up -- spark01 from ~123.5 GB to ~62.6 GB (-56.6 GiB),
+  spark02 from ~123.8 GB to ~73.8 GB (-45.9 GiB) -- while all host process
+  RSS values remained below ~300 MB. This is consistent with CUDA
+  context / driver / UMA-style allocation from TP=2 initialization
+  (FlashInfer attention backend init, EP expert-map setup) occurring before
+  the MoE activation check failed, but driver-level memory accounting was
+  not captured in this run, so this should **not** be stated as a
+  conclusively proven NVIDIA UVM allocation. This memory loss is unrelated
+  to, and must not be confused with, Attempt 13's per-rank
+  `RayWorkerWrapper` Anonymous/Private_Dirty RSS spike (~5.77-6.17 GiB),
+  which was a *process*-RSS phenomenon occurring *after* weight loading.
+  Because container teardown may not reclaim this allocation, **both nodes
+  should be rebooted before any subsequent full run.**
+
+**Attempt 13 vs. Attempt 14B comparison:**
+
+| | Attempt 13 (MARLIN) | Attempt 14B (FLASHINFER_CUTLASS) |
+|---|---|---|
+| Backend | `MARLIN` (auto-selected) | `FLASHINFER_CUTLASS` (explicit, `--moe-backend flashinfer_cutlass`) |
+| EP markers (144/288, both ranks) | reached | reached |
+| First-stage backend selection | `Using 'MARLIN' NvFp4 MoE backend ...` (after weight load) | `Using 'FLASHINFER_CUTLASS' NvFp4 MoE backend ...` (before weight load) -- **passed** |
+| `MoEActivation.SWIGLUSTEP` | accepted | **rejected** (second-stage check) |
+| Weight loading | reached, 14/14 complete (343.02s) | not reached |
+| Failure point | ~9s after weight-load completion, during MoE backend init (`Using MoEPrepareAndFinalizeNoDPEPModular`) | during `FusedMoE` construction's second-stage activation check, ~84s after start, before weight loading |
+| Failure mode | Ray OOM (memory monitor kill, ratio 0.902205) | clean `ValueError`, both ranks exit code 1 |
+| Per-rank process RSS spike | ~5.77-6.17 GiB (Anonymous/Private_Dirty) | none observed (all processes <300 MB) |
+| Host MemAvailable | dropped to ~13.6 GiB (spark01) | spark01 -56.6 GiB, spark02 -45.9 GiB (non-RSS, UMA/driver-side) |
+| memory-guard / host freeze | not reached (Ray monitor intervened first) | no trip, no freeze |
+| Valid for post-weight-load MoE memory comparison | yes (only attempt to reach this stage with EP on) | no -- different failure stage, non-comparable memory signature |
+
+**Preserved artifacts:**
+
+- `spark01:~/docker/vllm-spark/.local/diag/diag-spark01-attempt14b-20260613T021158Z.tar.gz`
+- `spark02:~/docker/vllm-spark/.local/diag/diag-spark02-attempt14b-20260613T021159Z.tar.gz`
+
+The head container exited with an error (`ValueError` / `Engine core
+initialization failed`, code 1); the worker container remained `Up` until
+`docker compose down` (Ray `--block` did not detect the head's crash).
+`trace-memory.sh`/`memory-guard.sh` were stopped with `SIGTERM` on both
+nodes (no orphaned processes). **Reboot recommended before the next run**
+due to the ~56.6 GiB / ~45.9 GiB MemAvailable loss described above.
