@@ -1975,3 +1975,251 @@ Ray OOM, code 1); the worker container disconnected from the head's GCS
 `docker compose ... down`. `trace-memory.sh`/`memory-guard.sh` were stopped
 with `SIGTERM` on both nodes (no orphaned processes); both nodes show no
 active containers post-cleanup.
+
+## 22. Attempt 16A results (2026-06-13) -- head/worker role-swap isolation and critical-window correction
+
+**Purpose:** Attempts 13, 15A, and 15B (§17, §20, §21) all reproduced the
+same failure: shortly after `MoEPrepareAndFinalizeNoDPEPModular` is reached,
+spark01's `MemAvailable` collapses from its ~117.7-117.8 GiB baseline to
+~11-13 GiB, crosses `RAY_memory_usage_threshold`, and Ray kills a
+`RayWorkerWrapper` on spark01. In all three of those attempts, spark01 was
+the head/rank0/API node (HEAD_ROCE_IP=10.10.10.1) and spark02 was the
+worker/rank1 node (WORKER_ROCE_IP=10.10.10.2). Attempt 16A tests whether the
+collapse follows the **head/rank0/API role** or the **physical node
+spark01**, by swapping which physical node plays which role:
+
+- spark02 -> head / rank0 / API server (was worker/rank1 in 13/15A/15B)
+- spark01 -> worker / rank1 (was head/rank0/API in 13/15A/15B)
+
+This is a single-variable change relative to Attempt 15A: only
+`HEAD_ROCE_IP`/`WORKER_ROCE_IP` are swapped
+(10.10.10.1 <-> 10.10.10.2); the docker-compose service definitions and
+entrypoint are unmodified -- `ROLE` is set per compose profile, and
+`VLLM_HOST_IP`/`RAY_NODE_IP_ADDRESS`/`RAY_OVERRIDE_NODE_IP_ADDRESS` are
+derived from `HEAD_ROCE_IP` (head service) / `WORKER_ROCE_IP` (worker
+service). Deployment order is also swapped: the new worker (spark01) is
+started first, then the new head (spark02) ~15s later.
+
+**Env used:**
+[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-debug)
+-- identical to Attempt 15A's
+[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug)
+except for the role-swap variable:
+
+| Variable | Attempt 15A | Attempt 16A |
+|---|---|---|
+| `HEAD_ROCE_IP` | `10.10.10.1` (spark01) | `10.10.10.2` (spark02) |
+| `WORKER_ROCE_IP` | `10.10.10.2` (spark02) | `10.10.10.1` (spark01) |
+
+All other settings unchanged from Attempt 15A:
+
+- `--enable-expert-parallel` (EP on), `TP_SIZE=2`, `DISTRIBUTED_BACKEND=ray`
+- `MARLIN` NvFp4 MoE backend (auto-selected, no explicit `--moe-backend`)
+- `GPU_MEMORY_UTILIZATION=0.85`
+- `--kv-cache-memory-bytes 8589934592` (fixed KV, 8 GiB)
+- `--enforce-eager`, `--kv-cache-dtype fp8`, `--quantization modelopt`
+- `RAY_OBJECT_STORE_MEMORY_BYTES=1073741824` (1 GiB)
+- `RAY_memory_usage_threshold=0.90` (NOT raised -- pre-registered constraint)
+- `RAY_memory_monitor_refresh_ms=100`, `RAY_INCLUDE_DASHBOARD=false`,
+  `RAY_DASHBOARD_MAX_EVENTS_TO_CACHE=1000`
+- `memory-guard.sh --threshold-mb 8192`
+- `trace-memory.sh` run with `sudo` (proc_maps/smaps capture) on both nodes
+- both nodes rebooted to a clean baseline before this run, confirmed
+  `MemAvailable` ~117.74 GiB (spark01, 123457408 kB) / ~118.00 GiB (spark02,
+  123731152 kB) pre-run -- essentially identical to Attempts 15A/15B
+  baselines
+
+**Resulting role/rank/expert assignment (confirmed in logs):**
+
+| | New role | RoCE IP | EP rank | Experts | `RayWorkerWrapper` pid |
+|---|---|---|---|---|---|
+| spark02 | head / rank0 / API (was worker/rank1) | 10.10.10.2 | 0/2 | 0-143 | 1888 |
+| spark01 | worker / rank1 (was head/rank0/API) | 10.10.10.1 | 1/2 | 144-287 | 340 |
+
+Both ranks reached `[EP Rank N/2] ... Local/global number of experts:
+144/288` and `Using 'MARLIN' NvFp4 MoE backend out of potential backends:
+['VLLM_CUTLASS', 'MARLIN', 'EMULATION']` at 08:33:33 -- identical in shape to
+Attempts 13/15A/15B.
+
+**Timeline (UTC) -- CORRECTED:**
+
+| Event | Time |
+|---|---|
+| EP Rank 0/2 (spark02) + EP Rank 1/2 (spark01) + `MARLIN` selection (both ranks) | 08:33:33 |
+| spark02/rank0 shard progress: 11/14 (79%) -- last progress line observed | 08:39:03 |
+| **spark01/rank1 weight loading completed -- `default_loader.py:397 Loading weights took 340.99 seconds`** | **08:39:15** |
+| spark01/rank1 `Using MoEPrepareAndFinalizeNoDPEPModular` (`nvfp4.py:537`) | 08:39:16 |
+| spark01 `MemAvailable` collapse begins (49.69 GiB) | 08:39:16.388 |
+| **Ray OOM: spark01 (10.10.10.1) at 109.69GB/121.63GB (0.901823), threshold 0.900000 -- `RayWorkerWrapper pid=340` (rank1) killed** | **08:39:24.011** |
+| `EngineCore failed to start` / `RuntimeError: Engine core initialization failed` | 08:39:24-26 |
+
+An earlier read of this run mistakenly described **both** ranks as having
+failed to complete weight loading at 11/14. That is incorrect for rank1: the
+**11/14 stall belongs only to spark02/rank0** (the new head). **spark01/rank1
+completed weight loading normally** (340.99s, in line with Attempts
+13/15A/15B's ~343-344s on whichever rank/node finished first) and proceeded
+into `MoEPrepareAndFinalizeNoDPEPModular` one second later. spark02/rank0's
+11/14 stall is a **downstream consequence** of spark01/rank1's Ray OOM kill
+and the resulting distributed-initialization abort (see §22.4), not an
+independent failure on spark02.
+
+**Ray OOM detail:**
+
+```
+ray.exceptions.OutOfMemoryError: 1 worker(s) were killed due to the node running low on memory.
+Memory on the node (IP: 10.10.10.1, ID: 2d5471b545d1e069f0305d6e5032ba241cfdd5a58a7859fa7e7b35b1) was
+109.69GB / 121.63GB (0.901823), which exceeds the memory usage threshold of 0.900000.
+... RayWorkerWrapper.__init__ pid=340, actual memory used=0.79GB ...
+Object store memory usage: [...] objects in use: 0; bytes in use: 0 [...]
+(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+```
+
+No kernel-level OOM-killer activity was observed on either node
+(`journalctl -k -b 0` clean) -- as in 13/15A/15B, Ray's own memory monitor
+intervened before any kernel OOM kill.
+
+### 22.1 Critical-window memory trajectory (08:39:10 - 08:39:45 UTC)
+
+| Time (UTC) | spark01 (worker/rank1) `MemAvailable` | spark02 (head/rank0) `MemAvailable` | Note |
+|---|---|---|---|
+| 08:39:10 | 51.81 GiB | 50.74 GiB | |
+| 08:39:11 | 51.66 GiB | 50.59 GiB | |
+| 08:39:12 | 51.49 GiB | 50.45 GiB | |
+| 08:39:13 | 51.34 GiB | 50.29 GiB | |
+| 08:39:14 | 51.20 GiB | 50.15 GiB | |
+| **08:39:15** | 51.04 -> 50.98 GiB | 50.00 GiB | **rank1 weight-load complete (340.99s)** |
+| 08:39:15.6-16.0 | brief rebound: 52.99 -> 55.16 -> 55.00 GiB | (gentle) | loader-cleanup page-cache transient |
+| **08:39:16** | 51.43 GiB | 49.85 GiB | **rank1 enters `MoEPrepareAndFinalizeNoDPEPModular`** |
+| 08:39:16.388 | 49.69 GiB | (gentle) | **collapse onset (+0.2s after MoE-prepare marker)** |
+| 08:39:17 | 45.92 GiB | 49.71 GiB | |
+| 08:39:18 | 41.95 GiB | 49.55 GiB | |
+| 08:39:19 | 38.39 GiB | 49.43 GiB | |
+| 08:39:20 | 35.19 GiB | 49.27 GiB | |
+| 08:39:21 | 29.01 GiB | 49.13 GiB | steepest 1s window starts (21.5-22.6) |
+| 08:39:22 | 20.24 GiB | 48.99 GiB | |
+| 08:39:23 | 14.49 GiB | 48.83 GiB | |
+| **08:39:24.011** | **11.94 GiB (minimum)** | 48.71 GiB (minimum, normal range) | **Ray OOM, ratio 0.901823** |
+| 08:39:25.657 | ~14.35 GiB | 53.70 GiB | spark02 recovery begins (+1.6s after spark01 OOM) |
+| 08:39:26-27 | ~14.31-14.33 GiB | 55.32 -> 55.35 GiB | |
+| 08:39:28-29 | ~14.29 GiB | 57.70 -> 58.55 GiB | |
+| 08:39:29-45 | 14.28-14.29 GiB plateau | 58.50-58.55 GiB plateau | both nodes settled |
+
+Post-run `free -h`: spark01 `used=107Gi avail=14Gi swap=323Mi`; spark02
+`used=63Gi avail=58Gi swap≈0` -- consistent with the plateau values above.
+
+### 22.2 spark01 collapse-rate analysis
+
+- **Collapse window:** 08:39:16.388 (49.69 GiB) -> 08:39:24.011 (11.94 GiB)
+- **Total drop:** ~37.75 GiB over **~7.62 s** -> average **~4.95 GiB/s**
+- **Steepest 1-second window:** 08:39:21.5 -> 22.6, 26.33 -> 18.55 GiB,
+  **~7.55 GiB/s**
+- **1 second before Ray OOM:** ~5.55 GiB drop (22.97 GiB -> 11.94 GiB... see
+  table; precisely 17.49 -> 11.94 GiB)
+- **5 seconds before Ray OOM:** ~27.69 GiB drop (39.63 -> 11.94 GiB)
+- **MoE-prepare marker (08:39:16) -> collapse onset (08:39:16.388):** ~0.2 s
+- **Weight-load complete (08:39:15) -> collapse onset (08:39:16.388):** ~1.4 s
+
+The collapse begins essentially the instant `MoEPrepareAndFinalizeNoDPEPModular`
+is entered, on whichever node is executing that stage -- in this attempt,
+spark01 (rank1).
+
+### 22.3 spark02 -- no collapse, healthy trajectory
+
+Over the same 35-second window, spark02 declined gently and linearly from
+50.74 GiB to 48.71 GiB (**~0.14 GiB/s**, consistent with ordinary
+weight-loading RSS growth on rank0, not a collapse). Starting ~1.6 s after
+spark01's Ray OOM (08:39:25.657), spark02's `MemAvailable` recovered sharply
+to 53.70 -> 55.32 -> 58.50-58.55 GiB and remained stable through the end of
+the window.
+
+### 22.4 Interpretation of spark02's 11/14 stall
+
+spark02/rank0's weight-loading progress log was last seen at 11/14 (79%,
+08:39:03) and never advanced further. Given (a) spark02's own
+`MemAvailable` stayed healthy (48.7-50.7 GiB) throughout the critical window
+with no collapse, and (b) the Ray OOM that killed spark01/rank1's
+`RayWorkerWrapper` (08:39:24.011) immediately preceded `EngineCore failed to
+start` / `RuntimeError: Engine core initialization failed`, **spark02's 11/14
+stall is a downstream effect of spark01/rank1's termination and the resulting
+distributed-initialization abort** -- not evidence of an independent memory
+problem on spark02.
+
+### 22.5 Attempt 13 / 15A / 15B / 16A comparison
+
+| | Attempt 13 | Attempt 15A | Attempt 15B | Attempt 16A |
+|---|---|---|---|---|
+| `RAY_memory_usage_threshold` | 0.90 | 0.90 | 0.905 | 0.90 |
+| `RAY_OBJECT_STORE_MEMORY_BYTES` | 4 GiB | 1 GiB | 1 GiB | 1 GiB |
+| spark01 role | head/rank0/API | head/rank0/API | head/rank0/API | **worker/rank1** |
+| spark02 role | worker/rank1 | worker/rank1 | worker/rank1 | **head/rank0/API** |
+| Node that finished weight loading first / entered MoE-prepare first | spark01 | spark01 | spark01 | **spark01** |
+| Ray OOM ratio | 0.902205 | 0.900134 | 0.908750 | **0.901823** |
+| Time: weight-load-complete -> Ray OOM | ~9s | ~13s | ~24s | **~9s** (~8s after MoE-prepare marker) |
+| Node killed by Ray OOM | spark01 | spark01 | spark01 | **spark01** |
+| Other node's minimum `MemAvailable` | ~50.9 GiB (own weight-load dip) | ~50.88 GiB | ~50.90 GiB | **48.71 GiB** |
+| Other node recovers after | yes | yes | yes | **yes (~58.5 GiB)** |
+
+### 22.6 Conclusions
+
+**Confirmed:**
+
+1. The Ray OOM did **not** move to spark02 when spark02 became the
+   head/rank0/API node.
+2. The Ray OOM recurred on **spark01** after the role swap, at a ratio
+   (0.901823) and timing (~8-9s after `MoEPrepareAndFinalizeNoDPEPModular`)
+   consistent with Attempts 13/15A.
+3. spark01's `MemAvailable` collapse began ~0.2s after spark01's rank
+   entered `MoEPrepareAndFinalizeNoDPEPModular`, and dropped ~37.75 GiB in
+   ~7.62s (avg ~4.95 GiB/s, peak ~7.55 GiB/s).
+4. spark02 showed a healthy, gentle memory trajectory throughout the
+   critical window (50.74 -> 48.71 GiB) and recovered to ~58.5 GiB shortly
+   after spark01's OOM -- its 11/14 shard stall is a downstream effect, not
+   an independent memory issue.
+5. The hypothesis that the head/API/rank0 control-plane role itself
+   determines the failure location is **weakened**.
+
+**Still confounded (not yet resolved):**
+
+1. A physical-node-specific factor on spark01 (driver/kernel/page-cache/NVMe
+   asymmetry).
+2. A code-path effect tied to whichever rank finishes weight loading and
+   enters `MoEPrepareAndFinalizeNoDPEPModular` **first** ("first-arriver
+   rank").
+3. A combination of both.
+
+Attempts 13, 15A, 15B, and 16A all have spark01 finishing weight loading and
+entering MoE-prepare first. Therefore, role-swap weakens the head/rank role
+hypothesis, but the physical-node hypothesis and the first-arriver-rank
+hypothesis remain confounded. Disentangling them requires an experiment in
+which spark02 finishes weight loading and enters MoE-prepare first.
+
+### 22.7 Kernel/driver difference (recorded as a lead, not a conclusion)
+
+| | spark01 | spark02 |
+|---|---|---|
+| Kernel | `6.17.0-1021-nvidia` | `6.17.0-1008-nvidia` |
+| Driver | `610.43.02` | `610.43.02` |
+
+This kernel-version difference is recorded as a lead worth investigating. It
+is **not** established as the cause by Attempt 16A alone -- the
+first-arriver confound (§22.6) must be removed, or the kernel versions
+aligned, in a dedicated follow-up before attributing the collapse to either
+factor.
+
+**Classification: B** (reproducible margin-exhaustion failure under a
+controlled, single-variable role-swap; same fundamental mechanism and
+magnitude as Attempts 13/15A/15B; not a host freeze, not an invalid
+configuration, and not a different failure mode).
+
+**Preserved artifacts:**
+
+- `spark01:~/docker/vllm-spark/.local/diag/diag-spark01-attempt16a-20260613-085135.tar.gz`
+- `spark02:~/docker/vllm-spark/.local/diag/diag-spark02-attempt16a-20260613-085135.tar.gz`
+
+The head container (spark02, `vllm-spark-head`) exited with an error
+(`EngineCore failed to start`, Ray OOM, code 1); the worker container
+(spark01, `vllm-spark-worker`) remained `Up` (blocked Ray runtime,
+disconnected from GCS) and was torn down cleanly afterward via
+`docker compose ... down`. `trace-memory.sh`/`memory-guard.sh` were stopped
+with `SIGTERM` on both nodes (no orphaned processes); both nodes show no
+active containers post-cleanup.
