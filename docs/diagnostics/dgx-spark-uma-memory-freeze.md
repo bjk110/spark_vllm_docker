@@ -2755,3 +2755,229 @@ MoE preparation transition (Attempt 18).
 - spark01: `.local/diag/diag-spark01-attempt17-full-20260613T112927Z.tar.gz`
 - spark02: `.local/diag/diag-spark02-attempt17-full-20260613T112927Z.tar.gz`
 - build context: `.local/diag/diag-homeserver-attempt17-build-20260613T112927Z.tar.gz`
+
+---
+
+## 26. Attempt 18 — Initial MARLIN allocation attribution (2026-06-13)
+
+### 26.1 Purpose
+
+Attempt 18 extends the Attempt 17 setup by adding lightweight memory
+snapshots at key points across the weight-loading and post-load weight-
+processing path.  The goals were:
+
+1. Reproduce the Attempt 17 first-arriver inversion (spark02/rank0 first).
+2. Capture `/proc` and PyTorch CUDA counters immediately before and after
+   `load_weights` and `process_weights_after_loading`.
+3. Capture sub-markers within the first one or two MARLIN MoE preparation
+   calls to attribute the approximately 39–41 GiB pressure observed in
+   Attempts 13 through 17 to a specific allocator class.
+
+### 26.2 Configuration
+
+| Parameter | Value |
+|---|---|
+| spark02 role | head / rank0 / API server / EP experts 0–143 |
+| spark01 role | worker / rank1 / EP experts 144–287 |
+| rank1 pre-load delay | 90 seconds (same as Attempt 17) |
+| kernel both nodes | 6.17.0-1021-nvidia |
+| driver both nodes | 610.43.02 |
+| Ray memory threshold | 0.90 |
+| Ray object store | 1 GiB |
+| fixed KV cache | 8 GiB (`--kv-cache-memory-bytes 8589934592`) |
+| GPU memory utilization | 0.85 |
+| diagnostic image | `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-attempt18-marlin-memtrace-rank1-delay90` (`sha256:d6bc4d0e68fe2eb025623ee8cabf1f96c644eb7c758467e37289acffe18250c0`) |
+| intended markers | 11 (M01–M11); M01–M04 global, M05–M07 per first two MoE layers in `GptOssMxfp4MoEMethod._setup_kernel`, M08–M11 per first two calls to `prepare_moe_mxfp4_layer_for_marlin` |
+| marker delivery | Python `logging` → Ray worker relay → Docker logging driver (not durable under SIGKILL) |
+
+### 26.3 Corrected marker timeline
+
+The following table is derived from raw log lines.  UTC timestamps are
+as reported by the containers.  All entries are confirmed in the raw log;
+no entry is inferred.
+
+| UTC (06-13) | Event | Source | Host | Rank |
+|---|---|---|---|---|
+| 12:22:35 | `[diag-first-arriver]` rank=1 pre-load delay **start** (90.0 s) | `base_loader.py:122` | spark01 | 1 |
+| 12:22:37 | `[diag-first-arriver]` rank=0 delay **skipped** | `base_loader.py:109` | spark02 | 0 |
+| 12:22:38 | **M01** `m01_before_load_weights` | `diag_marlin_memory.py` | spark02 | 0 |
+| 12:24:05 | `[diag-first-arriver]` rank=1 delay **complete** (elapsed 90.00 s) | `base_loader.py:135` | spark01 | 1 |
+| 12:24:05 | **M01** `m01_before_load_weights` | `diag_marlin_memory.py` | spark01 | 1 |
+| 12:28:49 | **M02** `m02_after_load_weights` | `diag_marlin_memory.py` | spark02 | 0 |
+| 12:28:49 | **M03** `m03_before_process_weights_after_loading` | `diag_marlin_memory.py` | spark02 | 0 |
+| 12:28:49 | KV cache FP8 scale warnings (normal, non-fatal) | `kv_cache.py` | spark02 | 0 |
+| 12:28:49 | "Your GPU does not have native support for FP4" warning | `marlin_utils_fp4.py` | spark02 | 0 |
+| 12:28:53 | **"Using MoEPrepareAndFinalizeNoDPEPModular"** | `oracle/nvfp4.py:537` | spark02 | 0 |
+| 12:29:03 | **Ray OOM** — 110.28 GiB / 121.63 GiB = 0.9067 on spark02 | `core.py:1165` | spark02 | 0 |
+| 12:29:03 | `EngineCore failed to start` | `core.py` | spark02 | — |
+| — | **M04 through M11 absent** (SIGKILL before log delivery) | — | — | — |
+
+**Note on M01 firing pattern.**  M01 fires exactly once per rank process
+via a per-process one-shot guard.  It does not fire before the
+`_diag_pre_load_delay_hook()` call; the delay hook fires first, then M01
+fires immediately after it returns (rank0: delay skipped immediately;
+rank1: delay sleeps 90 seconds).  The two M01 log lines at 12:22:38 and
+12:24:05 are from two separate OS processes on two separate hosts — not
+a double-fire on a single rank.
+
+**Note on "Using MoEPrepareAndFinalizeNoDPEPModular" at 12:28:53.**  This
+log line appears inside `make_mxfp4_moe_kernel()` at `oracle/nvfp4.py:537`,
+which is called at the end of `GptOssMxfp4MoEMethod._setup_kernel()` after
+`replace_parameter()` completes.  Its appearance confirms that at least one
+MoE layer reached this point.  It does not confirm that all post-load
+cleanup for that layer completed, nor does it identify which layer index
+fired first.
+
+### 26.4 Observed memory deltas (rank=0, spark02 only)
+
+All values from raw log.  Host counters in kB converted to GiB.  Byte
+counters (torch, CUDA, cgroup) converted to GiB.
+
+#### 26.4.1 Snapshot values
+
+| Counter | M01 (12:22:38) | M02 (12:28:49) | M03 (12:28:49) |
+|---|---:|---:|---:|
+| MemAvailable (GiB) | 51.699 | 52.394 | 52.394 |
+| MemFree (GiB) | 50.499 | 4.995 | 4.995 |
+| Cached (GiB) | 2.360 | 48.682 | 48.683 |
+| SReclaimable (GiB) | 0.210 | 0.208 | 0.208 |
+| SUnreclaim (GiB) | 1.395 | 1.401 | 1.401 |
+| VmRSS (GiB) | 2.518 | 2.148 | 2.149 |
+| RssAnon (GiB) | 1.472 | 1.528 | 1.528 |
+| smaps PSS (GiB) | 2.274 | 2.105 | 2.105 |
+| smaps Anonymous (GiB) | 1.472 | 1.528 | 1.528 |
+| cgroup memory.current (GiB) | 6.991 | 6.743 | 6.744 |
+| cgroup anon (GiB) | 5.143 | 4.571 | 4.571 |
+| cgroup file (GiB) | 1.617 | 1.943 | 1.943 |
+| torch allocated (GiB) | 58.466 | 58.466 | 58.466 |
+| torch reserved (GiB) | 58.951 | 58.951 | 58.951 |
+| CUDA free (GiB) | 50.499 | 4.995 | 4.995 |
+| CUDA total (GiB) | 121.627 | 121.627 | 121.627 |
+
+#### 26.4.2 Weight-loading interval (M01 → M02, ~6 min 11 s)
+
+| Counter | Delta | Observation |
+|---|---:|---|
+| MemFree | −45.5 GiB | Large decline in unconditionally free pages |
+| Cached | +46.3 GiB | File cache growth of similar magnitude |
+| MemAvailable | +0.7 GiB | Near-zero net change (reclaimable cache offsets free loss) |
+| torch allocated | 0 | Unchanged; model structure pre-allocated before M01 |
+| torch reserved | 0 | Unchanged |
+| CUDA free | −45.5 GiB | Mirrors MemFree decline |
+| Process RssAnon | +0.06 GiB | Negligible process-side growth |
+| cgroup anon | −0.57 GiB | Small decline |
+| cgroup file | +0.33 GiB | Small growth |
+
+During weight loading, CUDA-reported free memory decreased substantially
+while file cache increased by a similar order of magnitude.  On GB10
+unified memory these counters describe overlapping pressure on a shared
+physical pool and must not be interpreted as two independent allocations
+without further evidence.  The torch allocator counters did not change,
+which is consistent with the instanttensor load format writing into UMA
+pages that were already reserved by the pre-loading model structure, but
+this observation alone is insufficient to attribute the exact mechanism.
+
+#### 26.4.3 Post-load interval (M02 → M03, same second)
+
+M02 and M03 share the same log second (12:28:49).  The monotonic
+timestamps differ by 0.139 s.  All memory counters are effectively
+identical.  This pair is a near-zero-duration boundary marker: the only
+activity between them is the call to `_has_online_quant()` and the
+conditional `finalize_layerwise_processing()` branch (not taken for this
+model).
+
+#### 26.4.4 Failing interval (M03 → Ray OOM, ~14 s)
+
+| Observation | Value | Source |
+|---|---:|---|
+| M03 MemAvailable | 52.394 GiB | raw log |
+| Ray OOM node memory | 110.28 / 121.63 GiB = 0.9067 | Ray OOM message |
+| Implied MemAvailable at OOM | ~11.35 GiB | 121.63 − 110.28 |
+| Implied MemAvailable decline | ~41 GiB | 52.394 − 11.35 |
+| M03 CUDA free | 4.995 GiB | raw log |
+| M04 through M11 | **absent** | SIGKILL before delivery |
+
+Attempt 18 narrows the collapse to post-load processing after M03 and
+after at least one MARLIN MoE preparation marker.  The loss of M04
+through M11 prevents allocator-level attribution within the failing
+interval.
+
+The increase in file cache during weight loading and the later decline in
+MemAvailable are separate observations.  Cache reclaim may provide memory
+under pressure, but the available data does not establish cache-reclaim
+latency as the cause of the collapse.
+
+### 26.5 Logging failure analysis
+
+Python `logging` writes to the worker's stderr.  In Ray's remote-actor
+model, worker stderr is relayed through a subprocess pipe to the Ray head
+process, which in turn writes to Docker's logging driver.  This creates a
+three-stage buffering chain: Python buffer → OS pipe (worker → head) →
+Docker log capture.
+
+When the Ray memory monitor issues SIGKILL to the worker process
+(pid=1886 on spark02), the OS closes the pipe without draining it.  Any
+data not yet transferred across the pipe is discarded.  The `flush()`
+calls in `snapshot()` guarantee delivery to the OS pipe from Python's
+perspective but cannot guarantee that the receiving side (the Ray head)
+has consumed the bytes before SIGKILL fires.
+
+Evidence that M05–M11 executed but were not captured:
+
+- The "Using MoEPrepareAndFinalizeNoDPEPModular" log appeared at
+  12:28:53.  This line is emitted inside `make_mxfp4_moe_kernel()`, which
+  is the last call in `GptOssMxfp4MoEMethod._setup_kernel()`.  M07
+  (`m07_after_make_mxfp4_kernel_L0`) is placed immediately after this
+  call; if the MoE kernel construction log appeared, M07 ran but its log
+  line was not delivered.
+- M05 and M06 are placed before `convert_gpt_oss_weight_to_mxfp4_moe_
+  kernel_format()` and before `replace_parameter()` respectively; they
+  must also have executed.
+- M08–M11 (in `prepare_moe_mxfp4_layer_for_marlin`) similarly ran but
+  were not captured.
+
+The fix for Attempt 19 is to bypass the Python logging pipeline entirely
+and write JSONL directly to a file inside the container using `os.open`,
+`os.write`, and `os.fdatasync`.  This ensures that each line is durable
+on disk before execution continues.
+
+### 26.6 Preliminary classification
+
+**Attempt 18 classification: E — Instrumentation inconclusive for
+allocator attribution.**
+
+The experiment narrows the failing phase to `process_weights_after_
+loading` on spark02/rank0 (the first-arriving rank), and confirms that at
+least one MARLIN MoE layer preparation started and that the "Using
+MoEPrepareAndFinalizeNoDPEPModular" log appeared before the collapse.
+However, the loss of all internal markers (M04–M11) means that the
+specific allocator class, tensor operation, and layer index responsible
+for the ~41 GiB pressure cannot be determined from Attempt 18 data alone.
+
+### 26.7 Interpretation
+
+Attempt 18 narrows the collapse to post-load processing after M03, but
+the missing internal markers prevent identification of the first
+allocation operation responsible for the pressure.
+
+Cache growth during loading and cache reclaim during later pressure are
+relevant context, not yet a demonstrated causal mechanism.
+
+Attempt 18 is still useful: it confirms that the failure is in
+`process_weights_after_loading`, that rank0's failure again tracks the
+first-arriver role (consistent with Attempt 17), and that at least one
+complete MARLIN MoE preparation occurred before the collapse.  These
+observations constrain but do not resolve the root cause.
+
+### 26.8 Artifacts
+
+Note: a spark01-specific tarball was not produced for Attempt 18.
+spark01 worker logs were included in the combined head-log capture.
+No trace-memory, memory-guard, or Ray log tarballs were collected;
+these are added as requirements for Attempt 19.
+
+- Combined head+worker logs + build files:
+  `/tmp/diag-spark02-attempt18-20260613_123342.tar.gz`
+- Build context + original source files:
+  `/tmp/diag-homeserver-attempt18-build-20260613_123342.tar.gz`
+- Build directory: `/tmp/attempt18-marlin-allocation-attribution/`
