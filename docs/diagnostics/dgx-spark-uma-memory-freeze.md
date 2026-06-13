@@ -1263,3 +1263,113 @@ head's GCS (TCPStore recv errors) and was torn down cleanly afterward
 (`docker compose ... down`, exit code 0). `trace-memory.sh`/
 `memory-guard.sh` were stopped with `SIGTERM` on both nodes (no orphaned
 processes).
+
+## 18. Attempt 14A results (2026-06-13) -- MoE backend isolation (MARLIN -> VLLM_CUTLASS)
+
+**Purpose:** Attempt 13 (§17) crashed via Ray OOM ~9 seconds after weight
+loading completed, during MoE backend initialization with the
+auto-selected `MARLIN` NVFP4 MoE backend (`Using 'MARLIN' NvFp4 MoE
+backend out of potential backends: ['VLLM_CUTLASS', 'MARLIN',
+'EMULATION']`). Attempt 14A changes **only** the MoE backend selection,
+from auto-selected `MARLIN` to explicitly-requested `VLLM_CUTLASS` (the
+backend listed first in Attempt 13's "potential backends", which MARLIN
+was auto-selected over), to determine whether this single-variable
+change alters the EP-on post-weight-load RSS spike. All other Attempt 13
+conditions are kept unchanged.
+
+**Env used:**
+[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-cutlass-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-cutlass-debug)
+-- identical to Attempt 13's
+[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug)
+plus `--moe-backend cutlass` added to `VLLM_EXTRA_ARGS`. Configuration:
+
+- `--enable-expert-parallel` (EP on)
+- `TP_SIZE=2`, `DISTRIBUTED_BACKEND=ray`
+- 144/288 experts per rank (rank0, rank1)
+- `GPU_MEMORY_UTILIZATION=0.85`
+- `--kv-cache-memory-bytes 8589934592` (fixed KV, 8 GiB)
+- `--enforce-eager`
+- `--kv-cache-dtype fp8`
+- `--quantization modelopt`
+- `RAY_memory_usage_threshold=0.90`
+- `RAY_memory_monitor_refresh_ms=100`
+- `memory-guard.sh --threshold-mb 8192`
+- `trace-memory.sh` run with `sudo` (proc_maps/smaps capture enabled, per
+  §15) on both nodes
+- Only intended change vs. Attempt 13: `--moe-backend cutlass` added to
+  `VLLM_EXTRA_ARGS` (maps to `NvFp4MoeBackend.VLLM_CUTLASS` per
+  `vllm/model_executor/layers/fused_moe/oracle/nvfp4.py:
+  map_nvfp4_backend["cutlass"]`)
+
+**Result:**
+
+- CLI parsing succeeded; the request was mapped to
+  `NvFp4MoeBackend.VLLM_CUTLASS`.
+- EP initialized correctly and identically to Attempt 13 on both ranks:
+  `[EP Rank 0/2] ... Local/global number of experts: 144/288` (spark01)
+  and `[EP Rank 1/2] ... Local/global number of experts: 144/288`
+  (spark02).
+- The `VLLM_CUTLASS` backend was rejected by
+  `select_nvfp4_moe_backend()` **before weight loading started** -- the
+  run never reached weight loading, MoE weight preparation/repacking,
+  fixed-KV reservation, GPU KV cache creation, or application startup.
+- No silent fallback to `MARLIN` occurred; both ranks raised a
+  `ValueError` and exited cleanly with code 1.
+- Failure occurred ~26 seconds after container start.
+- No Ray OOM, no `memory-guard.sh` trip, no host freeze, no SSH
+  interruption. Available memory remained ~115 GB on both nodes
+  throughout.
+
+**Root-cause excerpt (verbatim from `vllm-spark-head` log):**
+
+```
+ray.exceptions.RayTaskError(ValueError): ray::RayWorkerWrapper.execute_method() (pid=1880, ip=10.10.10.1, ...)
+  File ".../fused_moe/oracle/nvfp4.py", line 256, in select_nvfp4_moe_backend
+    raise ValueError(_make_log_unsupported(backend, reason))
+ValueError: NvFp4 MoE backend 'VLLM_CUTLASS' does not support the deployment configuration since kernel does not support parallel config FusedMoEParallelConfig(tp_size=1, pcp_size=1, dp_size=1, ep_size=2, tp_rank=0, pcp_rank=0, dp_rank=0, ep_rank=0, sp_size=1, use_ep=True, all2all_backend='allgather_reducescatter', enable_eplb=False).
+```
+
+**Interpretation.**
+
+- This result does **not** establish anything about memory. CUTLASS did
+  not "fail due to memory", and it did not "worsen" or "improve" the
+  Attempt 13 MoE initialization RSS spike -- the run never reached the
+  initialization stage where that spike occurred in Attempt 13.
+- The result only establishes that, in the current vLLM build,
+  `VLLM_CUTLASS`'s static `is_supported_config()` check rejects the
+  deployment configuration produced by this EP setup
+  (`ep_size=2, use_ep=True, all2all_backend='allgather_reducescatter'`),
+  independent of memory pressure.
+- **Attempt 13 remains the valid MARLIN EP-on memory result** -- it is
+  the only attempt so far to reach the post-weight-load MoE
+  initialization stage with EP enabled.
+- A different MoE backend must first pass this static
+  deployment-configuration validation before a meaningful memory
+  comparison against Attempt 13 is possible. Backend candidates must be
+  checked against `is_supported_config()` requirements *before* a
+  memory-isolation run is attempted (see §19).
+
+**Attempt 13 vs. Attempt 14A comparison:**
+
+| | Attempt 13 (MARLIN) | Attempt 14A (VLLM_CUTLASS) |
+|---|---|---|
+| Backend | `MARLIN` (auto-selected) | `VLLM_CUTLASS` (explicitly requested via `--moe-backend cutlass`) |
+| EP markers (144/288, both ranks) | reached | reached |
+| Weight loading | reached, 14/14 complete (343.02s) | not reached |
+| Failure point | ~9s after weight-load completion, during MoE backend init (`Using 'MARLIN' NvFp4 MoE backend ...` / `Using MoEPrepareAndFinalizeNoDPEPModular`) | during MoE backend *selection*, before weight loading (`select_nvfp4_moe_backend` raises `ValueError`) |
+| Failure mode | Ray OOM (memory monitor kill, ratio 0.902205) | clean `ValueError`, both ranks exit code 1 |
+| Per-rank RSS spike | ~5.77-6.17 GiB (Anonymous/Private_Dirty) | none observed |
+| Available memory | dropped to ~13.6 GiB (spark01) | remained ~115 GB (both nodes) |
+| memory-guard / host freeze | not reached (Ray monitor intervened first) | no trip, no freeze |
+| Valid for memory comparison | yes (only attempt to reach this stage with EP on) | no -- never reached the comparable stage |
+
+**Preserved artifacts:**
+
+- `spark01:~/docker/vllm-spark/.local/diag/diag-spark01-attempt14a-20260613-093427.tar.gz`
+- `spark02:~/docker/vllm-spark/.local/diag/diag-spark02-attempt14a-20260613-093428.tar.gz`
+
+The head container exited with an error (`ValueError` /
+`Engine core initialization failed`, code 1); the worker container
+exited cleanly after the head's failure. `trace-memory.sh`/
+`memory-guard.sh` were stopped with `SIGTERM` on both nodes (no orphaned
+processes). No reboot was required before or after this attempt.
