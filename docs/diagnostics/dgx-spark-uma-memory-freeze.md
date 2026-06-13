@@ -3254,7 +3254,11 @@ directly visible from Python is the internal implementation of
 `torch.ops._C.gptq_marlin_repack` in `_C.abi3.so`.
 
 The exact allocator, returned-storage ownership, workspace lifetime, and
-release behavior remain unresolved.
+release behavior remain unresolved at the time of Attempt 20's initial
+write-up.  Subsequent re-analysis (see §28.16) confirmed via `nm -D`
+analysis of `_C.abi3.so` that `gptq_marlin_repack` allocates its output
+tensor through the PyTorch `CUDACachingAllocator` via
+`at::TensorMaker::make_tensor`.
 
 ### 28.12 Memory accounting analysis
 
@@ -3273,7 +3277,11 @@ after `replace_parameter`; whether and when those pages are returned to the
 OS page allocator (and thus reflected in MemAvailable) depends on the CUDA
 driver's behavior on GB10 UMA.  The observed pattern is consistent with pages
 being retained in the driver's memory pool across module transitions.  This is
-not confirmed at the allocator or driver level.
+not confirmed at the allocator or driver level at the time of initial write-up.
+*(A subsequent re-analysis of `memory_reserved` clarified this picture; see
+§28.16.  The reserved pool grew by +42.197 GiB across 26 modules, with zero
+reduction after each `replace_parameter`.  This directly accounts for the
+observed MemAvailable decline.)*
 
 **CUDA free (`mem_get_info`) is not monotonically correlated with MemAvailable.**
 The CUDA free counter increases for some modules (e.g., layer 3: +9.72 GiB)
@@ -3316,7 +3324,11 @@ The open question for Attempt 21 is why MemAvailable decreases monotonically
 across module boundaries despite the PyTorch caching allocator maintaining a
 quasi-constant `memory_allocated`.  Candidate explanations involve the CUDA
 driver's page-return behavior on UMA and the internal implementation of
-`torch.ops._C.gptq_marlin_repack`.
+`torch.ops._C.gptq_marlin_repack`.  *(Re-analysis of `memory_reserved` in
+§28.16 resolved this question: the caching allocator's reserved pool grows
+cumulatively by +42.197 GiB, directly tracking the MemAvailable decline.
+Attempt 21P therefore tests `expandable_segments:False` as an
+allocator-policy A/B variable.)*
 
 ### 28.14 Interpretation
 
@@ -3331,7 +3343,11 @@ results with `torch.cat`.  All Python-visible allocations use the PyTorch
 caching allocator.  The one sub-Python-layer call path —
 `torch.ops._C.gptq_marlin_repack` in `_C.abi3.so` — is a candidate for
 investigation in Attempt 21, but its internal allocation behavior is not
-observable from Python.
+observable from Python.  *(Static `nm -D` analysis of `_C.abi3.so`,
+documented in §28.16, confirmed that `gptq_marlin_repack` uses the standard
+`CUDACachingAllocator` path for its output tensor via
+`at::TensorMaker::make_tensor`.  No persistent workspace or external
+allocator is involved.)*
 
 ### 28.15 Artifacts
 
@@ -3345,6 +3361,133 @@ observable from Python.
   (SHA256: `8aa598ae32b1a14eb979884a8fc20651f136f86a127c5a436483bd244953fab3`)
 - Build directory: `/tmp/attempt20-modelopt-internal-trace/`
 - Env file: `.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-attempt20-modelopt-internal-trace-debug`
+
+### 28.16 Follow-up allocator-statistics correction (post-Attempt 20 re-analysis)
+
+This section records a correction to the allocator attribution made in §27.8,
+§27.9, and §27.10 (Attempt 19 write-up), and to the open questions in
+§28.12–14.  All measurements below come from the already-captured Attempt 20
+JSONL (`/tmp/attempt20-modelopt-memory-rank-0.jsonl`, 1034 records).
+
+#### Prior interpretation (Attempt 19)
+
+The Attempt 19 analysis observed that `torch_alloc_delta` (i.e.,
+`memory_allocated` delta) was approximately zero across 26 module boundaries.
+It concluded:
+
+> *"The dominant additional allocation is likely external to that
+> [PyTorch caching] allocator."*
+
+This was the most consistent interpretation available from `memory_allocated`
+data alone.  The Attempt 19 counters did not include `memory_reserved`.
+
+#### Corrected interpretation
+
+A subsequent re-analysis of the Attempt 20 JSONL included the
+`memory_reserved` counter.  Key measurements across 26 completed module
+conversions (`MO_before_convert` → `MO_exit`):
+
+| Metric | Value |
+|---|---|
+| `memory_allocated` at `MO_before_convert` | ≈ 58.465 GiB (constant all 27 calls) |
+| `memory_allocated` at `MO_after_convert` | ≈ 59.652 GiB (+1.187 GiB) |
+| `memory_allocated` at `MO_after_replace_params` | ≈ 58.465 GiB (returns to baseline) |
+| `memory_reserved` at first module entry (layer 3) | ≈ 58.951 GiB |
+| `memory_reserved` after last completed module (layer 28) | ≈ 101.148 GiB |
+| Total reserved pool growth (26 modules) | **+42.197 GiB** |
+| `d_reserved_replace` per module | **0.000 GiB for ALL 26 modules** |
+| Total MemAvailable decline (26 modules) | −37.737 GiB |
+| Pearson r (reserved growth vs MemAvail decline) | −0.884 |
+| `inactive_split_bytes_all_current` | 0 throughout (105 MO_ marker records) |
+| `num_alloc_retries` / `num_ooms` | 0 / 0 |
+
+Counter equivalences confirmed exhaustively across all 105 MO_ marker records:
+
+- `cuda.memory_allocated == cuda.active_bytes_all_current == cuda.allocated_bytes_all_current`
+- `cuda.memory_reserved == cuda.reserved_bytes_all_current`
+
+(An earlier report section labelled `active_bytes` as tracking with
+`reserved_bytes_all_current`; this was a labelling error.  Both
+`active_bytes_all_current` and `allocated_bytes_all_current` track active
+allocations, identical to `memory_allocated`.)
+
+#### Revised conclusion
+
+The dominant persistent UMA pressure is strongly associated with growth of
+the PyTorch CUDA caching allocator's reserved pool during repeated NVFP4
+MARLIN conversion.  Active allocations return to the pre-conversion level
+after parameter replacement, while the reserved pool grows cumulatively
+by +42.197 GiB.
+
+The freed blocks from each module's per-expert `tensor_list`, `torch.cat`,
+and `replace_parameter` cleanup are retained in the allocator's reserved pool
+(`d_reserved_replace = 0` for all 26 modules).  On GB10 UMA, these reserved
+pages remain physically mapped, reducing MemAvailable.
+
+The statement from §27.8/§27.10 —
+
+> *"The dominant additional allocation is likely external to that [PyTorch
+> caching] allocator."*
+
+— is superseded by this re-analysis.  The corrected statement is:
+
+> *"The dominant persistent UMA pressure is strongly associated with growth of
+> the PyTorch CUDA caching allocator's reserved pool.  Active allocations
+> return to their pre-conversion baseline; the reserved pool does not.  This
+> does not prove that every retained page is controlled exclusively by PyTorch:
+> CUDA-driver and GB10 unified-memory page-management details remain below the
+> available instrumentation boundary."*
+
+#### `gptq_marlin_repack` allocator confirmation
+
+Static `nm -D` analysis of `_C.abi3.so` (161 MiB, vLLM 0.22.1,
+`__commit_id__ = None`) confirmed:
+
+- Symbol `_ZN2at11TensorMaker11make_tensorEv` (U, undefined/external):
+  output tensor allocated via `CUDACachingAllocator`, not raw `cudaMalloc`.
+- Op schema `-> Tensor` (non-aliased, non-in-place): output is a fresh
+  PyTorch tensor allocated by the C++ wrapper before kernel launch.
+- CUDA kernels (`gptq_marlin_repack_kernel<256,4,...>`) receive a
+  pre-allocated output pointer; no allocation occurs within the kernel.
+- No persistent workspace or static cache attributable to
+  `gptq_marlin_repack` from binary analysis.
+- `cudaMalloc` is present as a `U` symbol in `_C.abi3.so` but cannot be
+  attributed to `gptq_marlin_repack` specifically; the `.so` contains 1460
+  exported symbols across many ops.
+
+The 144-expert per-module loop (`tensor_list` accumulation + `torch.cat`)
+forces the `expandable_segments:True` allocator to expand its reserved pool
+in steps.  Freed blocks from each iteration are not returned to the OS.
+
+#### Odd/even pattern correction
+
+The alternating reserved pool growth (+2.2461 GiB odd / +0.8203 GiB even,
+exact to 4 decimal places) is an allocator segment-reuse artifact, not a
+model-architecture or processing-path difference.  All MoE layers 3–28 have
+identical expert shapes (w13_weight: [144,2560,2048] uint8; w2_weight:
+[144,4096,640] uint8).  The pattern arises because odd-layer loops exhaust
+the previous module's freed blocks and force new segment allocation, while
+even-layer loops partially reuse the previous odd-layer's released segments.
+
+#### Expandable-segment disablement as an allocator-policy test (Attempt 21P)
+
+Disabling expandable segments (`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False`)
+is proposed as the single-variable Attempt 21P test.  The traditional
+block-pool allocator also caches freed blocks, so this experiment tests
+segment-growth and reuse behavior rather than guaranteeing immediate
+system-memory release.
+
+#### Analysis artifacts (non-Git, `/tmp/attempt21-analysis-only/`)
+
+- `attempt20-pytorch-counter-validation.csv` — exhaustive field-equivalence
+  check (105 records × 8 counters)
+- `attempt20-reserved-by-module.csv` — per-module reserved/allocated/MemAvail
+  deltas for all 26 complete modules
+- `attempt20-odd-even-analysis.csv` — odd/even layer reserved growth breakdown
+- `attempt20-reserved-analysis.md` — full English analysis narrative
+- `attempt20-reserved-summary.json` — structured JSON of all findings
+- `gptq-marlin-allocation-analysis.md` — `nm`/`strings`/`ldd` symbol analysis
+- `gptq-marlin-callgraph.md` — Python-to-CUDA call graph
 
 ---
 
@@ -3529,7 +3672,8 @@ the cumulative UMA growth with `ModelOptNvFp4FusedMoE` post-load
 processing.  The nearly unchanged PyTorch caching-allocator counters
 (`torch_alloc_delta` ≈ 0 throughout, total drift < 1 KiB across all 26
 completed layers) indicate that the dominant additional allocation is
-likely external to that allocator.
+likely external to that allocator.  *(Allocator attribution revised in
+§28.16 following Attempt 20 `memory_reserved` re-analysis.)*
 
 Comparing the cumulative MemAvailable decline (−38.038 GiB) against the
 cumulative cgroup `memory.current` change (approximately −7.354 GiB net)
@@ -3539,9 +3683,10 @@ the 26 layers).  On GB10 UMA, allocations made through the CUDA driver
 directly — for example, `cuMemAlloc`-family calls, kernel workspace
 buffers, or proprietary ModelOpt / TensorRT-LLM internal data — are
 reflected in MemAvailable but are not reported through cgroup v2 or
-through torch's caching-allocator counters.  This is the most consistent
-interpretation of the observed pattern, though it is not confirmed at this
-time.
+through torch's caching-allocator counters.  This was the most consistent
+interpretation available from `memory_allocated` data alone at the time of
+Attempt 19.  A subsequent analysis including `memory_reserved` revised this
+conclusion; see §28.16.
 
 The CUDA-free counter increased by a net +8.919 GiB over the 26 layers.
 On discrete GPUs, an increase in `CUDA free` concurrent with a decrease in
@@ -3587,6 +3732,9 @@ in `modelopt.py`.
 **Attempt 19 classification: B — allocation strongly associated with
 `ModelOptNvFp4FusedMoE.process_weights_after_loading`, likely external to
 PyTorch caching allocator.  Internal operation not yet identified.**
+*(Classification label B retained as the historical finding at the time of
+Attempt 19.  The allocator attribution was revised following Attempt 20
+`memory_reserved` re-analysis; see §28.16.)*
 
 The durable JSONL writer succeeded: 850 records were written on rank0 and
 survived the SIGKILL, confirming that all markers through the last
@@ -3607,7 +3755,11 @@ suggest that the dominant pressure comes from a source external to the
 standard CUDA caching allocator — likely internal ModelOpt or
 TensorRT-LLM kernel buffers allocated through the CUDA driver.  The
 alternating pattern may reflect different processing paths or kernel-format
-sizes for alternating MoE layers.
+sizes for alternating MoE layers.  *(Interpretation revised in §28.16:
+subsequent re-analysis of `memory_reserved` showed that the reserved pool
+grew monotonically by +42.197 GiB across 26 modules, and that the odd/even
+alternation is a caching-allocator segment-reuse artifact rather than a
+model-architecture or processing-path difference.)*
 
 ### 27.11 Artifacts
 
