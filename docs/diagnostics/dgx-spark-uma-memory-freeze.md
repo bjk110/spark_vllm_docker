@@ -2981,3 +2981,278 @@ these are added as requirements for Attempt 19.
 - Build context + original source files:
   `/tmp/diag-homeserver-attempt18-build-20260613_123342.tar.gz`
 - Build directory: `/tmp/attempt18-marlin-allocation-attribution/`
+
+## 27. Attempt 19 — Durable per-layer ModelOpt NVFP4 tracing (2026-06-13)
+
+### 27.1 Purpose
+
+Attempt 19 addresses the logging failure that caused loss of all internal
+markers in Attempt 18.  The core change is replacing Python `logging` with
+a durable JSONL writer that calls `os.open` with `O_DSYNC`, `os.write`,
+and `os.fdatasync` for each record, ensuring each line is on disk before
+execution continues and survives a subsequent SIGKILL.
+
+A secondary purpose is to extend per-layer markers to all
+`QuantizeMethodBase` modules in `process_weights_after_loading`, not just
+the first two layers used in Attempt 18's intended design.
+
+Additionally, Attempt 19 patches `GptOssMxfp4MoEMethod._setup_kernel` in
+`mxfp4.py` and `prepare_moe_mxfp4_layer_for_marlin` in
+`marlin_utils_fp4.py` with internal A_-prefixed markers.  These were the
+functions identified during Attempt 18's design phase as the suspected
+allocation site, based on the "Your GPU does not have native support for
+FP4" warning and the "Using MoEPrepareAndFinalizeNoDPEPModular" log.  As
+described in §27.3, these patches were applied to the wrong code path.
+
+### 27.2 Configuration
+
+| Parameter | Value |
+|---|---|
+| spark02 role | head / rank0 / API server / EP experts 0–143 |
+| spark01 role | worker / rank1 / EP experts 144–287 |
+| rank1 pre-load delay | 90 seconds |
+| kernel both nodes | 6.17.0-1021-nvidia |
+| driver both nodes | 610.43.02 |
+| Ray memory threshold | 0.90 |
+| Ray object store | 1 GiB |
+| fixed KV cache | 8 GiB (`--kv-cache-memory-bytes 8589934592`) |
+| GPU memory utilization | 0.85 |
+| diagnostic image | `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-attempt19-durable-marlin-trace-rank1-delay90` (`sha256:38a0b0cb`) |
+| JSONL writer | `diag19_durable_writer.py`: O_DSYNC, per-rank file, fdatasync per record |
+| output paths | `/tmp/attempt19-marlin-memory-rank-0.jsonl` (rank0), `/tmp/attempt19-marlin-memory-rank-1.jsonl` (rank1) |
+| markers intended | G01–G04 global; L_before/L_after per `QuantizeMethodBase` module; A_before/A_after internal in `GptOssMxfp4MoEMethod._setup_kernel` and `prepare_moe_mxfp4_layer_for_marlin` |
+| markers delivered | G01–G04 and L_before/L_after only (A_ markers not reached — see §27.3) |
+
+### 27.3 Actual quantization class discovery
+
+The A_-prefixed markers were placed in `GptOssMxfp4MoEMethod._setup_kernel`
+(in `mxfp4.py`) and `prepare_moe_mxfp4_layer_for_marlin` (in
+`marlin_utils_fp4.py`).  These are the classes used for models loaded via
+the `gpt_oss` MARLIN-MXFP4 path.  Step-3.7-Flash-NVFP4 uses a different
+quantization path.
+
+Post-run analysis of the Attempt 19 JSONL revealed that the
+`quant_method_class` field in the L_before markers for all MoE expert
+modules consistently reads `ModelOptNvFp4FusedMoE`, not
+`GptOssMxfp4MoEMethod`.  The class `ModelOptNvFp4FusedMoE` is defined in
+`vllm/model_executor/layers/quantization/modelopt.py` and registered via
+`ModelOptNvFp4Config.FusedMoEMethodCls = ModelOptNvFp4FusedMoE`.  Its
+`process_weights_after_loading` calls `convert_to_nvfp4_moe_kernel_format`
+from `vllm.model_executor.layers.fused_moe.oracle.nvfp4`, a different
+conversion path from the MARLIN
+`convert_gpt_oss_weight_to_mxfp4_moe_kernel_format`.
+
+Consequence: all A_-prefixed markers in `mxfp4.py` and
+`marlin_utils_fp4.py` were never reached.  The L_before/L_after layer
+boundary markers, which iterate all `QuantizeMethodBase` subclasses without
+filtering by class name, captured the correct module instances.
+
+### 27.4 Marker hierarchy
+
+```
+G01_before_load_weights
+  [model.load_weights() — instanttensor format, ~64 s]
+G02_after_load_weights
+G03_before_process_weights_after_loading
+  [for each QuantizeMethodBase module in named_modules():]
+    L_before  (all classes: ModelOptFp8LinearMethod, ModelOptNvFp4LinearMethod,
+                             ModelOptKVCacheMethod, ModelOptNvFp4FusedMoE, …)
+    [quant_method.process_weights_after_loading(module)]
+    L_after   (if SIGKILL does not interrupt)
+G04_after_process_weights_after_loading
+```
+
+A_-prefixed sub-markers (in `mxfp4.py`, `marlin_utils_fp4.py`) were
+present in the image but never fired because the model uses
+`ModelOptNvFp4FusedMoE` rather than `GptOssMxfp4MoEMethod`.
+
+### 27.5 Rank output summary
+
+| Node | Rank | Role | JSONL records | Last marker |
+|---|---|---|---|---|
+| spark02 | 0 | head / rank0 | 850 | L_before, layer_idx=423 (`layers.29.moe.experts`) |
+| spark01 | 1 | worker / rank1 | 1 | G01_before_load_weights |
+
+Rank1 (spark01) recorded only the G01 global marker.  The 90-second
+pre-load delay caused rank1 to begin weight loading approximately 90 seconds
+after rank0.  Rank0 exhausted available UMA before rank1 reached
+`process_weights_after_loading`, so no MoE expert L_before markers appeared
+in rank1's output.
+
+The 850 rank0 records cover G01–G04 and L_before/L_after pairs for all
+`QuantizeMethodBase` modules in the model.  The total includes non-MoE
+linear and attention modules that complete without significant memory
+movement, plus the 26 `ModelOptNvFp4FusedMoE` pairs described in §27.6
+and one incomplete L_before for transformer layer 29.
+
+### 27.6 Completed ModelOptNvFp4FusedMoE modules and per-layer MemAvailable deltas
+
+Transformer layers 0–2 are dense; layers 3–60 contain MoE experts
+(RoutedExperts).  Rank0 (EP rank 0, experts 0–143) processes one
+`ModelOptNvFp4FusedMoE` module per MoE transformer layer.  Twenty-six
+modules completed before SIGKILL.
+
+| TX layer | layer_idx | MemAvail before (GiB) | MemAvail after (GiB) | Δ MemAvail (GiB) | Δ CUDA free (GiB) | Δ torch_alloc |
+|---:|---:|---:|---:|---:|---:|---:|
+| 3 | 215 | 51.725 | 48.154 | −3.571 | +12.869 | ≈ 0 |
+| 4 | 223 | 48.168 | 47.772 | −0.396 | −0.109 | ≈ 0 |
+| 5 | 231 | 47.748 | 45.976 | −1.772 | +2.563 | ≈ 0 |
+| 6 | 239 | 45.974 | 45.194 | −0.780 | +0.089 | ≈ 0 |
+| 7 | 247 | 45.191 | 43.207 | −1.983 | +1.101 | ≈ 0 |
+| 8 | 255 | 43.203 | 42.418 | −0.785 | +0.043 | ≈ 0 |
+| 9 | 263 | 42.417 | 40.395 | −2.022 | +0.408 | ≈ 0 |
+| 10 | 271 | 40.388 | 39.634 | −0.754 | −0.155 | ≈ 0 |
+| 11 | 279 | 39.626 | 37.406 | −2.220 | −1.715 | ≈ 0 |
+| 12 | 287 | 37.399 | 36.758 | −0.641 | +0.688 | ≈ 0 |
+| 13 | 295 | 36.746 | 35.746 | −1.000 | +0.834 | ≈ 0 |
+| 14 | 303 | 35.723 | 34.878 | −0.845 | +0.141 | ≈ 0 |
+| 15 | 311 | 34.869 | 32.585 | −2.284 | −1.815 | ≈ 0 |
+| 16 | 319 | 32.581 | 31.745 | −0.836 | −0.388 | ≈ 0 |
+| 17 | 327 | 31.745 | 29.505 | −2.240 | +2.653 | ≈ 0 |
+| 18 | 335 | 29.498 | 28.667 | −0.831 | +0.112 | ≈ 0 |
+| 19 | 343 | 28.662 | 26.395 | −2.266 | −0.192 | ≈ 0 |
+| 20 | 351 | 26.389 | 25.555 | −0.834 | −0.554 | ≈ 0 |
+| 21 | 359 | 25.552 | 23.266 | −2.286 | −1.434 | ≈ 0 |
+| 22 | 367 | 23.266 | 22.434 | −0.833 | −0.423 | ≈ 0 |
+| 23 | 375 | 22.432 | 20.145 | −2.286 | −0.873 | ≈ 0 |
+| 24 | 383 | 20.145 | 19.313 | −0.832 | −0.612 | ≈ 0 |
+| 25 | 391 | 19.302 | 17.028 | −2.275 | −1.619 | ≈ 0 |
+| 26 | 399 | 17.027 | 16.210 | −0.818 | −0.582 | ≈ 0 |
+| 27 | 407 | 16.197 | 14.016 | −2.181 | −1.643 | ≈ 0 |
+| 28 | 415 | 14.015 | 13.548 | −0.467 | −0.466 | ≈ 0 |
+| **29** | **423** | **13.533** | — | — | — | ≈ 0 |
+| | | | **Cumulative (layers 3–28)** | **−38.038** | **+8.919** | **< 0.001** |
+
+Layer 29 (layer_idx=423) is the module at which SIGKILL fired.  The
+L_before record was durably written (13.533 GiB remaining) and the
+L_after was not.  This layer is counted as incomplete and excluded from
+the cumulative totals.
+
+### 27.7 Odd/even processing pattern
+
+A consistent odd/even alternation is visible in the per-layer MemAvailable
+deltas.  Odd transformer layers (3, 5, 7, …, 27) consume substantially
+more memory during processing than even layers (4, 6, 8, …, 28).
+
+| Parity | Layer count | Δ MemAvail mean (GiB) | Δ MemAvail range (GiB) |
+|---|---:|---:|---|
+| Odd (3, 5, 7, …, 27) | 13 | −2.184 | −1.000 to −3.571 |
+| Even (4, 6, 8, …, 28) | 13 | −0.742 | −0.396 to −0.845 |
+
+The mean for odd layers (−2.184 GiB) is approximately 2.9× that for even
+layers (−0.742 GiB).  Transformer layer 3 shows the largest single-layer
+drop (−3.571 GiB) and transformer layer 13 shows an anomalously small
+odd-layer drop (−1.000 GiB).  The remaining odd layers (5, 7, 9, 11,
+15–27) cluster near −2.2 to −2.3 GiB.  All even layers cluster near −0.7
+to −0.8 GiB.
+
+The CUDA-free counter shows a complementary but unsystematic pattern —
+it increases for many odd layers and decreases or stays flat for most even
+layers — consistent with temporary PyTorch allocator activity during
+`convert_to_nvfp4_moe_kernel_format`.  This counter oscillation does not
+correspond to the MemAvailable loss, which is monotonically decreasing.
+
+The cause of the odd/even alternation is not determined from Attempt 19
+data.  Possible causes include differences in routing-table alignment,
+expert-mapping shapes, or backend selection for alternating layers.
+
+### 27.8 Memory attribution analysis
+
+**Allocator attribution.**  The durable layer markers strongly associate
+the cumulative UMA growth with `ModelOptNvFp4FusedMoE` post-load
+processing.  The nearly unchanged PyTorch caching-allocator counters
+(`torch_alloc_delta` ≈ 0 throughout, total drift < 1 KiB across all 26
+completed layers) indicate that the dominant additional allocation is
+likely external to that allocator.
+
+Comparing the cumulative MemAvailable decline (−38.038 GiB) against the
+cumulative cgroup `memory.current` change (approximately −7.354 GiB net)
+reveals a discrepancy of roughly 31 GiB.  This gap is not accounted for by
+process-mapped memory (smaps PSS and Anonymous show negligible drift across
+the 26 layers).  On GB10 UMA, allocations made through the CUDA driver
+directly — for example, `cuMemAlloc`-family calls, kernel workspace
+buffers, or proprietary ModelOpt / TensorRT-LLM internal data — are
+reflected in MemAvailable but are not reported through cgroup v2 or
+through torch's caching-allocator counters.  This is the most consistent
+interpretation of the observed pattern, though it is not confirmed at this
+time.
+
+The CUDA-free counter increased by a net +8.919 GiB over the 26 layers.
+On discrete GPUs, an increase in `CUDA free` concurrent with a decrease in
+`MemAvailable` would be contradictory; on GB10 UMA both draw from the same
+physical pool under different accounting views.  The observed divergence is
+consistent with the PyTorch caching allocator returning pages to the CUDA
+driver at a different rate than new external allocations claim them, but
+sub-function-level tracing is required to confirm this.
+
+**Failing layer.**  SIGKILL was issued by the Ray memory monitor during
+processing of transformer layer 29 (layer_idx=423), after MemAvailable had
+dropped to 13.533 GiB.  The trigger condition is
+`(MemTotal − MemAvailable) / MemTotal > 0.90`: with MemTotal=121.63 GiB
+and threshold 0.90, the kill threshold corresponds to MemAvailable below
+approximately 12.16 GiB.  Layer 29 was the first layer to cross this
+boundary during active processing.
+
+**Remaining unknown.**  Attempt 19 identifies the failing module boundary
+but does not yet identify the exact internal operation or allocator
+responsible for the growth.
+
+The L_before and L_after markers bound the memory consumption to
+`ModelOptNvFp4FusedMoE.process_weights_after_loading`, but that function
+contains three distinct phases:
+
+1. `convert_to_nvfp4_moe_kernel_format(...)` — the main weight-conversion
+   call.  Input: 8 tensor groups (w13_weight, w13_weight_scale,
+   w13_weight_scale_2, w13_input_scale, w2_weight, w2_weight_scale,
+   w2_weight_scale_2, w2_input_scale) totalling approximately 3.3 GiB per
+   rank-local expert set.
+2. Eight `replace_parameter(...)` calls — parameter substitution with the
+   converted tensors.
+3. `make_nvfp4_moe_kernel(...)` and
+   `self.moe_kernel.fused_experts.process_weights_after_loading(layer)` —
+   kernel and workspace setup.
+
+Attempt 20 will place sub-function MO_-prefixed markers at the boundaries
+of each phase within `ModelOptNvFp4FusedMoE.process_weights_after_loading`
+in `modelopt.py`.
+
+### 27.9 Classification
+
+**Attempt 19 classification: B — allocation strongly associated with
+`ModelOptNvFp4FusedMoE.process_weights_after_loading`, likely external to
+PyTorch caching allocator.  Internal operation not yet identified.**
+
+The durable JSONL writer succeeded: 850 records were written on rank0 and
+survived the SIGKILL, confirming that all markers through the last
+L_before were captured without loss.  The per-layer boundary markers
+isolated the allocation to the correct class.  The A_-prefixed internal
+markers were absent because they targeted the wrong class.
+
+### 27.10 Interpretation
+
+The per-layer boundary tracing in Attempt 19 narrows the allocation site
+from "somewhere in `process_weights_after_loading` across all module types"
+(Attempt 18) to "within `ModelOptNvFp4FusedMoE.process_weights_after_
+loading` specifically."  This is the correct class for the
+Step-3.7-Flash-NVFP4 model.
+
+The odd/even alternation and the PyTorch-allocator neutrality together
+suggest that the dominant pressure comes from a source external to the
+standard CUDA caching allocator — likely internal ModelOpt or
+TensorRT-LLM kernel buffers allocated through the CUDA driver.  The
+alternating pattern may reflect different processing paths or kernel-format
+sizes for alternating MoE layers.
+
+### 27.11 Artifacts
+
+- Rank0 durable JSONL (spark02): `/tmp/attempt19-marlin-memory-rank-0.jsonl`
+  (850 records, all valid JSON)
+- Rank1 durable JSONL (spark01): `/tmp/attempt19-marlin-memory-rank-1.jsonl`
+  (1 record, G01 only)
+- Per-layer delta table (CSV): `/tmp/attempt20-modelopt-analysis/attempt19-layer-deltas.csv`
+- Per-layer delta table (JSON): `/tmp/attempt20-modelopt-analysis/attempt19-layer-deltas.json`
+- Combined tarball (homeserver):
+  `~/.local/diag/attempt19-durable-marlin-trace-20260613-131832.tar.gz`
+  (SHA256: `fb9734026074c6f83e8c83f4bc16a96a7b3bf84ea880206915a5ccbf5eb3df99`)
+- Build directory: `/tmp/attempt19-marlin-durable-trace/`
+- Env file: `.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-attempt19-durable-marlin-trace-debug`
