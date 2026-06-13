@@ -3774,3 +3774,164 @@ model-architecture or processing-path difference.)*
   (SHA256: `fb9734026074c6f83e8c83f4bc16a96a7b3bf84ea880206915a5ccbf5eb3df99`)
 - Build directory: `/tmp/attempt19-marlin-durable-trace/`
 - Env file: `.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-attempt19-durable-marlin-trace-debug`
+
+## 29. Attempt 21P — Disabling expandable CUDA allocator segments (2026-06-13)
+
+### 29.1 Purpose
+
+Attempt 20 established that `memory_reserved` grows monotonically during
+`ModelOptNvFp4FusedMoE.process_weights_after_loading`, with parameter
+replacement returning `memory_allocated` to its baseline but leaving the
+caching-allocator reserved pool unreduced at each module boundary.  The
+alternating +2.2461 GiB / +0.8203 GiB staircase was identified as a
+caching-allocator segment-reuse artifact rather than a model-architecture
+difference (§28.16).
+
+Attempt 21P tests whether the traditional block-pool allocator
+(`expandable_segments:False`) exhibits different segment-growth and reuse
+behaviour compared with the expandable-segments allocator used in
+Attempt 20.  The experiment keeps all serving, model, role, image, Ray,
+and diagnostic settings unchanged so that the allocator policy is the
+only runtime variable.
+
+### 29.2 Controlled variable
+
+```
+Attempt 20:  PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+Attempt 21P: PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False
+```
+
+All other settings are identical:
+
+- Same diagnostic image
+  (`vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-attempt20-modelopt-internal-trace-rank1-delay90`)
+- Same model (Step-3.7-Flash-NVFP4, MARLIN backend, NVFP4)
+- Same cluster topology: spark02=head/rank0 (experts 0–143),
+  spark01=worker/rank1 (experts 144–287)
+- Same Ray thresholds, object-store size, fixed KV cache (8 GiB),
+  GPU memory utilisation (0.85), and rank-1 pre-load delay (90 s)
+- Same MO_ diagnostic markers from Attempt 20
+
+### 29.3 Result summary
+
+| Metric | Attempt 20 | Attempt 21P |
+|---|---|---|
+| Completed MoE modules | 26 / 58 | **35 / 58** |
+| Failure point | 27th module conversion | 36th module conversion |
+| Additional modules | — | **+9 (+34.6%)** |
+| OOM cause | Ray memory monitor | Ray memory monitor |
+| Ray memory ratio at OOM | — | **109.64 / 121.63 GiB (0.9014 > 0.90)** |
+| Fixed KV reached | No | No |
+| Startup reached | No | No |
+
+Attempt 21P completed 9 additional MoE modules before Ray killed the
+RayWorkerWrapper on spark02 (10.10.10.2).  The experiment did not reach
+the fixed-KV reservation or vLLM startup phase.
+
+### 29.4 Reserved-memory behaviour
+
+**Attempt 20 (`expandable_segments:True`):**
+
+| Measurement | Value |
+|---|---|
+| Initial reserved (layer-3 entry) | ~58.951 GiB |
+| Reserved after 26th completed module | ~101.148 GiB |
+| Cumulative reserved growth | ~42.197 GiB |
+| Growth pattern | alternating +2.2461 GiB (odd) / +0.8203 GiB (even) |
+| `d_reserved_replace` (parameter-replacement phase) | 0.000 GiB for all 26 modules |
+
+**Attempt 21P (`expandable_segments:False`):**
+
+| Measurement | Value |
+|---|---|
+| Initial reserved (MO_entry, first module) | ~58.812 GiB |
+| Reserved after first completed module (MO_exit) | ~65.494 GiB |
+| Reserved after 35th completed module | ~102.682 GiB |
+| First-module reserved increase (entry → exit) | ~6.682 GiB |
+| Subsequent per-module reserved increase (modules 2–35) | **+1.0938 GiB (stddev ≈ 0)** |
+| `d_reserved` at parameter-replacement phase | 0.000 GiB for all 35 modules |
+
+The traditional allocator replaced the alternating staircase with a
+perfectly uniform +1.0938 GiB step per completed module.  The per-module
+steady-state growth rate fell from approximately 1.533 GiB (Attempt 20
+weighted average) to 1.0938 GiB (−28.6%).
+
+`memory_allocated` remained fixed at approximately 58.640 GiB across all
+35 completed modules.  `inactive_split_bytes` was approximately 48.3 MB
+throughout (negligible).
+
+### 29.5 Interpretation
+
+Disabling expandable segments changed the allocator's segment-growth and
+reuse behaviour, eliminating the alternating staircase and reducing the
+steady-state per-module reserved increase.  It did not eliminate
+caching-allocator retention.
+
+The traditional block-pool allocator continued to cache released blocks.
+Parameter replacement returned `memory_allocated` to its baseline after
+each module, but `memory_reserved` did not decrease at module boundaries.
+All reserved growth occurred during the `MO_after_convert` phase; neither
+the replace-params phase nor the make-kernel phase released any reserved
+memory.
+
+The experiment tested allocator segment-growth and reuse behaviour.  Both
+allocator modes retained cached blocks.  The result does not indicate that
+`expandable_segments:False` returns freed memory to the operating system;
+the reduction in growth rate reflects different internal segment sizing and
+reuse patterns within the CUDA caching allocator.
+
+**Mathematical constraint:**  With 58 total MoE modules to convert, the
+projected reserved pool at completion is approximately
+65.494 + (57 × 1.0938) ≈ 127.8 GiB, which exceeds the 121.63 GiB GB10
+UMA total.  Allocator-policy adjustment alone cannot enable full model
+loading within the current hardware envelope without explicit cache release
+or buffer-reuse changes.
+
+### 29.6 Classification
+
+**Partial improvement.**  The allocator policy change reduced per-module
+reserved growth and allowed 9 additional modules to complete, but the
+reserved pool continued to grow monotonically and the run terminated before
+fixed KV or startup were reached.
+
+### 29.7 Safety and cleanup
+
+Both nodes were rebooted after all artifacts were preserved.
+
+| Node | MemAvailable before reboot | MemAvailable after reboot |
+|---|---|---|
+| spark01 | ~61.2 GiB (partially recovered after run) | ~117.8 GiB |
+| spark02 | ~14.4 GiB (UMA retained by NVIDIA driver) | ~118.1 GiB |
+
+Kernel (`6.17.0-1021-nvidia`) and driver (`610.43.02`) were unchanged on
+both nodes.  No experiment containers or orphan processes remained after
+cleanup.
+
+### 29.8 Artifacts
+
+- **spark02 tarball:**
+  `.local/diag/diag-spark02-attempt21p-20260613-162500.tar.gz`
+  (SHA256: `2a7a92824e309e0f50396632acfb8f444b665849ae5e4033357540bee397899c`)
+  Contains: rank0 JSONL (1241 records), spark02 head Docker log,
+  trace-memory log, memory-guard log, memtrace directory.
+
+- **spark01 tarball:**
+  `.local/diag/diag-spark01-attempt21p-20260613-162500.tar.gz`
+  (SHA256: `9ac0946ed65e279086817d027626800eea8adc20a501dfa72123aef876427d66`)
+  Contains: rank1 JSONL (1 record, delay-90 image — no MO_ markers on
+  rank1), spark01 worker Docker log, trace-memory log, memory-guard log.
+
+- **homeserver analysis tarball:**
+  `/tmp/diag-homeserver-attempt21p-analysis-20260613-162500.tar.gz`
+  (SHA256: `48d98bc1d3f38ae7863c12343152d78136e765535df471a78a325de82f4b955c`)
+  Contains: Attempt 21P rank0 JSONL, Attempt 20 reserved-by-module CSV,
+  Attempt 20 reserved summary JSON, odd/even analysis CSV, PyTorch counter
+  validation CSV.
+
+- **Env file (untracked):**
+  `.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-attempt21p-no-expandable-segments-debug`
+
+- **Allocator config evidence:**
+  `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False` confirmed in both
+  `vllm-spark-head` and `vllm-spark-worker` container `docker inspect`
+  output at runtime.
