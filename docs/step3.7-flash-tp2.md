@@ -6,13 +6,14 @@ across two DGX Spark nodes (head node + worker node) at TP=2, plus a
 configuration/benchmark comparison of the two quantization variants (FP8,
 NVFP4).
 
-Both variants use the same image
+The FP8 variant uses:
 `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7`
-(NGC 26.05 + vLLM 0.22.1 + `patches/patch_step3p7_nvfp4_input_scale.py`). The
-patch only affects the NVFP4-specific code path (`step3p5.py`
-`expert_params_mapping` + `fused_moe/layer.py` dual-shard write), so the FP8
-variant can use the same image **without rebuilding** (FP8 uses vLLM's
-standard `fp8.py` path).
+(NGC 26.05 + vLLM 0.22.1 + `patches/patch_step3p7_nvfp4_input_scale.py`)
+
+The **NVFP4 variant requires a separate image** with an additional workaround
+for the ModelOpt NVFP4 MoE post-load memory issue (see §4.2):
+`vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release`
+(all of the above + `patches/patch_step3p7_modelopt_cache_release.py`)
 
 ## 0. Configuration Summary
 
@@ -103,11 +104,17 @@ curl -s http://<head_node_ip>:8000/v1/completions \
 - `nvidia-smi` reports `Memory-Usage: Not Supported` on GB10 unified memory —
   check actual availability via vLLM's pre-init log
   (`Free memory on device cuda:0 (X/121.63 GiB)`) or `free -h`.
-- After a crashed container, even `docker compose down` does not release the
-  GPU memory (~97-110GiB) held by the driver — only `systemctl reboot`
-  reliably reclaims it (~10-12 min). Don't combine reboot with `pkill` in the
-  same ssh command (it can kill your own shell before `reboot` runs) — use a
-  plain `ssh <host> "sudo systemctl reboot"`.
+- After a crashed **or graceful** container stop, `docker compose down` does
+  not release GPU memory from the driver.  For this two-node TP=2 NVFP4
+  configuration, host MemAvailable remains ~19 GiB (~102 GiB below the clean
+  baseline) even after all vLLM and Ray processes terminate.  Only
+  `systemctl reboot` reliably reclaims UMA (~10-12 min).  Reboot both DGX
+  Spark nodes before loading another large model if memory does not recover
+  spontaneously.  (This is specific to this high-utilization configuration —
+  smaller workloads may recover without a reboot.)
+  Don't combine reboot with `pkill` in the same ssh command (it can kill your
+  own shell before `reboot` runs) — use a plain
+  `ssh <host> "sudo systemctl reboot"`.
 - vLLM 0.22.1 (this image has no `VLLM_SKIP_INIT_MEMORY_CHECK` patch) performs
   a two-stage memory check:
   1. **Pre-init** (`request_memory()`): if `util * 121.63 > free at startup`,
@@ -167,6 +174,33 @@ The NVFP4 variant previously produced NaN logits on every output before
 - When adding similar NVFP4 ModelOpt MoE models (old packed 3D checkpoint
   format), check first whether `expert_params_mapping` is missing
   `.input_scale` entries.
+
+## 4.2. NVFP4 ModelOpt MoE Post-Load OOM (resolved)
+
+Without the additional workaround, serving Step-3.7-Flash-NVFP4 on dual
+DGX Spark GB10 (121.63 GiB UMA per node) fails at startup with a Ray OOM
+kill during `process_weights_after_loading()`.
+
+- **Cause**: each of the 42 `ModelOptNvFp4FusedMoE` modules retains ~6.68 GiB
+  in the CUDA caching-allocator reserved pool after NVFP4→MARLIN repacking
+  completes.  Active allocations return to baseline, but the reserved pool
+  grows monotonically: 42 × 6.68 GiB ≈ 280 GiB reserved in total.  On a
+  121.63 GiB UMA node, this exhausts host MemAvailable well before all
+  modules complete, triggering Ray's OOM monitor.
+- **Fix**: `patches/patch_step3p7_modelopt_cache_release.py` inserts
+  `torch.cuda.empty_cache()` after each completed `ModelOptNvFp4FusedMoE`
+  module when `VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE=1`.  This resets
+  the reserved pool back to the stable post-weight-load baseline (~65 GiB)
+  after each conversion, preventing cumulative growth.
+  Feature is disabled by default (`:-0` in docker-compose.yml) and enabled
+  only in `presets/step37-flash-nvfp4-tp2.env`.
+- **Additional requirement**: `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False`
+  — expandable segments alone reduces but does not eliminate the cumulative
+  growth; both settings together are required.
+- **Overhead**: < 0.5 s cumulative per rank (validated: rank0 427 ms,
+  rank1 297 ms over 42 modules on dual DGX Spark GB10).
+- **Verified**: 2026-06-14, dual DGX Spark GB10, TP=2 EP=2, Ray, vLLM 0.22.1.
+  See `docs/diagnostics/dgx-spark-uma-memory-freeze.md` §32 for full record.
 
 ## 5. Benchmark Results
 

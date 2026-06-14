@@ -4605,25 +4605,20 @@ and documented separately in `/tmp/step37-tokenizer-followup.md`.
 
 Graceful stop: head first, then worker (`docker compose stop`), then `rm -f`.
 
-| Time | spark02 (head) MemAvail | spark01 (worker) MemAvail |
+| Time | spark02 MemAvailable | spark01 MemAvailable |
 |---|---|---|
-| T0 (before stop) | 14 GiB | 17 GiB |
+| Before shutdown | 14 GiB | 17 GiB |
 | T+15s | 19 GiB | 19 GiB |
 | T+60s | 19 GiB | 19 GiB |
 | T+120s | 19 GiB | 19 GiB |
 | T+300s | 19 GiB | 19 GiB |
+| After reboot | 118 GiB | 117 GiB |
 
 **Classification: Residual** (< 90 GiB threshold).  No spontaneous recovery
-observed.  Recovery method: `sudo systemctl reboot` on both nodes.
+observed after graceful shutdown.  Recovery method: `sudo systemctl reboot` on
+both nodes (uptime < 300 s before confirming memory recovery).
 
-Post-reboot (both nodes, uptime < 300 s):
-
-| Node | MemAvailable post-reboot |
-|---|---|
-| spark02 | 118 GiB |
-| spark01 | 117 GiB |
-
-Full UMA recovery confirmed.
+Full UMA recovery confirmed after reboot.
 
 ### 32.10 Operational note
 
