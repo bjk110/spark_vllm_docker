@@ -15,6 +15,10 @@ for the ModelOpt NVFP4 MoE post-load memory issue (see §4.2):
 `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release`
 (all of the above + `patches/patch_step3p7_modelopt_cache_release.py`)
 
+GHCR immutable tag (validated 2026-06-14):
+`ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release`
+digest `sha256:08ae8f2ab5597afd577977ce2700eff2cc024c3e6e781f6c8df6e1115963bf1b`
+
 ## 0. Configuration Summary
 
 | Item | FP8 | NVFP4 |
