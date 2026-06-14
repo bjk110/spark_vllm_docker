@@ -80,3 +80,15 @@ Dockerfile already covers all 7 specs via
 Drop-in replacement for `v022-d568` — set `VLLM_IMAGE=vllm-spark:v022-d568-fi-aot`
 (or the GHCR tag) in the relevant preset `.env`. No other config changes
 required.
+
+Add `FLASHINFER_CUDA_ARCH_LIST=12.1` to ensure FlashInfer resolves the
+prebaked `.so` files from the correct `121a` arch directory at runtime. This
+variable is already included in the dual-node preset below.
+
+## Preset
+
+A portable dual-node preset is available at `presets/qwen3.6-35b-a3b-fi-aot-tp2.env`.
+It corresponds to the validated configuration above and excludes host-specific
+paths, IP addresses, and diagnostic-only flags (`FLASHINFER_JIT_VERBOSE`,
+`FLASHINFER_NVCC_THREADS`, `MAX_JOBS`). For single-node use or the non-AOT
+baseline, see `presets/qwen3.6-35b-a3b.env`.

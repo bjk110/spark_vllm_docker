@@ -4,6 +4,21 @@ All notable changes to `vllm-spark` (GHCR image + repo presets). Most recent on
 top. See `git log` for the full commit history; this file is curated to describe
 what users see (image tag, behavior, breaking changes) rather than every commit.
 
+## Preset: `qwen3.6-35b-a3b-fi-aot-tp2.env` — Qwen3.6-35B-A3B dual-node FI-AOT (2026-06-14)
+
+- **What**: New portable preset for `Qwen/Qwen3.6-35B-A3B` on dual DGX Spark GB10,
+  TP=2 via Ray, using the FlashInfer AOT-prebaked image (`v022-d568-fi-aot`).
+- **Validated**: 2026-06-11. Ray join (2/2 nodes), model load, profiling, CUDA graph
+  capture all clean. All 7 FlashInfer AOT specs confirmed `is_aot=True` /
+  `is_compiled=True` on both head and worker. Zero `ninja`/`nvcc`/`cicc`/`ptxas`
+  processes during startup and first inference. `/health` 200; `/v1/completions` OK.
+- **Scope**: same serving arguments as `presets/qwen3.6-35b-a3b.env` (single-node
+  baseline), extended to dual-node TP=2. Diagnostic flags (`FLASHINFER_JIT_VERBOSE`,
+  `FLASHINFER_NVCC_THREADS`, `MAX_JOBS`) excluded from the public preset.
+- **Fallback**: if `v022-d568-fi-aot` is unavailable, use `presets/qwen3.6-35b-a3b.env`
+  (single-node) or replace `VLLM_IMAGE` with `v022-d568` for TP=2 without AOT
+  prebake. See [`docs/flashinfer-aot-prebake.md`](docs/flashinfer-aot-prebake.md).
+
 ## `v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release` — Step-3.7-Flash validated NVFP4 image (2026-06-14)
 
 GHCR immutable tag:
