@@ -78,9 +78,9 @@ Dockerfile already covers all 7 specs via
 
 ## Usage
 
-Drop-in replacement for `v022-d568` — set `VLLM_IMAGE=vllm-spark:v022-d568-fi-aot`
-(or the GHCR tag) in the relevant preset `.env`. No other config changes
-required.
+Drop-in replacement for `v022-d568` — set
+`VLLM_IMAGE=ghcr.io/bjk110/vllm-spark:v022-d568-fi-aot` in the relevant preset
+`.env`. No other config changes required.
 
 Add `FLASHINFER_CUDA_ARCH_LIST=12.1` to ensure FlashInfer resolves the
 prebaked `.so` files from the correct `121a` arch directory at runtime. This
