@@ -1,7 +1,8 @@
 # FlashInfer AOT Prebake (`v022-d568-fi-aot`)
 
-`vllm-spark:v022-d568-fi-aot` is a thin overlay on `v022-d568` (same vLLM /
-FlashInfer / Transformers versions) that pre-builds a fixed set of FlashInfer
+`ghcr.io/bjk110/vllm-spark:v022-d568-fi-aot` is a thin overlay on `v022-d568`
+(NGC 26.04, vLLM 0.21.0+PR#35568, FlashInfer 0.6.11.post3, Transformers 5.8.1)
+that pre-builds a fixed set of FlashInfer
 SM120/SM121 CUTLASS kernel modules at **image build time** and promotes each
 built `.so` from FlashInfer's JIT cache path (`spec.jit_library_path`) to its
 AOT path (`spec.aot_path`).

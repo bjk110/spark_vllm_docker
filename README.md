@@ -90,6 +90,10 @@ docker pull ghcr.io/bjk110/vllm-spark:v021-tq
 # Digest: sha256:88b544ed69476f3785ea7ce37fc8b99f0f064cc299eef35cda1535c68e7a9501
 docker pull ghcr.io/bjk110/vllm-spark:v022-d568
 
+# v022-d568-fi-aot (optional, FlashInfer AOT prebaked — drop-in for v022-d568):
+# Digest: sha256:4e36c23864c95c941e1956cb0b4c5eb13490f8fac776606c0dab165c62912d1d
+docker pull ghcr.io/bjk110/vllm-spark:v022-d568-fi-aot
+
 # Forward-stack (NGC 26.05 + vLLM 0.22.1 + FlashInfer v0.6.12 + Transformers 5.10.2):
 # Digest: sha256:2c52c885e48cffd15097291a0926a51401ecb95d169e6831bb63a4fda6dda8a5
 docker pull ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022

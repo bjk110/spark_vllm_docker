@@ -75,8 +75,9 @@ GHCR immutable tag:
   AOT-promoted — other FlashInfer module/dtype/shape combinations still
   JIT-compile on first use as before.
 - **User impact**: no required action. To use, set
-  `VLLM_IMAGE=vllm-spark:v022-d568-fi-aot` (or the GHCR tag) in place of
-  `v022-d568` in any preset `.env`.
+  `VLLM_IMAGE=ghcr.io/bjk110/vllm-spark:v022-d568-fi-aot` in place of
+  `v022-d568` in any preset `.env`, or pull with
+  `docker pull ghcr.io/bjk110/vllm-spark:v022-d568-fi-aot`.
 
 ## v021-tq — Qwen3.5 hybrid codegen workaround (`3070f9a`, 2026-04-26)
 
