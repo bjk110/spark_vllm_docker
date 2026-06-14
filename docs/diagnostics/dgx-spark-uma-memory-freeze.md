@@ -3880,12 +3880,21 @@ allocator modes retained cached blocks.  The result does not indicate that
 the reduction in growth rate reflects different internal segment sizing and
 reuse patterns within the CUDA caching allocator.
 
-**Mathematical constraint:**  With 58 total MoE modules to convert, the
-projected reserved pool at completion is approximately
-65.494 + (57 × 1.0938) ≈ 127.8 GiB, which exceeds the 121.63 GiB GB10
-UMA total.  Allocator-policy adjustment alone cannot enable full model
-loading within the current hardware envelope without explicit cache release
-or buffer-reuse changes.
+**Mathematical constraint:**  With 42 total `ModelOptNvFp4FusedMoE` modules
+to convert (transformer layers 3–44; see Attempt 22 §30.2 for model
+structure), the projected reserved pool at completion is approximately
+65.494 + (41 × 1.0938) ≈ 110.3 GiB — still exceeds the 121.63 GiB GB10
+UMA total when accounting for the pre-existing weight footprint (~58.6 GiB
+`memory_allocated`).  Allocator-policy adjustment alone cannot enable full
+model loading within the current hardware envelope without explicit cache
+release or buffer-reuse changes.
+
+**Note (corrected 2026-06-14):**  An earlier version of this text stated
+"58 total MoE modules".  The actual `moe_layers_enum` in
+`text_config` covers layers 3–44 (42 layers).  The figure 58 was
+erroneous; it conflated a different model's layer count.  The corrected
+projection still demonstrates that monotonic growth is unsustainable at 42
+modules.
 
 ### 29.6 Classification
 
@@ -3935,3 +3944,270 @@ cleanup.
   `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False` confirmed in both
   `vllm-spark-head` and `vllm-spark-worker` container `docker inspect`
   output at runtime.
+
+---
+
+## 30. Attempt 22 — Per-module CUDA cache release (2026-06-14)
+
+### 30.1 Purpose
+
+Test whether releasing unused caching-allocator blocks after each completed
+`ModelOptNvFp4FusedMoE.process_weights_after_loading()` call prevents
+cumulative reserved-memory growth that terminated Attempt 21P at module 35.
+
+Attempt 22 retained the `expandable_segments:False` allocator mode from
+Attempt 21P.  The only new variable was an explicit
+`torch.cuda.empty_cache()` call inserted at the outer traversal boundary
+after each completed module, controlled by a feature flag
+(`VLLM_DIAG_EMPTY_CACHE_AFTER_MODELOPT_MOE=1`).  Instrumentation
+(`EC_before` / `EC_after` JSONL markers) recorded the allocator state
+around each call.
+
+The aim was to return cached but unreferenced caching-allocator blocks to
+the CUDA runtime before the next module began, thereby preventing the
+module-by-module reserved-pool staircase observed in Attempts 18–21P.
+
+### 30.2 Corrected model structure
+
+Earlier sections of this document and interim session reports referred to
+"58 MoE modules".  Attempt 22 instrumentation and direct inspection of the
+model configuration establish the correct figures:
+
+| Item | Count |
+|---|---|
+| Transformer hidden layers (`text_config.num_hidden_layers`) | 45 |
+| Dense transformer layers | 3 (layers 0–2) |
+| MoE transformer layers (`text_config.moe_layers_enum` = `3…44`) | 42 |
+| Separate MTP layers (`text_config.num_nextn_predict_layers`) | 3 |
+| `ModelOptNvFp4FusedMoE` quant modules | **42** |
+
+Module names confirmed by diag20 instrumentation:
+`language_model.model.layers.3.moe.experts` through
+`language_model.model.layers.44.moe.experts`.
+
+Config path: `stepfun-ai/Step-3.7-Flash-NVFP4/config.json`
+Config SHA256: `e09a8654f5c894c50378db85fc950fa127cff800fe77e81caa4692cdd41beab8`
+
+The figure 58 was erroneous: it conflated a different model's layer count.
+MTP layers are a separate dense path and must not be counted as MoE
+conversion modules.  Attempt 21P therefore failed at module 35 of 42
+(83%), not 35 of 58.
+
+### 30.3 Hook location
+
+The `empty_cache()` call was placed at the outer traversal boundary in
+`vllm/model_executor/model_loader/utils.py:process_weights_after_loading()`,
+immediately after the existing `L_after` snapshot and before
+`_layer_idx += 1`:
+
+```
+L_after  (diag20 snapshot — Attempt 22 retained)
+EC_before (Attempt 22 diag snapshot)
+torch.cuda.empty_cache()
+EC_after  (Attempt 22 diag snapshot)
+_layer_idx += 1  →  next module
+```
+
+This location guarantees that:
+
+- `process_weights_after_loading()` has returned: parameter replacement
+  and kernel object construction are complete.
+- Local conversion tensors (NVFP4 input buffers, intermediate MARLIN
+  conversion outputs) are out of scope.
+- The call applies only to `ModelOptNvFp4FusedMoE` modules (guarded by
+  `type(quant_method).__name__ == "ModelOptNvFp4FusedMoE"`).
+- Exactly one call is made per completed module.
+- No `gc.collect()`, `torch.cuda.synchronize()`, or explicit parameter
+  deletion was used.
+
+### 30.4 Single variable
+
+All settings from Attempt 21P were preserved:
+
+- `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False`
+- `GPU_MEMORY_UTILIZATION=0.85`, `MAX_NUM_SEQS=4`, `MAX_MODEL_LEN=8192`
+- Fixed KV 8 GiB (`--kv-cache-memory-bytes 8589934592`)
+- Ray thresholds and object-store unchanged
+- Same cluster topology, roles, network config
+
+The only functional change was the addition of the per-module
+`empty_cache()` hook (enabled by `VLLM_DIAG_EMPTY_CACHE_AFTER_MODELOPT_MOE=1`
+baked into the Attempt 22 image).
+
+An artificial 90-second rank-1 pre-load delay was also baked into the
+image to serialize weight loading between ranks.  This delay is a
+diagnostic aid, not part of the tested mechanism.
+
+### 30.5 Results
+
+| Metric | Attempt 21P | Attempt 22 |
+|---|---|---|
+| Completed modules | 35 / 42 | **42 / 42** |
+| Ray OOM | yes | **no** |
+| Fixed 8 GiB KV allocation | no | **yes** |
+| KV token capacity | — | **174,504** |
+| Application startup | no | **yes** |
+| HTTP inference (200 OK) | not available | **yes** |
+
+Experiment validity confirmed: spark02 (rank0) was the first-arriver in
+the Ray cluster join phase.
+
+### 30.6 JSONL marker validation
+
+Both ranks produced identical marker counts with zero parse errors:
+
+| Marker | rank0 | rank1 |
+|---|---|---|
+| `MO_entry` | 42 | 42 |
+| `MO_exit` | 42 | 42 |
+| `EC_before` | 42 | 42 |
+| `EC_after` | 42 | 42 |
+| Incomplete EC pairs | 0 | 0 |
+| Last marker | `EC_after` @ layer 543 | `EC_after` @ layer 543 |
+
+### 30.7 Reserved-pool behaviour
+
+`memory_reserved` at `EC_before` (immediately before each `empty_cache()` call):
+
+- First module (layer 215): approximately 65.4941 GiB
+- Modules 2–42: approximately 65.3691 GiB on every module (flat;
+  max − min = 0.125 GiB, attributable to the first-module cache flush)
+
+**No cumulative staircase was observed.**  Compare Attempt 21P, where
+`memory_reserved` grew by approximately 1.094 GiB per module: at module 35
+the projected reserved value was approximately 96.9 GiB, with total host
+usage reaching approximately 109.6 GiB (90.1% of 121.63 GiB), triggering
+the Ray OOM kill.
+
+Effect of each `empty_cache()` call:
+
+| Metric | First module | Modules 2–42 |
+|---|---|---|
+| `memory_reserved` decrease | ≈ 6.81 GiB | ≈ 6.68 GiB (all equal) |
+| `cudaMemGetInfo` free increase | ≈ 88 MiB | ≈ 91–96 MiB |
+| `MemAvailable` increase | ≈ 88 MiB | ≈ 91–96 MiB |
+
+### 30.8 Lower-level accounting caveat
+
+`memory_reserved` decreased by approximately 6.68 GiB per completed
+module, while the immediately observed changes in `cudaMemGetInfo` free
+memory and host `MemAvailable` were much smaller (≈ 91–96 MiB).  These
+counters represent different accounting layers and may reflect delayed page
+reclamation within the GB10 Unified Memory subsystem.  The experiment
+establishes that allocator-level cache release prevented cumulative
+reserved-pool growth, but it does not resolve the exact driver-level page
+lifecycle or confirm when freed pages became available to other subsystems.
+
+The available instrumentation therefore proves the allocator-level release
+and the elimination of cumulative growth, but not the exact lower-level
+GB10 page-release timing.
+
+### 30.9 Timing
+
+Instrumentation overhead is included in these figures.  Production-path
+overhead (without JSONL writers) will be lower.
+
+| Metric | rank0 (spark02) | rank1 (spark01) |
+|---|---|---|
+| `empty_cache()` calls | 42 | 42 |
+| Average duration | ≈ 10.1 ms/call | ≈ 7.0 ms/call |
+| Cumulative duration | ≈ 422 ms | ≈ 292 ms |
+
+The rank1 calls were faster, likely because spark01 had lower concurrent
+memory pressure during the serialized weight-loading window (rank-1 delay
+was active).
+
+Model loading completed in approximately 421.7 s (rank0) and 546.3 s
+(rank1, including the 90-second artificial delay).
+
+### 30.10 Interpretation
+
+Per-module cache release at the outer post-processing boundary eliminated
+cumulative CUDA caching-allocator reserved-pool growth and allowed all 42
+`ModelOptNvFp4FusedMoE` modules to complete.
+
+This strongly confirms caching-allocator retention as the direct
+operational cause of the previous startup OOM.
+
+The mechanism is straightforward: NVFP4-to-MARLIN conversion temporarily
+allocates approximately 6.68 GiB of scratch and intermediate tensors per
+module.  Without `empty_cache()`, the caching allocator retains those
+blocks in the reserved pool after the tensors go out of scope.  Successive
+modules accumulate these retained blocks without release.  With
+`empty_cache()`, the cached blocks are returned to the CUDA runtime before
+the next module begins, bounding the reserved pool to a stable plateau
+(≈ 65.37 GiB) rather than allowing monotonic growth.
+
+### 30.11 Classification
+
+**Strong diagnostic success.**
+
+The single added variable (per-module `empty_cache()`) was sufficient to
+transform a repeatable OOM failure into a complete, successful startup with
+inference available.
+
+### 30.12 Production assessment
+
+The Attempt 22 image includes instrumentation (durable JSONL writers,
+`EC_before`/`EC_after` markers, pre-load rank delay) that is not
+appropriate for production use.  The diagnostic result strongly motivates
+a production-candidate image that applies only the minimal `empty_cache()`
+hook without any tracing overhead.
+
+Key open items before promotion:
+
+1. Validate that the hook works correctly in the absence of instrumentation
+   (timing interactions with the JSONL writers are not expected but
+   unverified).
+2. Measure startup-time overhead of the hook alone (expected < 500 ms over
+   42 modules based on instrumented timing).
+3. Assess shutdown UMA recovery behaviour (whether reboot is required after
+   normal container stop when the hook is active).
+4. Determine whether the pattern generalises to other EP/MoE + ModelOpt
+   deployments.
+
+Upstreaming consideration: the hook is a workaround for a GB10 UMA memory
+accounting interaction.  Upstream generalization would require verification
+on non-UMA CUDA hardware and confirmation that the allocator-level
+mechanism does not introduce regressions.
+
+### 30.13 Artifacts
+
+- **homeserver analysis tarball:**
+  `.local/diag/diag-homeserver-attempt22-analysis-20260614T010639Z.tar.gz`
+  (SHA256: `80477494dce78bb26330b1e87a8a3e5d11d7de1231c22a07e2e84194ea7fb2f9`,
+  size: 233 KiB)
+  Contains: rank0/rank1 JSONL (attempt22 + diag20), analysis CSV, full
+  and tail Docker logs, inference test output, key log excerpts, patched
+  source files, Dockerfile, image inspect, post-startup memory snapshot,
+  pre-reboot state.
+
+- **spark02 tarball** (lost on reboot; homeserver copy is authoritative):
+  `/tmp/diag-spark02-attempt22-final.tar.gz`
+  (SHA256: `c70cd5abc2d765d7a0fcf561f653a1400b32a0dbe0d9bbcc9bdcb35557c0866c`)
+
+- **spark01 tarball** (lost on reboot; homeserver copy is authoritative):
+  `/tmp/diag-spark01-attempt22-final.tar.gz`
+  (SHA256: `15ec4228625937fcd73cf9627c58b2dda2c9c8372dd462a9e5ef70d54972896e`)
+
+- **Diagnostic image:**
+  `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-attempt22-empty-cache-per-modelopt-moe-rank1-delay90`
+  Image ID: `sha256:fb53f798e57ce5df0fec78b20ab370dcae5da9bf715be9d36e1ce8f9918fb248`
+  (identical on spark01 and spark02)
+
+- **Env file (untracked):**
+  `.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-attempt22-empty-cache-debug`
+
+### 30.14 Safety and cleanup
+
+Both nodes were rebooted after all artifacts were preserved.
+
+| Node | MemAvailable before reboot | MemAvailable after reboot |
+|---|---|---|
+| spark02 | ≈ 38 GiB | ≈ 118.0 GiB |
+| spark01 | ≈ 40 GiB | ≈ 117.7 GiB |
+
+Kernel (`6.17.0-1021-nvidia`) and driver (`610.43.02`) were confirmed
+unchanged on both nodes.  No experiment containers or orphan processes
+remained after cleanup.  Image parity of the diagnostic image was
+confirmed on both nodes post-reboot.
