@@ -6,11 +6,22 @@
 # configs, processors) is already present in vLLM 0.22.1. Only step3p7.py
 # (the thin wrapper) and its registry entry were missing.
 #
-# Build tag : vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7
+# Patches applied (in order):
+#   1. patch_registry_step3p7.py     — add Step3p7 to vLLM model registry
+#   2. patch_step3p7_nvfp4_input_scale.py — fix NVFP4 MoE input_scale loading
+#   3. patch_step3p7_modelopt_cache_release.py — opt-in per-module cache
+#      release to prevent cumulative caching-allocator growth during NVFP4
+#      MARLIN post-load conversion on UMA devices (GB10).
+#      Controlled by VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE (default: 0).
+#
+# Build tag : vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release
 # Build host: spark01 or spark02 (aarch64 GB10/SM121)
 # =============================================================================
 
 FROM ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022
+
+# Build tag produced by this Dockerfile (informational only; set with -t at build time).
+# Use: vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release
 
 COPY patches/step3p7.py \
      /usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/step3p7.py
@@ -24,3 +35,11 @@ RUN python3 /tmp/patch_registry_step3p7.py && rm /tmp/patch_registry_step3p7.py
 COPY patches/patch_step3p7_nvfp4_input_scale.py /tmp/patch_step3p7_nvfp4_input_scale.py
 
 RUN python3 /tmp/patch_step3p7_nvfp4_input_scale.py && rm /tmp/patch_step3p7_nvfp4_input_scale.py
+
+# Add opt-in per-module CUDA cache release after ModelOpt NVFP4 MoE conversion.
+# Prevents cumulative caching-allocator reserved-pool growth on UMA devices (GB10).
+# Feature is disabled by default; enable with VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE=1.
+# See patches/patch_step3p7_modelopt_cache_release.py for details.
+COPY patches/patch_step3p7_modelopt_cache_release.py /tmp/patch_step3p7_modelopt_cache_release.py
+
+RUN python3 /tmp/patch_step3p7_modelopt_cache_release.py && rm /tmp/patch_step3p7_modelopt_cache_release.py
