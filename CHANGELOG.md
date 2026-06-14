@@ -4,6 +4,46 @@ All notable changes to `vllm-spark` (GHCR image + repo presets). Most recent on
 top. See `git log` for the full commit history; this file is curated to describe
 what users see (image tag, behavior, breaking changes) rather than every commit.
 
+## `v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release` — Step-3.7-Flash validated NVFP4 image (2026-06-14)
+
+GHCR immutable tag:
+`ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release`
+
+### Step-3.7-Flash FP8 serving (TP=2, dual DGX Spark GB10)
+
+- **What**: Step-3.7-Flash (198B sparse MoE VLM) FP8 serving on dual DGX Spark GB10,
+  TP=2 via Ray. Preset: `presets/step37-flash-fp8-tp2.env`. Image:
+  `v022-d568-ngc2605-tx5102-vllm022-step3p7`.
+- **Patches**: `patch_registry_step3p7.py` (model class registration).
+- **Operational limit**: `MAX_NUM_SEQS=1` enforced by GB10 121 GiB UMA memory ceiling during
+  FP8 warmup.
+- **Reference**: [`docs/step3.7-flash-tp2.md`](docs/step3.7-flash-tp2.md).
+
+### Step-3.7-Flash NVFP4 TP=2/EP=2 serving via ModelOpt quantization
+
+- **What**: Step-3.7-Flash-NVFP4 serving on dual DGX Spark GB10, TP=2 EP=2 via Ray.
+  Preset: `presets/step37-flash-nvfp4-tp2.env`. Image:
+  `v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release`.
+- **Patches**:
+  - `patch_step3p7_nvfp4_input_scale.py`: adds missing `.input_scale` entries to
+    `expert_params_mapping`; prevents NaN logits on all NVFP4 MoE layers.
+  - `patch_step3p7_modelopt_cache_release.py`: feature-gated downstream workaround for
+    cumulative CUDA caching-allocator reserved-memory growth during ModelOpt NVFP4 MoE
+    MARLIN post-load conversion. Applies `torch.cuda.empty_cache()` after each
+    `ModelOptNvFp4FusedMoE` module conversion (42/42 modules). Enabled via
+    `VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE=1` in the NVFP4 preset.
+- **Upstream relation**: vLLM PR #45179 merged to upstream main; **not included in
+  v0.23.0**. First released version not yet confirmed. Downstream patch targets
+  `ModelOptNvFp4FusedMoE` specifically (unconditional per-module release); upstream
+  `release_device_memory_under_pressure()` is generic and threshold-conditional.
+- **Formal acceptance**: 781,611 KV tokens generated, all HTTP 200, 5-minute
+  continuous stability test. No NaN logits, no OOM, no inference errors.
+- **Operational note**: Post-shutdown UMA residual (~19 GiB) remains on GB10 after
+  container stop. Reboot is required to recover the full UMA pool before the next
+  cold start.
+- **Reference**: [`docs/step3.7-flash-tp2.md`](docs/step3.7-flash-tp2.md),
+  [`docs/diagnostics/dgx-spark-uma-memory-freeze.md`](docs/diagnostics/dgx-spark-uma-memory-freeze.md).
+
 ## `v022-d568-fi-aot` — FlashInfer AOT kernel prebake (2026-06-11)
 
 - **What**: New optional image `v022-d568-fi-aot`, a drop-in replacement for
