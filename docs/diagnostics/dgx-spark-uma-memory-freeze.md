@@ -310,16 +310,22 @@ sudo systemctl reboot
 
 | File | Purpose |
 |---|---|
-| [`.env.step37-fi-aot-tp2-ep-debug`](../../.env.step37-fi-aot-tp2-ep-debug) | EP-enabled baseline reproduction (util=0.85) |
-| [`.env.step37-fi-aot-tp2-ep-off-debug`](../../.env.step37-fi-aot-tp2-ep-off-debug) | `--enable-expert-parallel` removed — EP isolation |
-| [`.env.step37-fi-aot-tp2-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ray-tuned-debug) | Ray dashboard off + object-store bound + memory monitor re-enabled |
-| [`.env.step37-fi-aot-tp2-low-kv-debug`](../../.env.step37-fi-aot-tp2-low-kv-debug) | Reduced `MAX_MODEL_LEN`/`MAX_NUM_SEQS`/`MAX_NUM_BATCHED_TOKENS`, same util |
-| [`.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug) | Attempt 10b: low-kv-debug's reduced context/batch knobs + ray-tuned-debug's Ray object-store/dashboard/memory-monitor knobs, combined |
-| [`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug) | Attempt 11A: ep-off-debug + ray-tuned-debug's Ray memory-monitor safety net, combined |
+| `.env.step37-fi-aot-tp2-ep-debug` | EP-enabled baseline reproduction (util=0.85) |
+| `.env.step37-fi-aot-tp2-ep-off-debug` | `--enable-expert-parallel` removed — EP isolation |
+| `.env.step37-fi-aot-tp2-ray-tuned-debug` | Ray dashboard off + object-store bound + memory monitor re-enabled |
+| `.env.step37-fi-aot-tp2-low-kv-debug` | Reduced `MAX_MODEL_LEN`/`MAX_NUM_SEQS`/`MAX_NUM_BATCHED_TOKENS`, same util |
+| `.env.step37-fi-aot-tp2-low-kv-ray-tuned-debug` | Attempt 10b: low-kv-debug's reduced context/batch knobs + ray-tuned-debug's Ray object-store/dashboard/memory-monitor knobs, combined |
+| `.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug` | Attempt 11A: ep-off-debug + ray-tuned-debug's Ray memory-monitor safety net, combined |
 
 All six are **disposable/debug** — not promoted/stable presets. None of
 them are claimed to fix the underlying issue; they exist to narrow down
 *where* the ~20GB+ growth comes from.
+
+> **Note:** These env files are host-specific diagnostic artifacts and are not
+> tracked in the repository. Local copies are preserved under
+> `.local/env/step37/` on the original host. To reproduce, derive from
+> `presets/step37-flash-nvfp4-tp2.env` and apply the configuration delta
+> documented for each Attempt below.
 
 See §9 (Attempt 09 results), §10 (Attempt 10 plan), §11 (Attempt 10
 results) and §12 (Attempt 11 plan) below for the most recent findings and
@@ -688,7 +694,7 @@ collapse, independent of the Ray safety net.
 
 Based on `.env.step37-fi-aot-tp2-ep-off-debug` (§8) +
 the Attempt 10b Ray-tuned knobs above, see
-[`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug)
+`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`
 for the full file and rationale. `--enable-expert-parallel` is removed (as
 in `ep-off-debug`), `--enforce-eager` is retained, and
 `MAX_MODEL_LEN`/`MAX_NUM_SEQS`/`MAX_NUM_BATCHED_TOKENS` are left at
@@ -781,7 +787,7 @@ disable):
 
 **Purpose:** §12A's EP-off + Ray-tuned isolation at
 `GPU_MEMORY_UTILIZATION=0.85`
-([`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug)),
+(`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`),
 to determine whether `--enable-expert-parallel` (EP all-to-all / MoE
 expert-routing workspace) is required to trigger the ~6-minute delayed
 host-memory decline seen in Attempts 09 and 10b. `vm.min_free_kbytes` was
@@ -932,9 +938,9 @@ keeping everything else identical to Attempt 11A (EP disabled,
 beforehand).
 
 **Env used:**
-[`.env.step37-fi-aot-tp2-ep-off-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-kv8g-debug)
+`.env.step37-fi-aot-tp2-ep-off-ray-tuned-kv8g-debug`
 -- identical to
-[`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug)
+`.env.step37-fi-aot-tp2-ep-off-ray-tuned-debug`
 (Attempt 11A) plus one added arg:
 
 ```
@@ -1095,9 +1101,9 @@ original EP-on host-freeze/Ray-OOM failure (§1), or whether EP-on
 introduces an additional, independent memory-pressure path.
 
 **Env used:**
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`
 -- identical to Attempt 12's
-[`.env.step37-fi-aot-tp2-ep-off-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-off-ray-tuned-kv8g-debug)
+`.env.step37-fi-aot-tp2-ep-off-ray-tuned-kv8g-debug`
 plus `--enable-expert-parallel` re-enabled. Configuration:
 
 - `--enable-expert-parallel` (EP on)
@@ -1278,9 +1284,9 @@ change alters the EP-on post-weight-load RSS spike. All other Attempt 13
 conditions are kept unchanged.
 
 **Env used:**
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-cutlass-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-cutlass-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-cutlass-debug`
 -- identical to Attempt 13's
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`
 plus `--moe-backend cutlass` added to `VLLM_EXTRA_ARGS`. Configuration:
 
 - `--enable-expert-parallel` (EP on)
@@ -1392,9 +1398,9 @@ can support EP=2 and reduce (or otherwise change) the post-weight-load MoE
 initialization RSS spike that caused Attempt 13's Ray OOM.
 
 **Env used:**
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-flashinfer-cutlass-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-flashinfer-cutlass-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-flashinfer-cutlass-debug`
 -- identical to Attempt 13's
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`
 plus `--moe-backend flashinfer_cutlass` added to `VLLM_EXTRA_ARGS`.
 Configuration:
 
@@ -1550,9 +1556,9 @@ footprint. Attempt 15A reduces `RAY_OBJECT_STORE_MEMORY_BYTES` from 4 GiB to
 crossing the 0.90 threshold.
 
 **Env used:**
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug`
 -- identical to Attempt 13's
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-debug`
 except for a single changed variable:
 
 | Variable | Attempt 13 | Attempt 15A |
@@ -1752,9 +1758,9 @@ margin absorbs, or a sustained growth that simply consumes the extra margin
 and recurs.
 
 **Env used:**
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-threshold0905-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-threshold0905-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-threshold0905-debug`
 -- identical to Attempt 15A's
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug`
 except for a single changed variable:
 
 | Variable | Attempt 15A | Attempt 15B |
@@ -2001,9 +2007,9 @@ service). Deployment order is also swapped: the new worker (spark01) is
 started first, then the new head (spark02) ~15s later.
 
 **Env used:**
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-debug`
 -- identical to Attempt 15A's
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-debug`
 except for the role-swap variable:
 
 | Variable | Attempt 15A | Attempt 16A |
@@ -2467,7 +2473,7 @@ existing, pre-Attempt-16A condition and was deliberately left unchanged in
 this attempt.
 
 **Env used:** the same
-[`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-debug`](../../.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-debug)
+`.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-role-swap-debug`
 as Attempt 16A, unmodified. All other settings unchanged from Attempt 16A:
 
 - `--enable-expert-parallel` (EP on), `TP_SIZE=2`, `DISTRIBUTED_BACKEND=ray`
