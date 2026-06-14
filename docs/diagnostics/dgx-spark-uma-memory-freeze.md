@@ -4460,3 +4460,182 @@ Image ID (spark01 = spark02):
 - **Candidate image** (preserved, not promoted to production tag):
   `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release-candidate`
   Image ID: `sha256:8721ee5b68914b96e30f95d54b2f98983407c398a43962d94adad11b859c1708`
+
+---
+
+## Section 32 — Formal repository image acceptance (2026-06-14)
+
+### 32.1 Purpose
+
+Final acceptance test of the image produced by the formal repository build
+path (`dockerfiles/active/Dockerfile.step3p7`, git commit `15b1895`).
+This run uses the committed preset (`presets/step37-flash-nvfp4-tp2.env`)
+with no ad-hoc modifications. The goal is to confirm that the patch-script
+approach produces a functionally equivalent image to the production-candidate
+validated in §31.
+
+### 32.2 Image and patch verification
+
+| Check | Result |
+|---|---|
+| Image tag | `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release` |
+| Image ID (spark01 = spark02) | `sha256:6e62e76c35a0fa57f669f4d5e0cc9fdcdd817414af97d720020963fd07f58777` |
+| Layer count vs base | 108 layers (base 106 + COPY + RUN = +2 expected) |
+| Git commit | `15b1895 fix(step37): release ModelOpt MoE conversion cache` |
+| Patched `utils.py` SHA256 (formal image) | `411674b6705aa439f3fc6a8b9c9391f8c532eec1d0ae9f6f7ec4feef84fd9b3d` |
+| Functional gate `_SPARK_EC_ENABLED` | PASS |
+| Env var `VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE` | PASS |
+| `empty_cache()` call | PASS |
+| Class guard `ModelOptNvFp4FusedMoE` | PASS |
+| Module guard `"modelopt" in __module__` | PASS |
+| Enable log present | PASS |
+| Summary log present | PASS |
+| No `gc.collect`, no `cuda.synchronize`, no `time.sleep` | PASS |
+
+**Note on SHA256 difference from §31**: The production-candidate image used a
+directly-copied pre-patched file; the formal image uses the patch script
+(`patch_step3p7_modelopt_cache_release.py`) applied to the base image's
+`utils.py`.  The resulting bytes differ (different approach, different
+intermediate whitespace), but all 12 functional checks pass.
+
+### 32.3 Baseline
+
+Both nodes freshly rebooted after §31 shutdown.
+
+| Node | Role | kernel | driver | MemAvailable |
+|---|---|---|---|---|
+| spark02 | head / rank0 | 6.17.0-1021-nvidia | 610.43.02 | 117 GiB |
+| spark01 | worker / rank1 | 6.17.0-1021-nvidia | 610.43.02 | 117 GiB |
+
+Swap used: 0 on both. No experiment containers running.
+
+### 32.4 Acceptance env
+
+File: `.env.step37-modelopt-cache-release-acceptance`
+Generated from `presets/step37-flash-nvfp4-tp2.env` with host-specific values:
+
+```
+VLLM_IMAGE=vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release
+MODEL_PATH=/home/bjk110/Documents/Models/stepfun-ai/Step-3.7-Flash-NVFP4
+HEAD_ROCE_IP=10.10.10.2  WORKER_ROCE_IP=10.10.10.1
+ROCE_IF_NAME=enp1s0f0np0  IB_HCA_NAME=rocep1s0f0  RAY_PORT=6379
+GPU_MEMORY_UTILIZATION=0.88  MAX_MODEL_LEN=8192  MAX_NUM_SEQS=4
+VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE=1
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False
+```
+
+### 32.5 Startup results
+
+Worker (spark01) started first, then head (spark02).
+
+**Cache-release hook (both ranks confirmed)**:
+
+| Rank | Node | Modules flushed | Cumulative time |
+|---|---|---|---|
+| rank0 | spark02 (head) | 42 / 42 | 427 ms |
+| rank1 | spark01 (worker) | 42 / 42 | 297 ms |
+
+Both well under the 500 ms per-rank limit documented in the preset.
+
+**Memory and KV cache**:
+
+| Metric | Value |
+|---|---|
+| Model loading peak (both ranks) | 58.58 GiB |
+| Available KV cache (rank0/spark02) | 37.33 GiB |
+| Available KV cache (rank1/spark01) | 35.83 GiB |
+| GPU KV cache capacity | 781,611 tokens |
+| Application startup complete | yes |
+| RestartCount (head) | 0 |
+| RestartCount (worker) | 0 |
+| OOMKilled | false (both) |
+
+### 32.6 API acceptance
+
+All tests performed from spark02 localhost immediately after startup complete.
+
+| Endpoint | Method | Input | HTTP status | Outcome |
+|---|---|---|---|---|
+| `/health` | GET | — | 200 | PASS |
+| `/v1/models` | GET | — | 200 | model ID `stepfun-ai/Step-3.7-Flash-NVFP4` |
+| `/v1/completions` | POST | `"2+2="`, max_tokens=8 | 200 | text returned; fullwidth encoding issue (known pre-existing, §31 note) |
+| `/v1/chat/completions` | POST | short English prompt, max_tokens=512 | 200 | finish_reason=stop, content returned; BPE markers in output (known pre-existing, §31 note) |
+
+### 32.7 5-minute stability
+
+Interval: 30 s, 10 checks.
+
+| Check | head RC | head OOMKilled | worker RC | worker OOMKilled | /health | head MemAvail | worker MemAvail |
+|---|---|---|---|---|---|---|---|
+| T+30s | 0 | false | 0 | false | 200 | 14 GiB | 17 GiB |
+| T+60s | 0 | false | 0 | false | 200 | 14 GiB | 17 GiB |
+| T+90s | 0 | false | 0 | false | 200 | 14 GiB | 17 GiB |
+| T+120s | 0 | false | 0 | false | 200 | 14 GiB | 17 GiB |
+| T+150s | 0 | false | 0 | false | 200 | 14 GiB | 17 GiB |
+| T+180s | 0 | false | 0 | false | 200 | 14 GiB | 17 GiB |
+| T+210s | 0 | false | 0 | false | 200 | 14 GiB | 17 GiB |
+| T+240s | 0 | false | 0 | false | 200 | 14 GiB | 17 GiB |
+| T+270s | 0 | false | 0 | false | 200 | 14 GiB | 17 GiB |
+| T+300s | 0 | false | 0 | false | 200 | 14 GiB | 17 GiB |
+
+Result: **10/10 PASS**
+
+**Note on MemAvail during run**: The formal preset uses `GPU_MEMORY_UTILIZATION=0.88`
+without an explicit KV memory cap, so vLLM claims ~107 GiB of the 121.63 GiB UMA
+pool.  The remaining 14–17 GiB available during the run is expected for this
+configuration and does not indicate memory pressure (no OOM, no restart, no swap
+use, health 200 throughout).
+
+### 32.8 Acceptance judgment
+
+**PASS — Success with pre-existing tokenizer limitation**
+
+The formal repository image is functionally equivalent to the
+production-candidate validated in §31:
+
+- Cache-release hook fires correctly: 42/42 modules per rank, overhead <0.5 s
+- No OOM, no restart, health 200 for the full 5-minute stability window
+- All API endpoints respond HTTP 200 with model output
+
+The tokenizer/BPE-marker issues observed in §31 persist and are unchanged by
+this release.  They are independent of the ModelOpt cache-release workaround
+and documented separately in `/tmp/step37-tokenizer-followup.md`.
+
+### 32.9 Shutdown and UMA recovery
+
+Graceful stop: head first, then worker (`docker compose stop`), then `rm -f`.
+
+| Time | spark02 (head) MemAvail | spark01 (worker) MemAvail |
+|---|---|---|
+| T0 (before stop) | 14 GiB | 17 GiB |
+| T+15s | 19 GiB | 19 GiB |
+| T+60s | 19 GiB | 19 GiB |
+| T+120s | 19 GiB | 19 GiB |
+| T+300s | 19 GiB | 19 GiB |
+
+**Classification: Residual** (< 90 GiB threshold).  No spontaneous recovery
+observed.  Recovery method: `sudo systemctl reboot` on both nodes.
+
+Post-reboot (both nodes, uptime < 300 s):
+
+| Node | MemAvailable post-reboot |
+|---|---|
+| spark02 | 118 GiB |
+| spark01 | 117 GiB |
+
+Full UMA recovery confirmed.
+
+### 32.10 Operational note
+
+The formal preset (`presets/step37-flash-nvfp4-tp2.env`) targets
+`GPU_MEMORY_UTILIZATION=0.88`, consuming ~107 GiB of the 121.63 GiB GB10
+UMA pool.  At this utilization level:
+
+- Runtime MemAvail is ~14–17 GiB (OS + CPU use only)
+- Post-shutdown UMA residue is ~102 GiB (Residual class)
+- **Reboot is always required after each Step-3.7-Flash-NVFP4 serving session**
+  to recover the GB10 UMA pool before the next workload
+
+This is consistent with the documented GB10 UMA residue behaviour (§6, §14).
+The cache-release workaround itself does not affect the shutdown residue —
+the residue is an NVIDIA driver characteristic, not a vLLM allocator artefact.
