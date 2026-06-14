@@ -4211,3 +4211,252 @@ Kernel (`6.17.0-1021-nvidia`) and driver (`610.43.02`) were confirmed
 unchanged on both nodes.  No experiment containers or orphan processes
 remained after cleanup.  Image parity of the diagnostic image was
 confirmed on both nodes post-reboot.
+
+---
+
+## 31. Production-candidate validation without diagnostic instrumentation (2026-06-14)
+
+### 31.1 Purpose
+
+Attempt 22 (§ 30) confirmed that per-module `torch.cuda.empty_cache()` after
+each `ModelOptNvFp4FusedMoE.process_weights_after_loading()` call eliminates
+the cumulative reserved-pool staircase and allows the 42-module NVFP4→MARLIN
+conversion to complete on dual GB10 without a Ray OOM kill.
+
+Section 31 documents the non-instrumented production-candidate validation: the
+same fix applied to the clean non-debug base image (`-step3p7`, no artificial
+rank delay, no durable JSONL writers, no memory snapshots) and validated
+end-to-end from startup to HTTP inference on the real serving stack.
+
+### 31.2 Build differences from Attempt 22
+
+| Dimension | Attempt 22 diagnostic image | Production-candidate image |
+|---|---|---|
+| Base image | `-step3p7` | `-step3p7` (identical) |
+| Artificial rank delay | 90 s baked in | None |
+| Durable JSONL writers | `diag20` + `diag22` | None |
+| Memory-guard integration | Yes (`VLLM_DIAG_*`) | None |
+| EC_before / EC_after markers | Yes | None |
+| G/L/MO_ markers | Yes | None |
+| Feature flag | Always-on | `VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE=1` (opt-in) |
+| Per-module INFO log | Yes (every module) | No (DEBUG only) |
+| Rank-level enable log | No | Yes (1 × per rank) |
+| Rank-level summary log | Yes | Yes (1 × per rank) |
+
+The only functional change from the validated Attempt 22 behaviour is the
+removal of all diagnostic instrumentation.  The hook location, timing, and
+class condition are identical.
+
+### 31.3 Hook specification
+
+The cache-release hook is inserted in
+`vllm/model_executor/model_loader/utils.py`,
+function `process_weights_after_loading()`, immediately after the inner call:
+
+```python
+with device_loading_context(module, target_device):
+    quant_method.process_weights_after_loading(module)
+# ← hook fires here, after method returned, after parameter replacement,
+#   after kernel construction, before the next module iteration
+```
+
+Activation conditions (both must hold):
+
+```python
+type(quant_method).__name__ == "ModelOptNvFp4FusedMoE"
+and "modelopt" in type(quant_method).__module__
+```
+
+The dual condition guards against name-substring collision with other quant
+methods.  Direct import of `ModelOptNvFp4FusedMoE` is avoided because
+`utils.py` is loaded early in the vLLM import chain; a cross-package import
+would risk circular dependency.
+
+### 31.4 Feature flag
+
+```
+VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE
+```
+
+| Value | Behaviour |
+|---|---|
+| Unset or `"0"` | Disabled (default; upstream-equivalent) |
+| `"1"` | Enabled |
+| Any other value | Warning printed to stderr, feature disabled |
+
+The flag is evaluated once at module import time.  Default is disabled so the
+image is upstream-equivalent when the flag is absent.
+
+### 31.5 Image details
+
+| Property | Value |
+|---|---|
+| Tag | `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release` |
+| Image ID | `sha256:6e62e76c35a0fa57f669f4d5e0cc9fdcdd817414af97d720020963fd07f58777` |
+| Base | `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7` (`sha256:3928025a0c8d`) |
+| vLLM version | 0.22.1 |
+| torch | 2.12.0a0+5aff3928d8.nv26.05 |
+| FlashInfer | 0.6.12 |
+| modelopt | 0.43.0 |
+| Parity | Image ID identical on spark01 and spark02 |
+
+Patch applied by `patches/patch_step3p7_modelopt_cache_release.py` (SHA256:
+`1748834ac9749e6c57029321ad3ccdd8a6512ba1df460e740371d2766acac62e`).
+
+Source before patching SHA256 (upstream utils.py):
+`55b03cc8443e66f482340790a42b16fa3be4df692eb9db42e0103f52e266dc80`
+
+Source after patching SHA256:
+`9bab6e58dee16dfe7491aaacd5b973ff79b837789408101cd226ff6895016ba2`
+
+### 31.6 Startup results
+
+| Metric | Rank 0 (spark02) | Rank 1 (spark01) |
+|---|---|---|
+| Workaround enabled log | `02:19:14 UTC` | `02:19:57 UTC` |
+| Modules flushed | **42 / 42** | **42 / 42** |
+| Cumulative cache-release time | **402 ms** | **279 ms** |
+| KV cache allocated | 8.0 GiB (fixed) | 8.0 GiB (fixed) |
+| Initial free memory before KV | 112.11 GiB | 115.2 GiB |
+| GPU KV token capacity | 174,504 tokens | 174,504 tokens |
+| Ray OOM during conversion | None | None |
+| Application startup complete | **02:24:32 UTC** | — (worker) |
+
+Container start time: spark01 worker `02:11:17 UTC`, spark02 head `02:11:24 UTC`.
+Total time from container start to `Application startup complete`: ≈ 13 min 8 s.
+
+### 31.7 API verification
+
+All requests issued from `127.0.0.1:8000` on spark02 (host-network mode).
+Served model: `stepfun-ai/Step-3.7-Flash-NVFP4`.
+
+| Endpoint | HTTP status | Notes |
+|---|---|---|
+| `GET /health` | **200** | Empty body, as expected |
+| `GET /v1/models` | **200** | Model list returned correctly |
+| `POST /v1/completions` | **200** | `prompt_tokens=5, completion_tokens=8` |
+| `POST /v1/chat/completions` | **200** | `prompt_tokens=22, completion_tokens=32` |
+
+No engine death, no worker loss, no Ray OOM on any request.
+
+### 31.8 Five-minute stability observation
+
+Observation window: `03:12:19 UTC` to `03:17:09 UTC` (10 checks, 30 s interval).
+
+| Check | spark02 MemAvail | spark01 MemAvail | `/health` | Head RC | Worker RC |
+|---|---|---|---|---|---|
+| 1/10 | 38.8 GiB | 40.8 GiB | 200 | 0 | 0 |
+| 2/10 | 38.8 GiB | 40.8 GiB | 200 | 0 | 0 |
+| 3/10 | 38.8 GiB | 40.8 GiB | 200 | 0 | 0 |
+| 4/10 | 38.8 GiB | 40.8 GiB | 200 | 0 | 0 |
+| 5/10 | 38.8 GiB | 40.8 GiB | 200 | 0 | 0 |
+| 6/10 | 38.8 GiB | 40.8 GiB | 200 | 0 | 0 |
+| 7/10 | 38.8 GiB | 40.8 GiB | 200 | 0 | 0 |
+| 8/10 | 38.8 GiB | 40.8 GiB | 200 | 0 | 0 |
+| 9/10 | 38.8 GiB | 40.8 GiB | 200 | 0 | 0 |
+| 10/10 | 38.8 GiB | 40.8 GiB | 200 | 0 | 0 |
+
+MemAvailable stable (no monotonic decrease).  OOMKilled=false throughout.
+Delayed Ray OOM: none.
+
+### 31.9 Classification
+
+**Production-candidate success with separate tokenizer and output-format
+limitations** (see § 31.10).
+
+All eleven success criteria satisfied:
+
+1. `Application startup complete` ✓
+2. Both ranks: 42/42 cache-release summary confirmed ✓
+3. Fixed KV 8 GiB allocation ✓
+4. KV capacity 174,504 tokens confirmed ✓
+5. `/health` HTTP 200 ✓
+6. `/v1/completions` HTTP 200 ✓
+7. `/v1/chat/completions` HTTP 200 ✓
+8. Five minutes: zero container restarts ✓
+9. Five minutes: Ray/vLLM processes survived ✓
+10. Delayed Ray OOM: none ✓
+11. MemAvailable: no dangerous monotonic decrease ✓
+
+The chat completion final-answer field (`content`) was `null` because
+`max_tokens=32` was exhausted during the reasoning phase; this is a budget and
+output-format limitation, not a cache-release failure.
+
+### 31.10 Separate limitations (not cache-release failures)
+
+The following issues were observed but are independent of the cache-release
+workaround:
+
+1. **Completion Unicode/fullwidth corruption**: `/v1/completions` output
+   `"4ï¼Į4+2=6ï¼Į"` contains mojibake of fullwidth comma characters.
+   Root cause not yet confirmed; likely a tokenizer decoding path issue.
+
+2. **Reasoning BPE markers in chat output**: The `reasoning` field in
+   `/v1/chat/completions` responses contains raw BPE space markers (`Ġ`, `Ċ`)
+   that should be decoded to regular spaces and newlines.
+
+3. **Chat completion `content=null`**: With `max_tokens=32`, the step3p5
+   reasoning parser exhausted the token budget during the thinking phase
+   before the model emitted the final answer.  Increasing `max_tokens`
+   resolves this.  Engine and workers were healthy throughout.
+
+These three issues are present in the non-instrumented image and are not
+introduced by the cache-release patch.  They require a separate investigation
+track.
+
+### 31.11 Shutdown UMA recovery
+
+Pre-shutdown MemAvailable: spark02 ≈ 38.8 GiB, spark01 ≈ 40.8 GiB.
+
+Post-`docker stop` timeline (T0 = `03:31:55 UTC`):
+
+| Checkpoint | spark02 MemAvail | spark01 MemAvail | vLLM/Ray procs |
+|---|---|---|---|
+| T0 (`03:32:21`) | 46.4 GiB | 46.0 GiB | 0 |
+| T+15 s (`03:32:53`) | 46.4 GiB | 46.0 GiB | 0 |
+| T+60 s (`03:32:55`) | 46.4 GiB | 46.0 GiB | 0 |
+| T+120 s (`03:33:55`) | 46.4 GiB | 46.0 GiB | 0 |
+
+Recovery classification: **Residual UMA state** (< 90 GiB at T+120 s).
+Consistent with the known GB10 driver behaviour documented in § 19.
+
+Both nodes were rebooted (`sudo sync && sudo systemctl reboot`).
+
+Post-reboot state (`03:39:32 UTC`):
+
+| Node | Kernel | Driver | MemAvailable | RDMA |
+|---|---|---|---|---|
+| spark02 | 6.17.0-1021-nvidia | 610.43.02 | 117.9 GiB | rocep1s0f0 ACTIVE |
+| spark01 | 6.17.0-1021-nvidia | 610.43.02 | 117.7 GiB | rocep1s0f0 ACTIVE |
+
+### 31.12 Repository integration
+
+The cache-release hook was promoted to the repository production build path:
+
+- **Patch script**: `patches/patch_step3p7_modelopt_cache_release.py`
+- **Dockerfile**: `dockerfiles/active/Dockerfile.step3p7` — patch applied as
+  step 3 in the chain (after registry and input_scale patches)
+- **Preset env**: `presets/step37-flash-nvfp4-tp2.env` — updated to reference
+  the new image tag and include both required env vars
+- **docker-compose.yml**: `VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE`
+  passthrough added to both `head` (line 36) and `worker` (line 215) service
+  environment sections
+
+New formal image tag:
+`vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release`
+
+Image ID (spark01 = spark02):
+`sha256:6e62e76c35a0fa57f669f4d5e0cc9fdcdd817414af97d720020963fd07f58777`
+
+### 31.13 Artifacts
+
+- **Runtime artifacts**: `/tmp/step37-production-candidate-final/`
+  (homeserver; full Docker logs, container inspect, API responses,
+  five-minute stability logs, image inspect, process lists, meminfo)
+
+- **Production-candidate env file (untracked)**:
+  `.env.step37-fi-aot-tp2-ep-ray-tuned-kv8g-objectstore1g-modelopt-cache-release-candidate`
+
+- **Candidate image** (preserved, not promoted to production tag):
+  `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release-candidate`
+  Image ID: `sha256:8721ee5b68914b96e30f95d54b2f98983407c398a43962d94adad11b859c1708`
