@@ -44,6 +44,35 @@ maintainer should reproduce the failure case before dropping the patch.
 | `patch_step3p7_nvfp4_input_scale.py` | Adds missing `.input_scale` entries to `expert_params_mapping` for ModelOpt NVFP4 quantization. Without this, `w13/w2_input_scale` tensors are uninitialized, producing NaN logits on every NVFP4 MoE layer call | Step-3.7-Flash MoE layer weights loader | Not upstreamed | Remove if ModelOpt NVFP4 input-scale handling is corrected upstream or in a future Step-3.7-Flash checkpoint release |
 | `patch_step3p7_modelopt_cache_release.py` | Prevents cumulative CUDA caching-allocator reserved-memory growth during ModelOpt NVFP4 MoE MARLIN post-load conversion on unified-memory (UMA) devices. Calls `torch.cuda.empty_cache()` after the MARLIN conversion of each `ModelOptNvFp4FusedMoE` module (42/42 modules on Step-3.7-Flash). Feature-gated via env var `VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE` (default: disabled; enabled by the Step-3.7 NVFP4 preset). Upstream relation: vLLM PR #45179 (merged to upstream main; **not included in v0.23.0**; first released version not yet confirmed). Downstream targets `ModelOptNvFp4FusedMoE` specifically with unconditional per-module release; upstream `release_device_memory_under_pressure()` is generic across quantization methods and conditional on a UMA pressure threshold | `ModelOptNvFp4FusedMoE` MARLIN conversion path | PR #45179 merged to vLLM main; not yet in any released vLLM tag | Remove only after rebasing the Step-3.7 image onto a released vLLM version that contains PR #45179 **and** validating Step-3.7-Flash-NVFP4 TP=2 EP=2 without the downstream patch |
 
+## Step-3.7-Flash-NVFP4 native MTP patches (Candidate 1, 2026-06-15)
+
+Stacked on top of the production NVFP4 image
+(`ghcr.io/bjk110/vllm-spark@sha256:08ae8f2ab5597afd577977ce2700eff2cc024c3e6e781f6c8df6e1115963bf1b`)
+in `Dockerfile.step37-nvfp4-mtp-candidate1` as 6 sequential patches.  All 6
+were applied inside the candidate image
+(`vllm-spark:step37-nvfp4-mtp-candidate1-canonical`, sha256 `b25400c3013e`)
+and acceptance-tested on dual DGX Spark GB10 (spark01+spark02, TP=2 EP=2 mp
+backend) with `num_speculative_tokens=3`.
+
+| Patch file | Purpose | Affected class / file | Upstream status | Removal condition |
+|---|---|---|---|---|
+| `patch_step3p7_speculative_mtp.py` | Backport of vLLM commit `c621af16908f` (`hf_config_override()` lines 496-508): maps `step3p5`/`step3p7` outer configs to the `Step3p5MTP` draft architecture while preserving the outer ModelOpt `quantization_config` | `vllm/config/speculative.py` | Open (not in vLLM 0.22.1) | Merge into production NVFP4 image once upstream absorbs the step3p5/step3p7 MTP config mapping |
+| `patch_step3p7_mtp_hfconfig.py` | Promotes `hf_config.text_config` (inner `Step3p5Config`) to a top-level attribute on the `Step3p5AMultiTokenPredictor`, fixing a `AttributeError: 'Step3p7Config' has no attribute 'num_hidden_layers'` during MTP model init | `vllm/model_executor/models/step3p5_mtp.py` | Not upstreamed | Remove if Step3p5AMultiTokenPredictor is updated to handle VLM outer configs natively |
+| `patch_step3p7_mtp_draft_vllm_config.py` | In `SpecDecodeBaseProposer._get_model()`, overrides `model_config=draft_model_config` and forces `quant_config=None` so the MTP draft model is not given the NVFP4-packed parameter shapes that belong to the target model | `vllm/v1/spec_decode/llm_base_proposer.py` | Not upstreamed | Remove if vLLM properly separates draft model quantization config from target |
+| `patch_step3p7_mtp_speculators_local_path.py` | When `speculative_config.model` is already an absolute local path (not a Hub repo id), skips the Hub-format validation that raises `ValueError: Repo id must be in the form 'repo_name'` | `vllm/transformers_utils/config.py` | Not upstreamed | Remove if vLLM's speculator config loader accepts absolute paths natively |
+| `patch_step3p7_mtp_image_token_index.py` | Adds `Step3p7ForConditionalGeneration` to the list of model architectures that populate `image_token_index` from `hf_config.image_token_id`, fixing `AttributeError: 'Step3p7Config' object has no attribute 'image_token_index'` during draft proposer initialization | `vllm/v1/spec_decode/llm_base_proposer.py` | Not upstreamed | Remove if Step3p7 config is updated upstream to expose `image_token_index` |
+| `patch_step3p7_mtp_kv_cache_grouping.py` | Two-file fix for the `AssertionError: All drafting layers should belong to the same kv cache group` crash. **Root cause**: Step3p5 has 12 full-attention + 33 sliding-attention layers; adding 3 MTP sliding layers (indices 45-47) gives 36 sliding total. `_get_kv_cache_groups_uniform_page_size` uses round-robin (`layers[i::3]`) to distribute 36 sliding layers into 3 groups of 12, placing MTP layers into groups 0, 1, 2 respectively. `validate_same_kv_cache_group` then fails because `kv_cache_gid` differs across MTP layers. **Fix**: (1) stores `_eagle_draft_attn_layer_names` on `compilation_config` for debugging; (2) in `get_kv_cache_groups()` (EngineCore process), detects draft layers by `.layers.N.` index ≥ `hf_config.text_config.num_hidden_layers` (45) and moves all of them into a single dedicated KV cache group | `vllm/v1/core/kv_cache_utils.py`, `vllm/v1/spec_decode/llm_base_proposer.py` | Not upstreamed | Remove if vLLM's `_get_kv_cache_groups_uniform_page_size` or `validate_same_kv_cache_group` is updated to handle hybrid-attention models where spec-decode draft layers span multiple groups |
+
+### Acceptance test results (2026-06-15, sha256:b25400c3)
+
+- Image: `vllm-spark:step37-nvfp4-mtp-candidate1-canonical` (sha256 `b25400c3013e`)
+- Config: TP=2, EP=2, mp backend, `MAX_MODEL_LEN=32768`, `MAX_NUM_SEQS=4`, `GPU_MEM_UTIL=0.79`, `num_speculative_tokens=3`
+- KV cache: 1,063,006 tokens (32.44× at 32 KiB/request)
+- MTP metrics: 1353 drafts, 4059 draft tokens, 72 accepted (acceptance rate 1.77% — low due to reasoning model trace unpredictability)
+- Korean generation: `대한민국의 수도는 서울특별시입니다.` — PASS, no garbling
+- English generation: `4` (for "What is 2+2?") — PASS
+- Benchmark: depth sweep pp2048@d0/4096/8192/16384, tg32, runs3 — see `benchmarks/llama-benchy/results_step37-flash-nvfp4-tp2-mtp3-DEPTH.md`
+
 ## Conditional / opt-in patches (applied at runtime via `entrypoint.sh`)
 
 | Patch file | Purpose | Applies to | Required for | Upstream status | Removal condition |

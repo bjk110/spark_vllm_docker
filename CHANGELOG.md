@@ -4,6 +4,50 @@ All notable changes to `vllm-spark` (GHCR image + repo presets). Most recent on
 top. See `git log` for the full commit history; this file is curated to describe
 what users see (image tag, behavior, breaking changes) rather than every commit.
 
+## Step-3.7-Flash-NVFP4 native MTP speculative decoding — Candidate 1 acceptance (2026-06-15)
+
+**Candidate image**: `vllm-spark:step37-nvfp4-mtp-candidate1-canonical` (sha256 `b25400c3013e`)
+**Base**: `ghcr.io/bjk110/vllm-spark@sha256:08ae8f2ab5597afd577977ce2700eff2cc024c3e6e781f6c8df6e1115963bf1b`
+**Dockerfile**: `.local/dockerfiles/Dockerfile.step37-nvfp4-mtp-candidate1`
+
+Six patches (Patches 1-6) enable native MTP speculative decoding (`num_speculative_tokens=3`)
+for Step-3.7-Flash-NVFP4 on dual DGX Spark GB10 (TP=2 EP=2 mp backend).
+
+### Patches
+
+1. **`patch_step3p7_speculative_mtp.py`** — backport of vLLM commit `c621af16908f`:
+   maps `step3p5`/`step3p7` outer configs to `Step3p5MTP` draft architecture while
+   preserving the outer ModelOpt `quantization_config`.
+2. **`patch_step3p7_mtp_hfconfig.py`** — promotes `hf_config.text_config` (inner
+   `Step3p5Config`) to top-level on `Step3p5AMultiTokenPredictor`, fixing
+   `AttributeError: 'Step3p7Config' has no attribute 'num_hidden_layers'`.
+3. **`patch_step3p7_mtp_draft_vllm_config.py`** — forces `quant_config=None` in
+   `_get_model()` so the MTP draft model is not assigned NVFP4-packed parameter
+   shapes that belong to the target model.
+4. **`patch_step3p7_mtp_speculators_local_path.py`** — skips Hub-format validation
+   when `speculative_config.model` is already an absolute local path.
+5. **`patch_step3p7_mtp_image_token_index.py`** — adds `Step3p7ForConditionalGeneration`
+   to the architectures that populate `image_token_index` from `hf_config.image_token_id`.
+6. **`patch_step3p7_mtp_kv_cache_grouping.py`** — fixes `AssertionError: All drafting
+   layers should belong to the same kv cache group`. Root cause: 36 sliding layers
+   (33 target + 3 MTP) are distributed round-robin into 3 groups of 12, scattering
+   MTP layers across groups 0/1/2. Fix: in `get_kv_cache_groups()` (EngineCore process),
+   detect draft layers by `.layers.N.` index ≥ `text_config.num_hidden_layers` (45)
+   and consolidate them into a single dedicated KV cache group.
+
+### Acceptance results
+
+- Architecture: `Step3p5MTP` resolved, MTP lm_head/embedding shared ✓
+- KV cache: 1,063,006 tokens, 32.44× concurrency at 32 KiB/request ✓
+- Korean: `대한민국의 수도는 서울특별시입니다.` — PASS ✓
+- English: `4` (2+2) — PASS ✓
+- MTP activity: 1353 drafts, 4059 draft tokens, 72 accepted (1.77% rate) ✓
+- Benchmark: depth sweep — `benchmarks/llama-benchy/results_step37-flash-nvfp4-tp2-mtp3-DEPTH.md`
+- Note: low acceptance rate is characteristic of reasoning-trace generation
+  (Step-3.7-Flash produces long `<think>` traces that are difficult to speculate).
+
+---
+
 ## Preset: `qwen3.6-35b-a3b-fi-aot-tp2.env` — Qwen3.6-35B-A3B dual-node FI-AOT (2026-06-14)
 
 - **What**: New portable preset for `Qwen/Qwen3.6-35B-A3B` on dual DGX Spark GB10,
