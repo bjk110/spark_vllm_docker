@@ -685,12 +685,17 @@ correctness_check() {
 # Same 4 prompts as correctness_check() but max_tokens=2048 and 2 runs each.
 # Designed for Step-3.7-Flash reasoning model: short budgets exhaust the
 # <think> chain before the answer token, producing empty content (not garble).
-# Classification per run:
-#   PASS                    — expected answer found in content
-#   FAIL_WRONG_ANSWER       — non-empty content but expected pattern absent
-#   FAIL_GARBLE             — broken codepoints detected (garble test only)
-#   INCONCLUSIVE_OUTPUT_BUDGET — finish_reason=length, expected pattern absent
-#   FAIL_API                — empty content with stop, parse error, or HTTP error
+# Verdict taxonomy per run:
+#   PASS                    — expected answer found in content; finish_reason=stop
+#   PASS_WITH_LENGTH_LIMIT  — expected answer found before budget exhausted; finish_reason=length
+#   FAIL_WRONG_ANSWER       — non-empty content but expected pattern absent; finish_reason=stop
+#   FAIL_GARBLE             — U+FFFD/surrogate escape, PUA dominance (>10%), or pathological repetition
+#   INCONCLUSIVE_OUTPUT_BUDGET — finish_reason=length; expected pattern not found in sampled content
+#   FAIL_API                — HTTP error, parse error, or empty content with finish_reason=stop
+# Garble detection targets specific corruption signals, not a character whitelist.
+# Characters outside ASCII/Korean range (e.g. U+00B7 MIDDLE DOT in Korean punctuation)
+# must not trigger FAIL_GARBLE. Only replacement chars, surrogate escapes, PUA dominance,
+# and pathological repetition are flagged as garble.
 correctness_check_extended() {
     local bt="$1"
     local out_file="$2"
@@ -759,20 +764,24 @@ except Exception as e:
             if echo "${content}" | python3 -c "
 import sys, re
 txt = sys.stdin.read()
-# Flag replacement chars or high-BMP surrogates as garble
-if re.search(r'[�\ud800-\udfff]', txt):
+# Replacement char (U+FFFD) or escaped surrogates (U+D800-U+DFFF) = definite garble
+if re.search(r'[\ufffd\ud800-\udfff]', txt):
     sys.exit(1)
-# Allow Korean, CJK, ASCII, common punctuation; flag anything else above U+FFEF
-unusual = re.findall(r'[^\x00-\x9fff가-힣豈-￯ ]', txt)
-if unusual:
+# Private Use Area dominance above 10% of text length suggests corrupted output
+pua = len(re.findall(r'[\ue000-\uf8ff]', txt))
+if pua > max(5, len(txt) * 0.1):
     sys.exit(1)
+# Pathological token repetition: same 3-15 char sequence repeated 5+ times
+for n in range(3, 16):
+    if re.search(r'(.{' + str(n) + r'})\\1{4}', txt):
+        sys.exit(1)
 " 2>/dev/null; then
                 [[ "${fr}" == "length" ]] && verdict="INCONCLUSIVE_OUTPUT_BUDGET" || verdict="PASS"
             else
                 verdict="FAIL_GARBLE"
             fi
         elif [[ "${fr}" == "length" ]]; then
-            echo "${content}" | grep -qE "${expected_grep}" && verdict="PASS" || verdict="INCONCLUSIVE_OUTPUT_BUDGET"
+            echo "${content}" | grep -qE "${expected_grep}" && verdict="PASS_WITH_LENGTH_LIMIT" || verdict="INCONCLUSIVE_OUTPUT_BUDGET"
         elif echo "${content}" | grep -qE "${expected_grep}"; then
             verdict="PASS"
         else
@@ -833,8 +842,9 @@ if unusual:
             best="INCONCLUSIVE_OUTPUT_BUDGET"
             for v in "${test_verdicts[@]}"; do
                 [[ "${v}" == "PASS" ]] && best="PASS" && break
-                [[ "${v}" == "FAIL_GARBLE" ]] && best="FAIL_GARBLE"
-                [[ "${v}" == "FAIL_WRONG_ANSWER" ]] && [[ "${best}" != "FAIL_GARBLE" ]] && best="FAIL_WRONG_ANSWER"
+                [[ "${v}" == "PASS_WITH_LENGTH_LIMIT" ]] && [[ "${best}" != "PASS" ]] && best="PASS_WITH_LENGTH_LIMIT"
+                [[ "${v}" == "FAIL_GARBLE" ]] && [[ "${best}" != "PASS" && "${best}" != "PASS_WITH_LENGTH_LIMIT" ]] && best="FAIL_GARBLE"
+                [[ "${v}" == "FAIL_WRONG_ANSWER" ]] && [[ "${best}" != "PASS" && "${best}" != "PASS_WITH_LENGTH_LIMIT" && "${best}" != "FAIL_GARBLE" ]] && best="FAIL_WRONG_ANSWER"
                 [[ "${v}" == "FAIL_API" ]] && [[ "${best}" == "INCONCLUSIVE_OUTPUT_BUDGET" ]] && best="FAIL_API"
             done
             echo "Test ${tid} overall: ${best}"
@@ -843,15 +853,25 @@ if unusual:
 
         echo "## Overall summary"
         echo "All verdicts: ${all_verdicts[*]}"
-        local overall_pass=true
+        local observed_garble=false all_pass=true
         for v in "${all_verdicts[@]}"; do
-            [[ "${v}" != "PASS" ]] && overall_pass=false && break
+            [[ "${v}" == "FAIL_GARBLE" ]] && observed_garble=true
+            [[ "${v}" != "PASS" ]] && all_pass=false
         done
-        echo "All tests PASS: ${overall_pass}"
+        echo "observed_garble: ${observed_garble}"
+        echo "All tests PASS (strict): ${all_pass}"
         echo ""
-        echo "Note: INCONCLUSIVE_OUTPUT_BUDGET means finish_reason=length and no answer found."
-        echo "  This is NOT a garble failure — increase max_tokens if budget was the limit."
-        echo "  PASS on any run is sufficient for that test; both runs PASS is the ideal."
+        echo "Verdict taxonomy:"
+        echo "  PASS                    - expected answer found; finish_reason=stop"
+        echo "  PASS_WITH_LENGTH_LIMIT  - expected answer found before budget exhausted; finish_reason=length"
+        echo "  FAIL_WRONG_ANSWER       - output present but expected pattern absent"
+        echo "  FAIL_GARBLE             - U+FFFD/surrogates, PUA dominance (>10%), or pathological repetition"
+        echo "  FAIL_API                - HTTP error, parse error, or empty stop response"
+        echo "  INCONCLUSIVE_OUTPUT_BUDGET - finish_reason=length; expected pattern not found in sampled content"
+        echo ""
+        echo "Note: PASS on any run is sufficient for a test to be considered covered."
+        echo "  PASS_WITH_LENGTH_LIMIT counts as a covered run."
+        echo "  INCONCLUSIVE_OUTPUT_BUDGET is not a garble failure. Increase max_tokens for a definitive result."
 
     } > "${out_file}" 2>&1
 
