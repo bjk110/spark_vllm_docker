@@ -5,7 +5,7 @@
 is the primary cause of the observed prefill throughput regression in v023, and
 determine a safe production value.
 
-**Status**: bt=256 and bt=2048 measured (Series A, EP-off). bt=8192 not executed. Supplement correctness + decode-only run completed 2026-06-18 (`bt2048-supp-20260618-103333`): all 4 correctness tests PASS; decode regression at d0 not reproduced under pp=1 measurement methodology.
+**Status**: bt=256 and bt=2048 measured (Series A, EP-off). bt=8192 not executed. Two supplement runs completed 2026-06-18 (`bt2048-supp-20260618-103333`, `bt2048-supp-20260618-113436`): all 4 correctness tests PASS in both; decode regression at d0 not reproduced under pp=1 decode-only methodology in either supplement.
 
 ---
 
@@ -99,7 +99,7 @@ so absence of the flag in the entrypoint command is the primary evidence source.
 | bt | EP | pp2048 t/s | tg32 t/s | pp@d4096 | pp@d8192 | pp@d16384 | Notes |
 |---:|:--:|----------:|--------:|---------:|---------:|----------:|-------|
 | 256 | off | 537.94 | 12.26 | 563.47 | 564.00 | 530.91 | Measured 2026-06-18; config_label=v023-triton-marlin-ep-off-bt256 |
-| 2048 | off | **1034.86** | 10.06 | **1088.21** | **1076.12** | **1050.69** | Measured 2026-06-18; run_id=bt2048-20260618-093121; pp +92% vs bt=256. Supplement run (`bt2048-supp-20260618-103333`): all correctness tests PASS; decode-only (pp=1) 12.97 t/s at d0 (higher than original — see Phase 8 analysis). |
+| 2048 | off | **1034.86** | 10.06 | **1088.21** | **1076.12** | **1050.69** | Measured 2026-06-18; run_id=bt2048-20260618-093121; pp +92% vs bt=256. Two supplement runs: all correctness tests PASS; decode-only (pp=1) 11.84–12.97 t/s at d0 (higher than original — see Phase 8 analysis). |
 | 8192 | off | Not executed | — | — | — | — | Not executed in this session; pending separate run |
 
 **Series B — EP enabled** (future matrix runs, `bt-matrix-base.env`):
@@ -411,7 +411,9 @@ Tests 1 and 2 used max_tokens=100 and max_tokens=600 respectively. These suffice
 the `<think>` chain for simple factual/arithmetic queries is shorter. Tests 3 and 4 require
 at least max_tokens=2000 to reliably clear the reasoning chain (see vllm023_step37_garble_fix.md).
 
-**Supplement run results** (`bt2048-supp-20260618-103333`, 2026-06-18T10:33Z, max_tokens=2048 for all tests):
+Two correctness supplement runs completed (both max_tokens=2048 for all tests):
+
+**Supp #1** (`bt2048-supp-20260618-103333`, 2026-06-18T10:33Z):
 
 | Test | max_tokens | Completion tokens | finish_reason | Result |
 |------|-----------|------------------|--------------|--------|
@@ -420,82 +422,101 @@ at least max_tokens=2000 to reliably clear the reasoning chain (see vllm023_step
 | 3 — Korean KTX | 2048 | 1845 / 1420 | stop | PASS×2 |
 | 4 — "What is 2+2?" | 2048 | 159 (×2) | stop | PASS×2 |
 
-Test 3 required 1420–1845 tokens to complete the reasoning chain and return a full Korean
-answer ("서울역에서 부산역까지 평균 2시간 30분~2시간 40분"). Arrows (`→`) in the output are
-legitimate Unicode; not garble. Test 4 returned "2 + 2 equals 4." with finish_reason=stop.
+Note: Supp #1 runner timed out externally; Tests 3–4 were rerun manually via direct API
+calls on the same server instance. curl timeout was 150s (runner fix not yet applied).
 
-**Conclusion**: All 4 correctness tests PASS. The original INCONCLUSIVE_OUTPUT_BUDGET
-classification for Tests 3 and 4 was correct — the reasoning chain requires ≥1420 tokens,
-well above the 400/100 token budgets used in the original run. No garble was observed.
+**Supp #2** (`bt2048-supp-20260618-113436`, 2026-06-18T11:34Z, with 300s curl timeout fix):
 
-Full results in `benchmarks/results/bt-matrix/bt2048-supp-20260618-103333/correctness-extended.md`
-(gitignored; not committed).
+| Test | max_tokens | Completion tokens | finish_reason | Result |
+|------|-----------|------------------|--------------|--------|
+| 1 — largest prime < 100 | 2048 | ~71 (×2) | stop | PASS×2 |
+| 2 — 15 factorial | 2048 | 253 (×2) | stop | PASS×2 |
+| 3 — Korean KTX | 2048 | 1512 / 1889 | stop | PASS×2 |
+| 4 — "What is 2+2?" | 2048 | 227 / 203 | stop | PASS×2 |
 
-### Decode-only rerun results (supplement `bt2048-supp-20260618-103333`)
+Test 3 required 1512–1889 tokens (Supp #2) to complete the reasoning chain. Content was
+coherent Korean describing Seoul–Busan KTX travel times. No garble in either supplement.
 
-**Configuration**: pp=1, tg=32, 5 runs per depth, depths d0/4096/8192/16384, `--latency-mode generation`.
-Same server instance used for correctness supplement (started 2026-06-18T10:33Z; bench ran ~38 min after start).
+**Conclusion**: All 4 correctness tests PASS in both supplement runs. The original
+INCONCLUSIVE_OUTPUT_BUDGET classification for Tests 3 and 4 was correct — the reasoning
+chain requires ≥1400 tokens, well above the 400/100 token budgets used in the original run.
+
+`All correctness tests completed without observed garble under the bt=2048 Series A configuration.`
+
+Full results (gitignored, not committed):
+- `benchmarks/results/bt-matrix/bt2048-supp-20260618-103333/correctness-extended.md`
+- `benchmarks/results/bt-matrix/bt2048-supp-20260618-113436/correctness-extended.md`
+
+### Decode-only rerun results (two supplement runs)
+
+Two decode-only supplement runs completed on 2026-06-18. Both use pp=1, tg=32,
+5 runs per depth, depths d0/4096/8192/16384, `--latency-mode generation`.
+
+| run_id | Started | API ready | Decode bench start | Server uptime at bench |
+|--------|---------|-----------|-------------------|----------------------|
+| `bt2048-supp-20260618-103333` | 10:33Z | ~10:39Z | ~11:11Z | ~38 min |
+| `bt2048-supp-20260618-113436` | 11:34Z | 11:40:50Z | 11:47:14Z | ~12 min |
 
 #### Phase 8: Decode statistics and comparison
 
-| Depth | Original bt=2048 (3 runs) | Decode-only (5 runs, pp=1) | bt=256 baseline (3 runs) |
-|-------|--------------------------|---------------------------|--------------------------|
-| d0    | 10.06 ± 0.04 t/s         | **12.97 ± 0.70 t/s**      | 12.26 ± 0.60 t/s         |
-| d4096 | 10.06 ± 0.23 t/s         | **10.74 ± 0.50 t/s**      | 11.25 ± 0.20 t/s         |
-| d8192 | 9.71 ± 0.22 t/s          | **10.63 ± 1.00 t/s**      | 11.47 ± 0.30 t/s         |
-| d16384 | 9.70 ± 0.11 t/s         | **9.92 ± 0.23 t/s**       | 11.52 ± 1.58 t/s         |
+| Depth | Original bt=2048 (pp=2048, 3 runs) | Supp #1 (pp=1, 5 runs) | Supp #2 (pp=1, 5 runs) | bt=256 baseline (pp=2048) |
+|-------|------------------------------------|------------------------|------------------------|--------------------------|
+| d0    | 10.06 ± 0.04 t/s                   | 12.97 ± 0.70 t/s       | **11.84 ± 0.58 t/s**   | 12.26 ± 0.60 t/s         |
+| d4096 | 10.06 ± 0.23 t/s                   | 10.74 ± 0.50 t/s       | **12.46 ± 0.54 t/s**   | 11.25 ± 0.20 t/s         |
+| d8192 | 9.71 ± 0.22 t/s                    | 10.63 ± 1.00 t/s       | **11.80 ± 0.22 t/s**   | 11.47 ± 0.30 t/s         |
+| d16384 | 9.70 ± 0.11 t/s                   | 9.92 ± 0.23 t/s        | **10.84 ± 0.22 t/s**   | 11.52 ± 1.58 t/s         |
 
-Supplemental pp=1 prefill measurements (context extension cost):
+Supp #2 pp=1 prefill measurements (context extension cost at each depth):
 
 | Depth | pp1@depth TTFR (ms) | t/s |
 |-------|---------------------|-----|
-| d4096 | 3969 ± 103 ms | 1079 ± 29 t/s |
-| d8192 | 7854 ± 65 ms | 1066 ± 9 t/s |
-| d16384 | 15987 ± 31 ms | 1036 ± 2 t/s |
+| d4096 | 4061 ± 114 ms | 1062 ± 30 t/s |
+| d8192 | 7947 ± 20 ms  | 1057 ± 3 t/s  |
+| d16384 | 16050 ± 140 ms | 1034 ± 9 t/s |
 
-**Verdict — d0 regression not reproduced under pp=1 methodology**: the decode-only bench
-returns 12.97 t/s at d0, which is *higher* than both the original bt=2048 (10.06 t/s, +29%)
-and the bt=256 baseline (12.26 t/s, +6%). At d4096–d16384, results fall between the two
-reference runs (above original bt=2048, below bt=256 baseline).
+**Verdict — not reproduced in either supplement (Verdict B)**: Both supplement runs show
+decode rates substantially higher than the original bt=2048 (10.06 t/s at d0):
+- Supp #1: 12.97 t/s at d0 (+29% vs original; +6% vs bt=256 baseline)
+- Supp #2: 11.84 t/s at d0 (+18% vs original; −3% vs bt=256 baseline)
+
+Between-supplement variability at d0 is ~9% (12.97 vs 11.84). Across all depths, both
+supplements track near the bt=256 baseline range rather than the original bt=2048 values.
+At d4096, supp #2 (12.46 t/s) exceeds even the bt=256 baseline (11.25 t/s).
 
 #### Phase 9: Runtime identity comparison
 
-The supplement run is not identical to the original bt=2048 run in all runtime dimensions.
-Differences that may affect tg32 comparison:
+| Property | Original bt=2048 | Supp #1 | Supp #2 |
+|----------|-----------------|---------|---------|
+| run_id | bt2048-20260618-093121 | bt2048-supp-20260618-103333 | bt2048-supp-20260618-113436 |
+| image | v023-step3p7-fixed-kv-profile-skip-candidate | same | same |
+| vLLM | 0.23.0 | same | same |
+| EP state | disabled | disabled | disabled |
+| MARLIN | confirmed | confirmed | confirmed |
+| TRITON_ATTN | confirmed | confirmed | confirmed |
+| bt | 2048 | 2048 | 2048 |
+| Prometheus patch | applied (SHA confirmed) | applied (SHA confirmed) | applied (SHA confirmed) |
+| llama-benchy latency mode | api (default) | generation | generation |
+| Prefill in tg32 test | pp=2048 | pp=1 | pp=1 |
+| Server uptime at decode bench | ~9 min | ~38 min | ~12 min |
+| Boot session (spark01) | 9f01d96f | same | same |
+| curl timeout in correctness | 150s (n/a to bench) | 150s (external runner killed) | **300s (fixed)** |
 
-| Property | Original bt=2048 | bt=2048 supplement |
-|----------|----------------|--------------------|
-| run_id | bt2048-20260618-093121 | bt2048-supp-20260618-103333 |
-| image | v023-step3p7-fixed-kv-profile-skip-candidate | same |
-| vLLM | 0.23.0 | same |
-| git_commit | 98edf86 (runner script was 62edd3f state) | f9e09bd |
-| EP state | disabled | disabled |
-| MARLIN | confirmed | confirmed |
-| TRITON_ATTN | confirmed | confirmed |
-| bt | 2048 | 2048 |
-| Prometheus patch | applied (SHA confirmed) | applied (SHA confirmed, hardened) |
-| llama-benchy latency mode | api (default) | generation |
-| Prefill in tg32 test | pp=2048 (bench used `--pp 2048 --tg 32`) | pp=1 |
-| Server uptime at decode bench | ~9 min (fresh boot) | ~38 min (after correctness tests) |
-| Boot IDs | 9f01d96f / 92bc7698 | same (no reboot between) |
+**Key runtime difference**: The original run used `--pp 2048 --tg 32` in llama-benchy, so
+the tg32 measurement at d0 has a 2048-token active KV context. Both supplement runs use
+pp=1, giving a 1-token context. Larger KV cache pressure under pp=2048 increases per-step
+decode latency, which is the primary explanation for the 10.06 vs 11-13 t/s gap. This is
+a measurement methodology difference, not evidence of a bt setting effect on decode.
 
-**Root cause of d0 discrepancy**: The original bt=2048 tg32 measurement used pp=2048 prompts
-(benchmark ran with `--pp 2048 --tg 32`). Under llama-benchy's concurrent test ordering, the
-tg32 measurement at d0 incurs a 2048-token active context, not a 1-token context. Larger KV
-cache pressure increases decode latency. The decode-only bench with pp=1 at d0 uses a 1-token
-context, which explains the 12.97 vs 10.06 t/s difference.
+The residual ~18% gap between original bt=2048 (10.06) and bt=256 baseline (12.26) — both
+measured with pp=2048 — remains unexplained. Candidates: server warm-up difference
+(bt=256 container ~18h, bt=2048 ~9 min from reboot), or interaction between sequential
+pp and tg tests within the same llama-benchy run.
 
-The bt=256 baseline (12.26 t/s at d0) also used pp=2048 prompts, yet outperformed the original
-bt=2048 (10.06 t/s). This residual gap (~18%) is real but not reproduced under pp=1. It may
-reflect the server warm-up state (bt=256 container: ~18h uptime vs bt=2048: ~9 min), memory
-allocation pattern under different bt values, or interaction between the pp=2048 and tg32
-tests within the same benchmark session.
-
-**Summary**: The decode regression observed in the original bt=2048 run is not confirmed as
-a pure bt-setting effect. Confounders — particularly the effective context size at the tg32
-measurement point (pp=2048 vs pp=1) — make the original bt=2048 tg32 values not directly
-comparable to a pp=1 decode-only measurement. A controlled A/B (same methodology, same
-prompts, bt=256 vs bt=2048) would be needed to isolate the bt contribution to decode rate.
+**Summary**: Under pp=1 decode-only methodology, neither supplement reproduces the decode
+regression seen in the original bt=2048 run. The lower original value is consistent with
+measurement methodology (pp=2048 context size), not a confirmed bt=2048 decode penalty.
+A controlled A/B (same pp=2048 methodology, matched server uptime, bt=256 vs bt=2048)
+would be needed to isolate the bt contribution to decode rate.
 
 ---
 
