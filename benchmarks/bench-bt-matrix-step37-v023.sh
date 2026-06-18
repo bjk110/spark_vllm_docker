@@ -59,6 +59,20 @@
 #                              Read-only backend detection against the currently
 #                              running head container. Applies MARLIN, TRITON_ATTN,
 #                              and EP detection. No container stop/start.
+#   --server-only              Start the server and validate backends, then exit
+#                              without running any benchmark or stopping containers.
+#                              Server keeps running after script exits (docker
+#                              compose up -d). Useful for manual testing.
+#                              Requires --bt.
+#   --supplement               Run extended correctness (max_tokens=2048, 2 runs
+#                              each) + decode-only bench (pp=1, tg=32) in a single
+#                              server lifecycle. Saves to a separate supplement
+#                              run ID. Requires --bt. Use --decode-runs to override
+#                              the number of decode runs (default: 5).
+#   --decode-runs <n>          Number of llama-benchy runs for decode-only bench in
+#                              supplement mode (default: 5).
+#   --supplement-of <run_id>   Original run ID that this supplement extends
+#                              (recorded in metadata only; no runtime effect).
 #                              Use --expected-ep to gate on EP state.
 #
 # Memory checks:
@@ -141,6 +155,10 @@ CONFIG_LABEL=""
 CONTINUE_ON_BENCH_FAIL=false
 PREFLIGHT_ONLY=false
 VALIDATE_EXISTING=false
+SERVER_ONLY_MODE=false
+SUPPLEMENT_MODE=false
+SUPPLEMENT_DECODE_RUNS=5
+SUPPLEMENT_OF=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -160,11 +178,15 @@ while [[ $# -gt 0 ]]; do
                                  shift ;;
         --preflight-only)        PREFLIGHT_ONLY=true; shift ;;
         --validate-existing-container) VALIDATE_EXISTING=true; shift ;;
+        --server-only)           SERVER_ONLY_MODE=true; shift ;;
+        --supplement)            SUPPLEMENT_MODE=true; shift ;;
+        --decode-runs)           SUPPLEMENT_DECODE_RUNS="$2"; shift 2 ;;
+        --supplement-of)         SUPPLEMENT_OF="$2"; shift 2 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
-# --bt is required for normal benchmark runs, but NOT for preflight/validate modes
+# --bt is required for normal benchmark, supplement, and server-only runs, but NOT for preflight/validate
 if [[ -z "${BT_OVERRIDE}" ]] && ! ${RUN_ALL} && ! ${PREFLIGHT_ONLY} && ! ${VALIDATE_EXISTING}; then
     echo "ERROR: --bt <value(s)> is required." >&2
     echo "  Single run:       --bt 2048" >&2
@@ -636,6 +658,531 @@ correctness_check() {
     } > "${out_file}" 2>&1
 
     log "Correctness check saved: ${out_file}"
+}
+
+# ---------------------------------------------------------------------------
+# Extended correctness check (supplement mode)
+# ---------------------------------------------------------------------------
+# Same 4 prompts as correctness_check() but max_tokens=2048 and 2 runs each.
+# Designed for Step-3.7-Flash reasoning model: short budgets exhaust the
+# <think> chain before the answer token, producing empty content (not garble).
+# Classification per run:
+#   PASS                    — expected answer found in content
+#   FAIL_WRONG_ANSWER       — non-empty content but expected pattern absent
+#   FAIL_GARBLE             — broken codepoints detected (garble test only)
+#   INCONCLUSIVE_OUTPUT_BUDGET — finish_reason=length, expected pattern absent
+#   FAIL_API                — empty content with stop, parse error, or HTTP error
+correctness_check_extended() {
+    local bt="$1"
+    local out_file="$2"
+    local model="${SERVED_MODEL_NAME}"
+    local api="http://localhost:8000/v1/chat/completions"
+    local MAX_T=2048
+    local NRUNS=2
+
+    log "Running extended correctness checks for bt=${bt} (max_tokens=${MAX_T}, ${NRUNS} runs each)..."
+
+    # Run one API call; prompt must be safe for embedding in JSON (no bare quotes/backslashes)
+    _ask_ext() {
+        local prompt="$1"
+        ssh "${SPARK01}" "curl -s --max-time 150 -X POST '${api}' \
+            -H 'Content-Type: application/json' \
+            -d '{\"model\":\"${model}\",\"messages\":[{\"role\":\"user\",\"content\":\"${prompt}\"}],\"max_tokens\":${MAX_T},\"temperature\":0}'"
+    }
+
+    # Parse raw JSON response to structured key=value lines
+    _parse_ext() {
+        python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    ch = d['choices'][0]
+    msg = ch.get('message', {})
+    content = (msg.get('content') or '').strip()
+    fr = ch.get('finish_reason', 'unknown')
+    ct = d.get('usage', {}).get('completion_tokens', '?')
+    r_content = msg.get('reasoning_content') or ''
+    print('content=' + content[:600])
+    print('finish_reason=' + str(fr))
+    print('completion_tokens=' + str(ct))
+    print('has_reasoning=' + str(bool(r_content)))
+    print('reasoning_len=' + str(len(r_content)))
+except Exception as e:
+    print('content=PARSE_ERROR:' + str(e))
+    print('finish_reason=error')
+    print('completion_tokens=?')
+    print('has_reasoning=False')
+    print('reasoning_len=0')
+" 2>/dev/null
+    }
+
+    # Classify a parsed response. Echoes verdict on last line as "verdict: RESULT".
+    _classify() {
+        local parsed="$1" expected_grep="$2" test_type="$3"
+        local content fr ct has_r r_len
+        content=$(echo "${parsed}" | grep '^content=' | head -1 | cut -c9-)
+        fr=$(echo "${parsed}"  | grep '^finish_reason=' | cut -d= -f2-)
+        ct=$(echo "${parsed}"  | grep '^completion_tokens=' | cut -d= -f2-)
+        has_r=$(echo "${parsed}" | grep '^has_reasoning=' | cut -d= -f2-)
+        r_len=$(echo "${parsed}" | grep '^reasoning_len=' | cut -d= -f2-)
+        echo "  finish_reason: ${fr}"
+        echo "  completion_tokens: ${ct}"
+        echo "  has_reasoning_content: ${has_r} (len=${r_len})"
+        echo "  content (first 400 chars): ${content:0:400}"
+        local verdict
+        if echo "${content}" | grep -q "PARSE_ERROR" || [[ "${fr}" == "error" ]]; then
+            verdict="FAIL_API"
+        elif [[ -z "${content}" ]] && [[ "${fr}" == "stop" ]]; then
+            verdict="FAIL_API"
+        elif [[ -z "${content}" ]]; then
+            verdict="INCONCLUSIVE_OUTPUT_BUDGET"
+        elif [[ "${test_type}" == "garble" ]]; then
+            if echo "${content}" | python3 -c "
+import sys, re
+txt = sys.stdin.read()
+# Flag replacement chars or high-BMP surrogates as garble
+if re.search(r'[�\ud800-\udfff]', txt):
+    sys.exit(1)
+# Allow Korean, CJK, ASCII, common punctuation; flag anything else above U+FFEF
+unusual = re.findall(r'[^\x00-\x9fff가-힣豈-￯ ]', txt)
+if unusual:
+    sys.exit(1)
+" 2>/dev/null; then
+                [[ "${fr}" == "length" ]] && verdict="INCONCLUSIVE_OUTPUT_BUDGET" || verdict="PASS"
+            else
+                verdict="FAIL_GARBLE"
+            fi
+        elif [[ "${fr}" == "length" ]]; then
+            echo "${content}" | grep -qE "${expected_grep}" && verdict="PASS" || verdict="INCONCLUSIVE_OUTPUT_BUDGET"
+        elif echo "${content}" | grep -qE "${expected_grep}"; then
+            verdict="PASS"
+        else
+            verdict="FAIL_WRONG_ANSWER"
+        fi
+        echo "  verdict: ${verdict}"
+        echo "__verdict__:${verdict}"
+    }
+
+    {
+        echo "# Extended correctness check — bt=${bt} — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "# max_tokens=${MAX_T}, runs_per_test=${NRUNS}"
+        echo "# supplement_of=${SUPPLEMENT_OF:-unknown}"
+        echo ""
+
+        local all_verdicts=()
+
+        for test_spec in \
+            "1|What is the largest prime number less than 100? Answer with only the number.|97|exact" \
+            "2|What is 15 factorial (15!)? Give only the numeric answer.|1307674368000|exact" \
+            "3|서울에서 부산까지 KTX 소요시간은?|.|garble" \
+            "4|What is 2+2?|[4]|exact"
+        do
+            local tid prompt expected ttype
+            tid=$(echo "${test_spec}"    | cut -d'|' -f1)
+            prompt=$(echo "${test_spec}" | cut -d'|' -f2)
+            expected=$(echo "${test_spec}" | cut -d'|' -f3)
+            ttype=$(echo "${test_spec}"  | cut -d'|' -f4)
+
+            local label
+            case "${tid}" in
+                1) label="Factual (largest prime < 100)" ;;
+                2) label="Multi-step reasoning (15 factorial)" ;;
+                3) label="Unicode integrity (Korean KTX)" ;;
+                4) label="Finish reason and simple answer (2+2)" ;;
+            esac
+
+            echo "## Test ${tid}: ${label}"
+            echo "Prompt: '${prompt}'"
+            echo "max_tokens: ${MAX_T}"
+            local test_verdicts=()
+            for n in $(seq 1 "${NRUNS}"); do
+                echo ""
+                echo "### Run ${n}/${NRUNS}"
+                local raw parsed classified
+                raw=$(_ask_ext "${prompt}" 2>&1)
+                parsed=$(echo "${raw}" | _parse_ext)
+                classified=$(_classify "${parsed}" "${expected}" "${ttype}")
+                echo "${classified}" | grep -v "^__verdict__:"
+                local v
+                v=$(echo "${classified}" | grep "^__verdict__:" | cut -d: -f2)
+                test_verdicts+=("${v}")
+                all_verdicts+=("${v}")
+            done
+            echo ""
+            echo "Test ${tid} verdict summary: ${test_verdicts[*]}"
+            local best
+            best="INCONCLUSIVE_OUTPUT_BUDGET"
+            for v in "${test_verdicts[@]}"; do
+                [[ "${v}" == "PASS" ]] && best="PASS" && break
+                [[ "${v}" == "FAIL_GARBLE" ]] && best="FAIL_GARBLE"
+                [[ "${v}" == "FAIL_WRONG_ANSWER" ]] && [[ "${best}" != "FAIL_GARBLE" ]] && best="FAIL_WRONG_ANSWER"
+                [[ "${v}" == "FAIL_API" ]] && [[ "${best}" == "INCONCLUSIVE_OUTPUT_BUDGET" ]] && best="FAIL_API"
+            done
+            echo "Test ${tid} overall: ${best}"
+            echo ""
+        done
+
+        echo "## Overall summary"
+        echo "All verdicts: ${all_verdicts[*]}"
+        local overall_pass=true
+        for v in "${all_verdicts[@]}"; do
+            [[ "${v}" != "PASS" ]] && overall_pass=false && break
+        done
+        echo "All tests PASS: ${overall_pass}"
+        echo ""
+        echo "Note: INCONCLUSIVE_OUTPUT_BUDGET means finish_reason=length and no answer found."
+        echo "  This is NOT a garble failure — increase max_tokens if budget was the limit."
+        echo "  PASS on any run is sufficient for that test; both runs PASS is the ideal."
+
+    } > "${out_file}" 2>&1
+
+    log "Extended correctness check saved: ${out_file}"
+}
+
+# ---------------------------------------------------------------------------
+# Decode-only benchmark (supplement mode): pp=1, tg=32, N runs at each depth
+# ---------------------------------------------------------------------------
+# Uses llama-benchy with pp=1 (negligible prefill) to focus on decode t/s.
+# Measures tg32 at each depth in BENCH_DEPTHS. Saves to decode_file.
+decode_bench_supplement() {
+    local run_dir="$1"
+    local meta_file="$2"
+    local decode_file="${run_dir}/decode-bench.md"
+    local bt="$3"
+
+    local depth_args=""
+    for d in ${BENCH_DEPTHS}; do depth_args="${depth_args} ${d}"; done
+
+    log "Running decode-only bench (pp=1, tg=32, runs=${SUPPLEMENT_DECODE_RUNS}, depths=${BENCH_DEPTHS})..."
+    echo "decode_bench_pp=1" >> "${meta_file}"
+    echo "decode_bench_tg=32" >> "${meta_file}"
+    echo "decode_bench_runs=${SUPPLEMENT_DECODE_RUNS}" >> "${meta_file}"
+    echo "decode_bench_depths=${BENCH_DEPTHS}" >> "${meta_file}"
+    echo "decode_bench_note=pp=1 gives negligible prefill; measures decode t/s at each context depth" >> "${meta_file}"
+
+    local decode_exit=0
+    # shellcheck disable=SC2086
+    ssh "${SPARK01}" "PYTHONUNBUFFERED=1 ${LLAMA_BENCHY_BIN} \
+        --base-url '${API_BASE}' \
+        --model '${SERVED_MODEL_NAME}' \
+        --tokenizer '${TOKENIZER_PATH}' \
+        --pp 1 \
+        --tg 32 \
+        --depth ${depth_args} \
+        --runs ${SUPPLEMENT_DECODE_RUNS} \
+        --latency-mode generation \
+        --format md \
+        --save-result '/tmp/decode-bench-supp-${bt}.md'" \
+        > "${run_dir}/decode-bench-stdout.log" 2>&1 \
+        && scp "${SPARK01}:/tmp/decode-bench-supp-${bt}.md" "${decode_file}" \
+        || decode_exit=$?
+
+    if [[ ${decode_exit} -ne 0 ]]; then
+        warn "Decode bench failed (exit ${decode_exit})"
+        echo "decode_bench_result=FAIL (exit=${decode_exit})" >> "${meta_file}"
+        return 1
+    elif [[ -f "${decode_file}" ]]; then
+        echo "decode_bench_result=OK" >> "${meta_file}"
+        log "Decode bench saved: ${decode_file}"
+        return 0
+    else
+        warn "Decode bench: output file missing"
+        echo "decode_bench_result=MISSING_OUTPUT" >> "${meta_file}"
+        return 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Server-only run: start server, validate, keep running (no bench, no stop)
+# ---------------------------------------------------------------------------
+# Starts the bt=<N> server, applies prometheus patch, waits for API, validates
+# backends. Exits WITHOUT stopping containers — server keeps running for
+# manual testing or follow-up supplement/correctness commands.
+server_only_run() {
+    local bt="$1"
+    local run_id="bt${bt}-server-$(date +%Y%m%d-%H%M%S)"
+    local run_dir="${RESULT_DIR}/${run_id}"
+    local env_file="${REPO_ROOT}/.local/env/step37/bt-matrix-run.env"
+    local meta_file="${run_dir}/metadata.txt"
+
+    log "======================================================"
+    log "SERVER-ONLY mode: bt=${bt} (id=${run_id})"
+    log "  Server will keep running after script exits."
+    log "======================================================"
+
+    mkdir -p "${run_dir}"
+    sed "s/__BT_PLACEHOLDER__/${bt}/" "${TEMPLATE_ENV}" > "${env_file}"
+
+    {
+        echo "run_id=${run_id}"
+        echo "server_only_mode=true"
+        echo "bt=${bt}"
+        echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "config_label=${CONFIG_LABEL:-v023-server-only-bt${bt}}"
+        echo "template_env=${TEMPLATE_ENV}"
+        echo "git_commit=$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
+        echo "model=${SERVED_MODEL_NAME}"
+        echo "image=$(grep '^VLLM_IMAGE=' "${env_file}" | cut -d= -f2)"
+        echo "max_num_batched_tokens=${bt}"
+        echo "head_boot_id=$(node_boot_id "${SPARK01}" 2>/dev/null || echo unknown)"
+        echo "worker_boot_id=$(node_boot_id "${SPARK02}" 2>/dev/null || echo unknown)"
+        echo "spark01_free_gib_before=$(node_free_gib "${SPARK01}" 2>/dev/null || echo unknown)"
+        echo "spark02_free_gib_before=$(node_free_gib "${SPARK02}" 2>/dev/null || echo unknown)"
+    } > "${meta_file}"
+
+    if ${DRY_RUN}; then
+        log "[DRY-RUN] Would start bt=${bt} server and validate backends; no benchmark."
+        return 0
+    fi
+
+    start_containers "${env_file}"
+
+    if ! apply_prometheus_patch "${meta_file}"; then
+        warn "Server-only: prometheus patch failed."
+        echo "startup_result=PROMETHEUS_PATCH_FAILED" >> "${meta_file}"
+        stop_containers
+        return 1
+    fi
+
+    if ! wait_for_api; then
+        warn "Server-only: API not ready after timeout."
+        echo "startup_result=STARTUP_FAIL" >> "${meta_file}"
+        stop_containers
+        return 1
+    fi
+    echo "startup_result=OK" >> "${meta_file}"
+
+    log "Fetching startup log..."
+    ssh "${SPARK01}" "docker logs vllm-spark-head 2>&1" > "${run_dir}/head-startup.log" 2>&1 || true
+
+    local marlin_ok marlin_line triton_ok triton_line
+    marlin_line=$(grep "Using 'MARLIN' NvFp4 MoE backend" "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
+    marlin_ok=$(echo "${marlin_line}" | grep -c "MARLIN" || echo 0)
+    triton_line=$(grep "Using AttentionBackendEnum.TRITON_ATTN backend" "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
+    triton_ok=$(echo "${triton_line}" | grep -c "TRITON_ATTN" || echo 0)
+    {
+        echo "marlin_confirmed=${marlin_ok}"
+        echo "triton_attn_confirmed=${triton_ok}"
+        echo "backend_validation_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    } >> "${meta_file}"
+
+    if [[ "${marlin_ok}" -lt 1 ]]; then
+        warn "Server-only: MARLIN NOT confirmed."
+        echo "backend_validity=INVALID_MARLIN_NOT_CONFIRMED" >> "${meta_file}"
+        stop_containers; return 1
+    fi
+    if [[ "${triton_ok}" -lt 1 ]]; then
+        warn "Server-only: TRITON_ATTN NOT confirmed."
+        echo "backend_validity=INVALID_TRITON_NOT_CONFIRMED" >> "${meta_file}"
+        stop_containers; return 1
+    fi
+    echo "backend_validity=OK (MARLIN confirmed, TRITON_ATTN confirmed)" >> "${meta_file}"
+
+    log "======================================================"
+    log "SERVER READY — bt=${bt}"
+    log "  API: ${API_URL}"
+    log "  Metadata: ${meta_file}"
+    log "  Server is running. Use 'docker compose --profile head/worker down' to stop."
+    log "======================================================"
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Supplement run: extended correctness + decode-only bench in one lifecycle
+# ---------------------------------------------------------------------------
+supplement_run() {
+    local bt="$1"
+    local run_id="bt${bt}-supp-$(date +%Y%m%d-%H%M%S)"
+    local run_dir="${RESULT_DIR}/${run_id}"
+    local env_file="${REPO_ROOT}/.local/env/step37/bt-matrix-run.env"
+    local meta_file="${run_dir}/metadata.txt"
+    local correctness_file="${run_dir}/correctness-extended.md"
+    local summary_file="${run_dir}/summary.csv"
+
+    log "======================================================"
+    log "Supplement run (id=${run_id})"
+    log "  Extended correctness: max_tokens=2048, 2 runs each"
+    log "  Decode-only bench: pp=1, tg=32, runs=${SUPPLEMENT_DECODE_RUNS}"
+    log "  supplement_of: ${SUPPLEMENT_OF:-unset}"
+    log "======================================================"
+
+    mkdir -p "${run_dir}"
+    sed "s/__BT_PLACEHOLDER__/${bt}/" "${TEMPLATE_ENV}" > "${env_file}"
+
+    local ep_requested
+    if grep '^VLLM_EXTRA_ARGS=' "${TEMPLATE_ENV}" 2>/dev/null | grep -q -- '--enable-expert-parallel'; then
+        ep_requested="true"
+    else
+        ep_requested="false (flag absent from VLLM_EXTRA_ARGS)"
+    fi
+
+    {
+        echo "run_id=${run_id}"
+        echo "supplement_mode=true"
+        echo "supplement_of=${SUPPLEMENT_OF:-unset}"
+        echo "bt=${bt}"
+        echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "config_label=${CONFIG_LABEL:-v023-triton-marlin-ep-off-bt${bt}-supplement}"
+        echo "template_env=${TEMPLATE_ENV}"
+        echo "git_commit=$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
+        echo "model=${SERVED_MODEL_NAME}"
+        echo "image=$(grep '^VLLM_IMAGE=' "${env_file}" | cut -d= -f2)"
+        echo "max_model_len=$(grep '^MAX_MODEL_LEN=' "${env_file}" | cut -d= -f2)"
+        echo "max_num_batched_tokens=${bt}"
+        echo "expert_parallel_requested=${ep_requested}"
+        echo "expert_parallel_expected_ep_flag=${EXPECTED_EP}"
+        echo "supplement_correctness_max_tokens=2048"
+        echo "supplement_correctness_runs_per_test=2"
+        echo "supplement_decode_runs=${SUPPLEMENT_DECODE_RUNS}"
+        echo "supplement_decode_pp=1"
+        echo "supplement_decode_tg=32"
+        echo "supplement_decode_depths=${BENCH_DEPTHS}"
+        echo "head_boot_id=$(node_boot_id "${SPARK01}" 2>/dev/null || echo unknown)"
+        echo "worker_boot_id=$(node_boot_id "${SPARK02}" 2>/dev/null || echo unknown)"
+        echo "head_uptime_seconds=$(node_uptime_seconds "${SPARK01}" 2>/dev/null || echo unknown)"
+        echo "worker_uptime_seconds=$(node_uptime_seconds "${SPARK02}" 2>/dev/null || echo unknown)"
+        echo "spark01_free_gib_before=$(node_free_gib "${SPARK01}" 2>/dev/null || echo unknown)"
+        echo "spark02_free_gib_before=$(node_free_gib "${SPARK02}" 2>/dev/null || echo unknown)"
+        echo "memory_metric_source=proc_meminfo_MemAvailable (nvidia-smi N/A on GB10 UMA)"
+    } > "${meta_file}"
+
+    if ${DRY_RUN}; then
+        log "[DRY-RUN] Would start bt=${bt} server, run extended correctness and decode bench, stop."
+        log "[DRY-RUN] Run dir: ${run_dir}"
+        echo "run_id,supplement_mode,bt,status" > "${summary_file}"
+        echo "${run_id},true,${bt},DRY_RUN" >> "${summary_file}"
+        return 0
+    fi
+
+    # Start containers
+    start_containers "${env_file}"
+
+    # Prometheus patch (required — otherwise /health returns 500)
+    if ! apply_prometheus_patch "${meta_file}"; then
+        warn "Supplement run: prometheus patch failed — aborting."
+        echo "startup_result=PROMETHEUS_PATCH_FAILED" >> "${meta_file}"
+        echo "run_id,supplement_mode,bt,status,failure_reason" > "${summary_file}"
+        echo "${run_id},true,${bt},STARTUP_FAIL,prometheus patch failed" >> "${summary_file}"
+        stop_containers
+        return 1
+    fi
+
+    # Wait for API
+    if ! wait_for_api; then
+        warn "Supplement run: API not ready — aborting."
+        echo "startup_result=STARTUP_FAIL" >> "${meta_file}"
+        echo "run_id,supplement_mode,bt,status,failure_reason" > "${summary_file}"
+        echo "${run_id},true,${bt},STARTUP_FAIL,API timeout" >> "${summary_file}"
+        stop_containers
+        return 1
+    fi
+    echo "startup_result=OK" >> "${meta_file}"
+
+    log "Fetching startup log..."
+    ssh "${SPARK01}" "docker logs vllm-spark-head 2>&1" > "${run_dir}/head-startup.log" 2>&1 || true
+
+    # Backend validation (same gates as run_bt)
+    local marlin_ok marlin_line triton_ok triton_line
+    marlin_line=$(grep "Using 'MARLIN' NvFp4 MoE backend" "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
+    marlin_ok=$(echo "${marlin_line}" | grep -c "MARLIN" || echo 0)
+    triton_line=$(grep "Using AttentionBackendEnum.TRITON_ATTN backend" "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
+    triton_ok=$(echo "${triton_line}" | grep -c "TRITON_ATTN" || echo 0)
+
+    local entrypoint_cmd ep_observed_str ep_evidence
+    entrypoint_cmd=$(grep '\[entrypoint\] Running: vllm serve' "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
+    if [[ -z "${entrypoint_cmd}" ]]; then
+        ep_observed_str="not_found_in_logs"; ep_evidence="entrypoint line not captured"
+    elif echo "${entrypoint_cmd}" | grep -q -- '--enable-expert-parallel'; then
+        ep_observed_str="enabled"; ep_evidence="--enable-expert-parallel present in entrypoint"
+    else
+        ep_observed_str="disabled"; ep_evidence="--enable-expert-parallel absent from entrypoint"
+    fi
+    {
+        echo "marlin_confirmed=${marlin_ok}"
+        echo "marlin_evidence_line=${marlin_line:-not found}"
+        echo "triton_attn_confirmed=${triton_ok}"
+        echo "triton_evidence_line=${triton_line:-not found}"
+        echo "expert_parallel_observed=${ep_observed_str}"
+        echo "expert_parallel_evidence=${ep_evidence}"
+        echo "backend_validation_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    } >> "${meta_file}"
+
+    if [[ "${marlin_ok}" -lt 1 ]]; then
+        warn "Supplement run: MARLIN NOT confirmed — FATAL."
+        echo "backend_validity=INVALID_MARLIN_NOT_CONFIRMED" >> "${meta_file}"
+        echo "run_id,supplement_mode,bt,status,failure_reason" > "${summary_file}"
+        echo "${run_id},true,${bt},BACKEND_FAIL,MARLIN not confirmed" >> "${summary_file}"
+        stop_containers; return 1
+    fi
+    if [[ "${triton_ok}" -lt 1 ]]; then
+        warn "Supplement run: TRITON_ATTN NOT confirmed — FATAL."
+        echo "backend_validity=INVALID_TRITON_NOT_CONFIRMED" >> "${meta_file}"
+        echo "run_id,supplement_mode,bt,status,failure_reason" > "${summary_file}"
+        echo "${run_id},true,${bt},BACKEND_FAIL,TRITON_ATTN not confirmed" >> "${summary_file}"
+        stop_containers; return 1
+    fi
+    echo "backend_validity=OK (MARLIN confirmed, TRITON_ATTN confirmed)" >> "${meta_file}"
+
+    if [[ "${EXPECTED_EP}" != "unknown" ]]; then
+        local ep_match=true
+        [[ "${EXPECTED_EP}" == "off" ]] && [[ "${ep_observed_str}" != "disabled" ]] && ep_match=false
+        [[ "${EXPECTED_EP}" == "on"  ]] && [[ "${ep_observed_str}" != "enabled"  ]] && ep_match=false
+        if ! ${ep_match}; then
+            warn "Supplement run: EP mismatch (expected=${EXPECTED_EP}, observed=${ep_observed_str}) — FATAL."
+            echo "ep_validation=MISMATCH (expected=${EXPECTED_EP}, observed=${ep_observed_str})" >> "${meta_file}"
+            echo "run_id,supplement_mode,bt,status,failure_reason" > "${summary_file}"
+            echo "${run_id},true,${bt},EP_MISMATCH,expected=${EXPECTED_EP} observed=${ep_observed_str}" >> "${summary_file}"
+            stop_containers; return 1
+        fi
+        echo "ep_validation=OK (expected=${EXPECTED_EP}, observed=${ep_observed_str})" >> "${meta_file}"
+    else
+        echo "ep_validation=SKIPPED" >> "${meta_file}"
+    fi
+
+    # Extended correctness
+    correctness_check_extended "${bt}" "${correctness_file}"
+
+    # Decode-only benchmark
+    local decode_ok=true
+    decode_bench_supplement "${run_dir}" "${meta_file}" "${bt}" || decode_ok=false
+
+    # Summary
+    local decode_result
+    decode_result=$(grep '^decode_bench_result=' "${meta_file}" | tail -1 | cut -d= -f2-)
+    local overall_status="COMPLETE"
+    ${decode_ok} || overall_status="COMPLETE_DECODE_FAIL"
+    {
+        echo "run_id,supplement_mode,bt,status,decode_bench_result"
+        echo "${run_id},true,${bt},${overall_status},${decode_result}"
+    } > "${summary_file}"
+
+    log "Supplement run complete. Results in ${run_dir}/"
+
+    # Stop containers
+    stop_containers
+
+    # Post-stop memory (informational for supplement; log but no halt gate)
+    log "Post-stop memory check..."
+    local s01 s02
+    s01=$(node_free_gib "${SPARK01}" 2>/dev/null || echo "unknown")
+    s02=$(node_free_gib "${SPARK02}" 2>/dev/null || echo "unknown")
+    echo "post_stop_free_spark01_gib=${s01}" >> "${meta_file}"
+    echo "post_stop_free_spark02_gib=${s02}" >> "${meta_file}"
+    if check_memory_safe "${SPARK01}"; then
+        echo "post_stop_memory_safe_spark01=OK" >> "${meta_file}"
+    else
+        warn "spark01 post-stop memory below ${SAFE_MEM_GIB} GiB — reboot recommended before next run."
+        echo "post_stop_memory_safe_spark01=UNSAFE" >> "${meta_file}"
+    fi
+    if check_memory_safe "${SPARK02}"; then
+        echo "post_stop_memory_safe_spark02=OK" >> "${meta_file}"
+    else
+        warn "spark02 post-stop memory below ${SAFE_MEM_GIB} GiB — reboot recommended before next run."
+        echo "post_stop_memory_safe_spark02=UNSAFE" >> "${meta_file}"
+    fi
+
+    log "Supplement run done."
+    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -1193,9 +1740,11 @@ main() {
     log "expected-ep:       ${EXPECTED_EP}"
     log "bench-continuable: ${CONTINUE_ON_BENCH_FAIL}"
     [[ -n "${CONFIG_LABEL}" ]] && log "config-label:      ${CONFIG_LABEL}"
-    ${DRY_RUN} && log "DRY-RUN MODE: no containers will be started."
-    ${PREFLIGHT_ONLY} && log "PREFLIGHT-ONLY MODE: read-only checks, no container ops."
+    ${DRY_RUN}         && log "DRY-RUN MODE: no containers will be started."
+    ${PREFLIGHT_ONLY}  && log "PREFLIGHT-ONLY MODE: read-only checks, no container ops."
     ${VALIDATE_EXISTING} && log "VALIDATE-EXISTING-CONTAINER MODE: read-only backend detection."
+    ${SERVER_ONLY_MODE} && log "SERVER-ONLY MODE: start bt=${BT_VALUES[0]:-?} server, validate, keep running."
+    ${SUPPLEMENT_MODE}  && log "SUPPLEMENT MODE: bt=${BT_VALUES[0]:-?}, extended correctness + decode-only bench."
     echo ""
 
     mkdir -p "${RESULT_DIR}/logs"
@@ -1209,6 +1758,24 @@ main() {
     # --- Validate-existing-container mode ---
     if ${VALIDATE_EXISTING}; then
         validate_existing_container
+        exit $?
+    fi
+
+    # --- Server-only mode ---
+    if ${SERVER_ONLY_MODE}; then
+        [[ ${#BT_VALUES[@]} -eq 1 ]] || die "--server-only requires exactly one --bt value"
+        [[ -f "${TEMPLATE_ENV}" ]] || die "Template env not found: ${TEMPLATE_ENV}"
+        server_only_run "${BT_VALUES[0]}"
+        exit $?
+    fi
+
+    # --- Supplement mode ---
+    if ${SUPPLEMENT_MODE}; then
+        [[ ${#BT_VALUES[@]} -eq 1 ]] || die "--supplement requires exactly one --bt value"
+        [[ -f "${TEMPLATE_ENV}" ]] || die "Template env not found: ${TEMPLATE_ENV}"
+        ${DRY_RUN} || ssh "${SPARK01}" "test -x '${LLAMA_BENCHY_BIN}'" \
+            || die "llama-benchy not found on spark01: ${LLAMA_BENCHY_BIN}"
+        supplement_run "${BT_VALUES[0]}"
         exit $?
     fi
 
