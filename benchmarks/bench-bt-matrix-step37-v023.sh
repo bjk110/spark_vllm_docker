@@ -685,7 +685,7 @@ correctness_check_extended() {
     # Run one API call; prompt must be safe for embedding in JSON (no bare quotes/backslashes)
     _ask_ext() {
         local prompt="$1"
-        ssh "${SPARK01}" "curl -s --max-time 150 -X POST '${api}' \
+        ssh "${SPARK01}" "curl -s --max-time 300 -X POST '${api}' \
             -H 'Content-Type: application/json' \
             -d '{\"model\":\"${model}\",\"messages\":[{\"role\":\"user\",\"content\":\"${prompt}\"}],\"max_tokens\":${MAX_T},\"temperature\":0}'"
     }
