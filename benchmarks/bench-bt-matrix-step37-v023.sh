@@ -687,6 +687,53 @@ stop_containers() {
     log "Containers stopped."
 }
 
+# Apply prometheus_fastapi_instrumentator routing.py fix to the running head container.
+# '_IncludedRouter' objects have no 'path' attribute — this causes AttributeError inside
+# the Prometheus middleware on every HTTP request, returning 500 for all endpoints
+# including /health, which blocks the API readiness check.
+# Fix: replace route.path with getattr(route, 'path', 'unknown') in routing.py.
+# Both containers must restart simultaneously after patching to avoid TCPStore desync.
+apply_prometheus_patch() {
+    local patch_src
+    patch_src=$(mktemp /tmp/fix_prometheus_XXXXXX.py)
+    cat > "${patch_src}" << 'PYEOF'
+import os, glob
+fp = '/usr/local/lib/python3.12/dist-packages/prometheus_fastapi_instrumentator/routing.py'
+with open(fp) as f:
+    txt = f.read()
+fixed = txt.replace("route_name = route.path", "route_name = getattr(route, 'path', 'unknown')")
+if fixed == txt:
+    print('prometheus routing.py: pattern not found (already patched or code changed upstream)')
+else:
+    with open(fp, 'w') as f:
+        f.write(fixed)
+    print('prometheus routing.py: patched route.path -> getattr')
+pycache = os.path.dirname(fp) + '/__pycache__'
+for pyc in glob.glob(pycache + '/routing*.pyc'):
+    os.remove(pyc)
+    print('removed ' + pyc)
+PYEOF
+    # shellcheck disable=SC2064
+    trap "rm -f '${patch_src}'" RETURN
+
+    log "Patching prometheus routing.py in head container..."
+    run scp "${patch_src}" "${SPARK01}:/tmp/fix_prometheus_routing.py"
+    run ssh "${SPARK01}" \
+        "docker cp /tmp/fix_prometheus_routing.py vllm-spark-head:/tmp/fix_prometheus_routing.py \
+         && docker exec vllm-spark-head python3 /tmp/fix_prometheus_routing.py"
+
+    # Restart both containers simultaneously — restarting head alone breaks the TCPStore
+    # connection that spark02's worker holds, causing a 601s reconnect timeout.
+    log "Restarting both containers simultaneously to activate prometheus patch..."
+    ssh "${SPARK01}" "cd '${REMOTE_REPO_ROOT}' && docker compose --profile head restart" &
+    local pid_head=$!
+    ssh "${SPARK02}" "cd '${REMOTE_REPO_ROOT}' && docker compose --profile worker restart" &
+    local pid_worker=$!
+    wait "${pid_head}" || warn "Head container restart may have failed"
+    wait "${pid_worker}" || warn "Worker container restart may have failed"
+    log "Containers restarted with prometheus patch active."
+}
+
 # ---------------------------------------------------------------------------
 # Single bt run
 # ---------------------------------------------------------------------------
@@ -801,6 +848,13 @@ run_bt() {
 
     # --- Start containers ---
     start_containers "${env_file}"
+
+    # --- Patch prometheus routing.py (required before API readiness check) ---
+    # prometheus_fastapi_instrumentator raises AttributeError on every HTTP request
+    # when _IncludedRouter objects lack the 'path' attribute. This returns 500 for
+    # /health, blocking the readiness check. Patch immediately after container start
+    # (before model load completes) so only one model load is needed.
+    apply_prometheus_patch
 
     # --- Wait for API ---
     local api_ready=false

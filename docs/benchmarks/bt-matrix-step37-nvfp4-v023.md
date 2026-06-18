@@ -5,7 +5,7 @@
 is the primary cause of the observed prefill throughput regression in v023, and
 determine a safe production value.
 
-**Status**: Benchmark infrastructure ready. Results: Not yet measured.
+**Status**: bt=256 and bt=2048 measured (Series A, EP-off). bt=8192 pending.
 
 ---
 
@@ -99,7 +99,7 @@ so absence of the flag in the entrypoint command is the primary evidence source.
 | bt | EP | pp2048 t/s | tg32 t/s | pp@d4096 | pp@d8192 | pp@d16384 | Notes |
 |---:|:--:|----------:|--------:|---------:|---------:|----------:|-------|
 | 256 | off | 537.94 | 12.26 | 563.47 | 564.00 | 530.91 | Measured 2026-06-18; config_label=v023-triton-marlin-ep-off-bt256 |
-| 2048 | off | Not yet measured | — | — | — | — | Next scheduled run (Series A continuation) |
+| 2048 | off | **1034.86** | 10.06 | **1088.21** | **1076.12** | **1050.69** | Measured 2026-06-18; config_label=v023-triton-marlin-ep-off-bt2048; run_id=bt2048-20260618-093121; pp +92% vs bt=256 |
 | 8192 | off | Not yet measured | — | — | — | — | Provisional candidate; not yet measured on v023 |
 
 **Series B — EP enabled** (future matrix runs, `bt-matrix-base.env`):
@@ -275,29 +275,50 @@ reboot occurred before the bt=2048 run.
 
 After reboot, both `boot_id` values must differ from the above before bt=2048 is executed.
 
-### bt=2048 execution status
+### bt=2048 execution results (2026-06-18)
 
-**Blocked: explicit stop/reboot authorization not present.**
+**Completed.** run_id=`bt2048-20260618-093121`, executed 2026-06-18T09:31Z.
 
-The dry-run completed successfully at `2026-06-18T08:45:45Z`. All parameters validated:
+#### Acceptance criteria check
 
-| Parameter | Value |
-|-----------|-------|
-| `MAX_NUM_BATCHED_TOKENS` | 2048 |
-| `MAX_MODEL_LEN` | 32768 |
-| `MAX_NUM_SEQS` | 1 |
-| `GPU_MEMORY_UTILIZATION` | 0.79 |
-| `DISTRIBUTED_BACKEND` | mp |
-| `MoE backend` | marlin (in VLLM_EXTRA_ARGS) |
-| `Attention backend` | TRITON_ATTN (in VLLM_EXTRA_ARGS) |
-| `EP flag` | absent from VLLM_EXTRA_ARGS (confirmed EP-off) |
-| `VLLM_USE_BREAKABLE_CUDAGRAPH` | 0 |
-| `NCCL_NET` | Socket |
-| `FLASHINFER_CUDA_ARCH_LIST` | 12.1 |
-| `config-label` | v023-triton-marlin-ep-off-bt2048 |
+| Criterion | Status | Evidence |
+|-----------|--------|---------|
+| Both nodes rebooted | PASS | spark01 `31eedf8e→9f01d96f`, spark02 `6ccea774→92bc7698` |
+| Same image | PASS | `vllm-spark:v023-step3p7-fixed-kv-profile-skip-candidate` |
+| EP confirmed off | PASS | `expert_parallel_observed=disabled` |
+| MARLIN confirmed | PASS | `marlin_confirmed=1` (`nvfp4.py:231`) |
+| TRITON_ATTN confirmed | PASS | `triton_attn_confirmed=1` (`cuda.py:331`) |
+| Backend validity | PASS | `OK (MARLIN confirmed, TRITON_ATTN confirmed)` |
+| EP validation | PASS | `OK (expected=off, observed=disabled)` |
+| Bench result | PASS | `bench_result=OK` |
+| Startup | PASS | `startup_result=OK` |
+| Correctness | CONDITIONAL | Tests 1,2 correct (97, 1307674368000). Tests 3,4 EMPTY/UNCERTAIN due to max_tokens too small for reasoning model `<think>` chain — not a garble indicator (see vllm023_step37_garble_fix.md) |
 
-Pending: container stop authorization + spark01/spark02 reboot authorization.
-Once both are granted, execute Phase 3 command in the "How to run" section.
+#### Throughput results
+
+| Depth | pp2048 t/s | tg32 t/s | pp TTFR (ms) | Notes |
+|-------|-----------|---------|------------|-------|
+| d0    | 1034.86 ± 49.61 | 10.06 ± 0.04 | 1985.92 | bt=256: 537.94 → +92.4% pp |
+| d4096 | 1088.21 ± 7.28  | 10.06 ± 0.23 | 5648.48 | bt=256: 563.47 → +93.1% pp |
+| d8192 | 1076.12 ± 0.89  | 9.71 ± 0.22  | 9517.92 | bt=256: 564.00 → +90.7% pp |
+| d16384 | 1050.69 ± 2.16 | 9.70 ± 0.11  | 17545.09 | bt=256: 530.91 → +97.9% pp |
+
+**Key observations:**
+- Prefill (pp2048) improves by **~92-98%** vs bt=256. The 2048-token prompt is now processed
+  in a single scheduler iteration instead of 8 × 256-token chunks.
+- Decode (tg32) regresses by ~15-18% vs bt=256 (10.06 vs 12.26 t/s at d0). Mechanism not
+  yet isolated (memory allocation difference, compilation effect, or sampling path change).
+- pp peak is ~1088 t/s (d4096), still below v022 baseline of 1251 t/s at d4096.
+  Remaining gap may be due to TRITON_ATTN prefill vs FlashInfer, MARLIN overhead, or
+  v023 per-se changes — not isolated at this time.
+
+#### Infrastructure note: prometheus patch added
+
+An `apply_prometheus_patch()` step was added to `bench-bt-matrix-step37-v023.sh` as part
+of this run. `prometheus_fastapi_instrumentator` routing.py raises `AttributeError: '_IncludedRouter'
+object has no attribute 'path'` on every HTTP request including `/health`, blocking the
+readiness check. The patch is applied automatically after containers start (before model
+load completes) and both containers are restarted simultaneously to avoid TCPStore desync.
 
 ---
 
