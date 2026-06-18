@@ -5,7 +5,7 @@
 is the primary cause of the observed prefill throughput regression in v023, and
 determine a safe production value.
 
-**Status**: bt=256 and bt=2048 measured (Series A, EP-off). bt=8192 not executed. Two supplement runs completed 2026-06-18 (`bt2048-supp-20260618-103333`, `bt2048-supp-20260618-113436`): all 4 correctness tests PASS in both; decode regression at d0 not reproduced under pp=1 decode-only methodology in either supplement.
+**Status**: bt=256 and bt=2048 measured (Series A, EP-off). bt=8192 not yet executed. Two bt=2048 supplement runs completed 2026-06-18: all 4 correctness tests PASS; short-context decode (pp=1) healthy. pp2048-context decode causality unresolved — controlled A/B not yet run. bt=8192 dry-run prepared; execution pending authorization.
 
 ---
 
@@ -99,7 +99,7 @@ so absence of the flag in the entrypoint command is the primary evidence source.
 | bt | EP | pp2048 t/s | tg32 t/s | pp@d4096 | pp@d8192 | pp@d16384 | Notes |
 |---:|:--:|----------:|--------:|---------:|---------:|----------:|-------|
 | 256 | off | 537.94 | 12.26 | 563.47 | 564.00 | 530.91 | Measured 2026-06-18; config_label=v023-triton-marlin-ep-off-bt256 |
-| 2048 | off | **1034.86** | 10.06 | **1088.21** | **1076.12** | **1050.69** | Measured 2026-06-18; run_id=bt2048-20260618-093121; pp +92% vs bt=256. Two supplement runs: all correctness tests PASS; decode-only (pp=1) 11.84–12.97 t/s at d0 (higher than original — see Phase 8 analysis). |
+| 2048 | off | **1034.86** | 10.06 | **1088.21** | **1076.12** | **1050.69** | Measured 2026-06-18; run_id=bt2048-20260618-093121; pp +92% vs bt=256. Two supplement runs: all correctness tests PASS; short-context decode (pp=1) 11.84–12.97 t/s at d0. pp2048-context decode lower than bt=256 (10.06 vs 12.26 t/s at d0); causality not established — see Phase 8 analysis. |
 | 8192 | off | Not executed | — | — | — | — | Not executed in this session; pending separate run |
 
 **Series B — EP enabled** (future matrix runs, `bt-matrix-base.env`):
@@ -307,11 +307,12 @@ After reboot, both `boot_id` values must differ from the above before bt=2048 is
 - Prefill (pp2048) improves by **~92-98%** vs bt=256. The 2048-token prompt is expected to
   fit within a single scheduling budget at bt=2048 instead of spanning 8 × 256-token
   scheduled batches. Scheduling batch count is inferred from budget math, not directly logged.
-- Decode (tg32) regresses by ~18-22% vs bt=256 at d0 (10.06 vs 12.26 t/s). Regression is
-  smaller at deeper contexts (d16384: 9.70 vs 11.52 t/s, ~16%). Mechanism not isolated
-  — candidates include memory allocation difference from larger KV reservation, compilation
-  effect, or sampling path change at higher batch token budget. A decode-only rerun would
-  confirm whether the regression is reproducible; requires server restart (pending authorization).
+- Decode (tg32) at pp2048-context: 10.06 t/s (bt=2048) vs 12.26 t/s (bt=256) at d0 (~18%
+  lower). Regression is smaller at deeper contexts (d16384: 9.70 vs 11.52 t/s, ~16%).
+  Causality not established — candidates include server warm-up difference (bt=256 measured
+  at ~18h uptime vs bt=2048 at ~9 min), effective KV state difference, or other confounders.
+  A controlled A/B using identical pp2048-context methodology with matched server uptime is
+  required to isolate the bt contribution.
 - **v022 gap**: bt=2048 pp peak is ~1088 t/s (d4096) vs v022 baseline ~1300 t/s (d4096),
   approximately **−16%** below v022. The gap persists across all depths (−16–17%). This gap
   is not attributable to a single variable: confounders include attention backend
@@ -447,9 +448,9 @@ Full results (gitignored, not committed):
 - `benchmarks/results/bt-matrix/bt2048-supp-20260618-103333/correctness-extended.md`
 - `benchmarks/results/bt-matrix/bt2048-supp-20260618-113436/correctness-extended.md`
 
-### Decode-only rerun results (two supplement runs)
+### Decode supplement analysis
 
-Two decode-only supplement runs completed on 2026-06-18. Both use pp=1, tg=32,
+Two bt=2048 supplement runs completed on 2026-06-18. Both use pp=1, tg=32,
 5 runs per depth, depths d0/4096/8192/16384, `--latency-mode generation`.
 
 | run_id | Started | API ready | Decode bench start | Server uptime at bench |
@@ -457,14 +458,31 @@ Two decode-only supplement runs completed on 2026-06-18. Both use pp=1, tg=32,
 | `bt2048-supp-20260618-103333` | 10:33Z | ~10:39Z | ~11:11Z | ~38 min |
 | `bt2048-supp-20260618-113436` | 11:34Z | 11:40:50Z | 11:47:14Z | ~12 min |
 
-#### Phase 8: Decode statistics and comparison
+#### Phase 8: Decode analysis — three separate metrics
 
-| Depth | Original bt=2048 (pp=2048, 3 runs) | Supp #1 (pp=1, 5 runs) | Supp #2 (pp=1, 5 runs) | bt=256 baseline (pp=2048) |
-|-------|------------------------------------|------------------------|------------------------|--------------------------|
-| d0    | 10.06 ± 0.04 t/s                   | 12.97 ± 0.70 t/s       | **11.84 ± 0.58 t/s**   | 12.26 ± 0.60 t/s         |
-| d4096 | 10.06 ± 0.23 t/s                   | 10.74 ± 0.50 t/s       | **12.46 ± 0.54 t/s**   | 11.25 ± 0.20 t/s         |
-| d8192 | 9.71 ± 0.22 t/s                    | 10.63 ± 1.00 t/s       | **11.80 ± 0.22 t/s**   | 11.47 ± 0.30 t/s         |
-| d16384 | 9.70 ± 0.11 t/s                   | 9.92 ± 0.23 t/s        | **10.84 ± 0.22 t/s**   | 11.52 ± 1.58 t/s         |
+The decode measurements across bt=2048 runs use different methodologies and represent
+separate metrics. They are not directly comparable to each other.
+
+**A. Short-context decode (pp=1, tg=32)**
+
+Both supplement runs measured decode with a 1-token prompt context (pp=1), isolating
+the decode path from prefill warm-up effects. The two supplement runs and the bt=256
+baseline (which used pp=2048) are placed in the same table for reference only.
+
+| Depth | Supp #1 (pp=1, 5 runs) | Supp #2 (pp=1, 5 runs) | bt=256 (pp=2048, 3 runs)* |
+|-------|------------------------|------------------------|--------------------------|
+| d0    | 12.97 ± 0.70 t/s       | 11.84 ± 0.58 t/s       | 12.26 ± 0.60 t/s         |
+| d4096 | 10.74 ± 0.50 t/s       | 12.46 ± 0.54 t/s       | 11.25 ± 0.20 t/s         |
+| d8192 | 10.63 ± 1.00 t/s       | 11.80 ± 0.22 t/s       | 11.47 ± 0.30 t/s         |
+| d16384 | 9.92 ± 0.23 t/s       | 10.84 ± 0.22 t/s       | 11.52 ± 1.58 t/s         |
+
+\* bt=256 baseline used pp=2048, a different methodology — shown for scale reference only.
+
+`Verdict A: No short-context decode regression was observed under bt=2048. Both supplement runs fall within a range consistent with the bt=256 baseline.`
+
+Between-supplement variability at d0 is ~9% (12.97 vs 11.84), reflecting natural
+run-to-run variation. The supplements show that the bt=2048 Series A configuration
+does not impair the short-context decode path.
 
 Supp #2 pp=1 prefill measurements (context extension cost at each depth):
 
@@ -474,14 +492,39 @@ Supp #2 pp=1 prefill measurements (context extension cost at each depth):
 | d8192 | 7947 ± 20 ms  | 1057 ± 3 t/s  |
 | d16384 | 16050 ± 140 ms | 1034 ± 9 t/s |
 
-**Verdict — not reproduced in either supplement (Verdict B)**: Both supplement runs show
-decode rates substantially higher than the original bt=2048 (10.06 t/s at d0):
-- Supp #1: 12.97 t/s at d0 (+29% vs original; +6% vs bt=256 baseline)
-- Supp #2: 11.84 t/s at d0 (+18% vs original; −3% vs bt=256 baseline)
+**B. pp2048-context decode (pp=2048, tg=32)**
 
-Between-supplement variability at d0 is ~9% (12.97 vs 11.84). Across all depths, both
-supplements track near the bt=256 baseline range rather than the original bt=2048 values.
-At d4096, supp #2 (12.46 t/s) exceeds even the bt=256 baseline (11.25 t/s).
+The original bt=2048 run measured tg32 after a 2048-token prompt context (via `--pp 2048
+--tg 32` in llama-benchy). This is the same methodology as the bt=256 baseline.
+
+| Depth | Original bt=2048 (pp=2048, 3 runs) | bt=256 baseline (pp=2048, 3 runs) | Delta |
+|-------|------------------------------------|-----------------------------------|-------|
+| d0    | 10.06 ± 0.04 t/s                   | 12.26 ± 0.60 t/s                  | −18%  |
+| d4096 | 10.06 ± 0.23 t/s                   | 11.25 ± 0.20 t/s                  | −11%  |
+| d8192 | 9.71 ± 0.22 t/s                    | 11.47 ± 0.30 t/s                  | −15%  |
+| d16384 | 9.70 ± 0.11 t/s                  | 11.52 ± 1.58 t/s                  | −16%  |
+
+`Verdict B: The original bt=2048 pp2048-context decode was lower than the bt=256 result under the same methodology. This is a measured difference; its cause has not been established.`
+
+This result has not been remeasured under a controlled pp2048-context A/B. The supplement
+runs (pp=1) used a different methodology and do not provide evidence for or against a
+bt-setting effect in the pp2048-context path.
+
+**C. Causality**
+
+`Verdict C: No causal relationship between max_num_batched_tokens and decode throughput has been established.`
+
+Candidate explanations for the lower pp2048-context decode in bt=2048:
+- **Server warm-up**: bt=256 container measured at ~18h uptime; bt=2048 at ~9 min from reboot
+- **Sequential test interaction**: prefill and decode are adjacent tests within the same
+  llama-benchy run; warm-up state differs between pp and tg passes
+- **KV state**: tg32 after pp=2048 vs pp=1 is a different decode state, but this applies
+  to bt=256 equally (both used pp=2048), so KV size alone does not explain the bt=256 vs
+  bt=2048 gap
+
+`Required isolation: A controlled A/B using identical pp2048-context requests with matched server uptime (bt=256 vs bt=2048) is required to attribute any decode difference to max_num_batched_tokens.`
+
+`Production note: The unresolved decode attribution does not invalidate the measured prefill improvement or the completed correctness validation.`
 
 #### Phase 9: Runtime identity comparison
 
@@ -501,22 +544,23 @@ At d4096, supp #2 (12.46 t/s) exceeds even the bt=256 baseline (11.25 t/s).
 | Boot session (spark01) | 9f01d96f | same | same |
 | curl timeout in correctness | 150s (n/a to bench) | 150s (external runner killed) | **300s (fixed)** |
 
-**Key runtime difference**: The original run used `--pp 2048 --tg 32` in llama-benchy, so
-the tg32 measurement at d0 has a 2048-token active KV context. Both supplement runs use
-pp=1, giving a 1-token context. Larger KV cache pressure under pp=2048 increases per-step
-decode latency, which is the primary explanation for the 10.06 vs 11-13 t/s gap. This is
-a measurement methodology difference, not evidence of a bt setting effect on decode.
+**Key methodology difference**: The original run used `--pp 2048 --tg 32` in llama-benchy
+(pp2048-context decode). Both supplement runs used `--pp 1 --tg 32` (short-context decode).
+These measure different states of the model and are not directly comparable.
 
-The residual ~18% gap between original bt=2048 (10.06) and bt=256 baseline (12.26) — both
-measured with pp=2048 — remains unexplained. Candidates: server warm-up difference
-(bt=256 container ~18h, bt=2048 ~9 min from reboot), or interaction between sequential
-pp and tg tests within the same llama-benchy run.
+The pp2048-context decode gap between bt=2048 (10.06 t/s) and bt=256 (12.26 t/s) at d0
+(~18%) is a measured difference. KV context size is a candidate factor contributing to
+this gap, but it applies to both bt values equally (both used pp=2048). The gap is not
+attributable to a single confirmed cause.
 
-**Summary**: Under pp=1 decode-only methodology, neither supplement reproduces the decode
-regression seen in the original bt=2048 run. The lower original value is consistent with
-measurement methodology (pp=2048 context size), not a confirmed bt=2048 decode penalty.
-A controlled A/B (same pp=2048 methodology, matched server uptime, bt=256 vs bt=2048)
-would be needed to isolate the bt contribution to decode rate.
+**Summary**: The two decode metrics show different things:
+- **Short-context decode** (pp=1): bt=2048 is within normal range — no regression.
+- **pp2048-context decode**: bt=2048 shows lower throughput than bt=256 under the same
+  methodology; the cause is unresolved. The supplements do not address this question
+  because they used a different methodology.
+
+A controlled A/B with identical pp2048-context methodology and matched server uptime
+would be needed to isolate the bt contribution to pp2048-context decode throughput.
 
 ---
 
@@ -537,19 +581,24 @@ If halted mid-matrix:
 
 ## Production recommendation
 
-> **Status: Not validated.** No production `MAX_NUM_BATCHED_TOKENS` value has been
-> confirmed for the v023 correctness-safe configuration (MARLIN + TRITON_ATTN).
-> The table below lists provisional candidates for measurement, not validated
-> recommendations.
+> **Status: bt=2048 validated candidate; bt=8192 unmeasured provisional candidate.**
+> bt=2048 has passed correctness validation (2×4 tests) under the v023 MARLIN+TRITON_ATTN
+> configuration and delivers +92% prefill throughput vs bt=256. It has not yet been
+> established as the optimal production value. bt=8192 is prepared for measurement but
+> not yet executed.
 
-*Pending bt-matrix measurement results. All entries are unvalidated on v023.*
+**bt=2048**: Validated correctness-safe candidate with substantially improved prefill
+performance (+92% vs bt=256). pp2048-context decode throughput was lower than bt=256
+in the original run; cause is unresolved. The unresolved decode attribution does not
+invalidate the prefill improvement or the correctness validation.
 
-| Candidate | bt | Rationale | Risk |
-|-----------|---:|-----------|------|
-| Conservative candidate | 4096 | 2× pp2048; safe headroom for other prompt sizes | Moderate — may not fully recover prefill |
-| **Provisional starting candidate** | **8192** | v022 production default (different EP state — direct comparison requires caution); not yet measured on v023 | Unknown — memory and throughput impact on v023 unmeasured |
-| Higher-perf candidate | 16384 | Better MoE utilization per chunk; single chunk for most prompts | Moderate — not tested on v023 |
-| Maximum single-chunk | 32768 | Matches MAX_MODEL_LEN; eliminates chunking for all prompts | Unknown — memory impact not measured |
+| Candidate | bt | Status | Rationale |
+|-----------|---:|--------|-----------|
+| Conservative | 256 | Measured; correctness PASS | Current production; lower prefill ceiling |
+| **Validated candidate** | **2048** | **Measured; correctness PASS ×8 (2 supplement runs)** | +92% prefill; pp2048-context decode causality unresolved |
+| Unmeasured provisional | 8192 | Not executed; dry-run prepared | v022 production default (different EP state); memory and throughput impact on v023 unknown |
+| Higher-perf candidate | 16384 | Not executed | Better MoE utilization per chunk; unknown risk |
+| Maximum single-chunk | 32768 | Not executed | Matches MAX_MODEL_LEN; memory impact not measured |
 
 **Do not apply to `presets/step37-flash-nvfp4-tp2.env`** until full v023 production
 validation is complete. Apply only to the disposable env under `.local/`.
@@ -569,9 +618,80 @@ Revert:
 
 ---
 
-## Phase 8: MTP follow-up
+## bt=8192 measurement plan
 
-After bt tuning is validated, run MTP sweep with the selected bt:
+bt=8192 is the v022 production default (under a different EP state — direct comparison
+requires caution). It is prepared for measurement but not yet executed.
+
+### Three metrics to collect
+
+Each bt=8192 run should produce all three metric types to enable a complete comparison
+with bt=256 and bt=2048:
+
+| Metric | Context | llama-benchy invocation | File |
+|--------|---------|------------------------|------|
+| Prefill (pp2048 t/s) | pp=2048 prompt | `--pp 2048 --tg 32` (full run) | `bench-results.md` |
+| Short-context decode | pp=1 → tg=32 | `--pp 1 --tg 32` via `--supplement --decode-context pp1` | `decode-bench.md` |
+| pp2048-context decode | pp=2048 → tg=32 | `--pp 2048 --tg 32` (same as full run tg32 row) | embedded in `bench-results.md` |
+
+Note: pp2048-context decode is already captured in the full run tg32 rows. A separate
+supplement with `--decode-context pp2048` can add a controlled isolated measurement.
+
+### Invocation
+
+**Full benchmark run** (prefill + pp2048-context decode):
+```bash
+bash benchmarks/bench-bt-matrix-step37-v023.sh \
+  --bt 8192 \
+  --template .local/env/step37/bt-matrix-series-a-ep-off.env \
+  --expected-ep off \
+  --config-label v023-triton-marlin-ep-off-bt8192
+```
+
+**Supplement: short-context + pp2048-context decode** (after full run, same boot):
+```bash
+bash benchmarks/bench-bt-matrix-step37-v023.sh \
+  --bt 8192 \
+  --supplement \
+  --template .local/env/step37/bt-matrix-series-a-ep-off.env \
+  --expected-ep off \
+  --config-label v023-triton-marlin-ep-off-bt8192 \
+  --decode-context both \
+  --decode-warmup-runs 1
+```
+
+**Dry-run verified** (2026-06-18): `--decode-context pp2048 --decode-warmup-runs 1` flags
+accepted without error. Actual execution pending: requires stop of current service +
+reboot of both nodes (GB10 UMA does not release driver pages on container stop).
+
+### Acceptance criteria
+
+| Criterion | Pass | Fail / investigate |
+|-----------|------|--------------------|
+| Correctness | All 4 tests PASS | Any FAIL_GARBLE or FAIL_WRONG_ANSWER |
+| Prefill (pp2048 d0) | ≥1034 t/s (≥ bt=2048) | < bt=2048 at any depth |
+| Short-context decode | ≥10 t/s at d0 | < 9 t/s |
+| No startup hang | API ready within 600s | Hang → stop + reboot |
+| Post-stop memory | ≥50 GiB free | < 50 GiB → reboot before next run |
+
+### Result judgment
+
+- **If prefill ≥ bt=2048 and correctness PASS**: bt=8192 is a stronger prefill candidate.
+  Promote to validated candidate; document pp2048-context decode result.
+- **If prefill < bt=2048**: bt=2048 remains the validated prefill leader; report regress.
+- **If garble**: halt; diagnose backend (MARLIN+TRITON_ATTN required). Do not use.
+- **If startup hang**: stop + reboot. Do not retry without diagnosing warm-up peak.
+
+pp2048-context decode comparison: bt=8192 result vs bt=2048 (10.06 t/s at d0) under
+identical pp2048 methodology. This is the first controlled decode A/B; if matched server
+uptime and sequence are held constant, the bt-setting effect on pp2048-context decode
+can begin to be isolated.
+
+---
+
+## MTP follow-up (post bt-tuning)
+
+After a production bt value is selected and validated, run MTP sweep:
 
 - MTP off / n=1 / n=2 / n=3 × tg128
 - Metrics: output t/s, acceptance rate, mean acceptance length, correctness
@@ -583,7 +703,7 @@ After bt tuning is validated, run MTP sweep with the selected bt:
 
 | File | Description |
 |------|-------------|
-| `.local/env/step37/bt-matrix-base.env` | Template env (bt placeholder) |
+| `.local/env/step37/bt-matrix-series-a-ep-off.env` | Series A template env (bt placeholder) |
 | `benchmarks/bench-bt-matrix-step37-v023.sh` | Matrix runner |
 | `benchmarks/analyze-bt-matrix.sh` | Analysis and report generator |
 | `benchmarks/results/bt-matrix/` | Per-run results (gitignored via `.cache/`) |
