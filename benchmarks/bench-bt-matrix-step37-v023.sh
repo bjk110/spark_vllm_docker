@@ -687,51 +687,120 @@ stop_containers() {
     log "Containers stopped."
 }
 
-# Apply prometheus_fastapi_instrumentator routing.py fix to the running head container.
-# '_IncludedRouter' objects have no 'path' attribute — this causes AttributeError inside
-# the Prometheus middleware on every HTTP request, returning 500 for all endpoints
-# including /health, which blocks the API readiness check.
-# Fix: replace route.path with getattr(route, 'path', 'unknown') in routing.py.
-# Both containers must restart simultaneously after patching to avoid TCPStore desync.
+# Apply prometheus_fastapi_instrumentator 8.0.0 routing.py compatibility fix to the
+# running head container. Affected image: v023-step3p7-fixed-kv-profile-skip-candidate.
+#
+# Root cause: vLLM 0.23.0 registers routes using FastAPI's include_router(), which
+# produces _IncludedRouter objects that lack a .path attribute. routing.py's
+# _get_route_name() calls route.path unconditionally, raising AttributeError inside
+# the Prometheus middleware on every HTTP request — including /health — causing all
+# requests to return HTTP 500 before the model handler runs.
+#
+# Fix: replace the two occurrences of `route_name = route.path` with
+# `route_name = getattr(route, 'path', 'unknown')` in routing.py.
+#
+# Worker-side patch: NOT required — prometheus instrumentator is only loaded by the
+# head API server (vllm/entrypoints/serve/instrumentator/metrics.py). The worker
+# process does not start an HTTP server.
+#
+# Simultaneous restart: required after patching. Restarting only head breaks the
+# TCPStore address that spark02 worker is connected to, causing a 601s timeout.
+# Restarting both simultaneously forces a clean re-join.
+#
+# Args: meta_file (optional) — path to write patch state fields (key=value lines).
+#       Returns 0 on success, 1 on failure. Containers are NOT stopped on failure;
+#       caller is responsible for calling stop_containers and returning an error.
+#
+# Known checksums (prometheus-fastapi-instrumentator==8.0.0):
+#   original SHA256: b90d08f601c5ec82245630667c0cbc031f00df038284b4e61f46945d182c85fb
+#   patched  SHA256: a3addfd90d1132a5ab5dca54c788f4743fe180b9607a662bf34ef0453750848c
 apply_prometheus_patch() {
+    local meta_file="${1:-/dev/null}"
     local patch_src
     patch_src=$(mktemp /tmp/fix_prometheus_XXXXXX.py)
     cat > "${patch_src}" << 'PYEOF'
-import os, glob
+import os, sys, glob, hashlib, subprocess
+
+EXPECTED_ORIG    = "b90d08f601c5ec82245630667c0cbc031f00df038284b4e61f46945d182c85fb"
+EXPECTED_PATCHED = "a3addfd90d1132a5ab5dca54c788f4743fe180b9607a662bf34ef0453750848c"
 fp = '/usr/local/lib/python3.12/dist-packages/prometheus_fastapi_instrumentator/routing.py'
-with open(fp) as f:
-    txt = f.read()
+
+with open(fp, 'rb') as f:
+    raw = f.read()
+sha_before = hashlib.sha256(raw).hexdigest()
+print(f'prometheus_routing_sha256_before={sha_before}')
+
+if sha_before == EXPECTED_PATCHED:
+    print('prometheus_patch_status=already_patched')
+    sys.exit(0)
+
+if sha_before != EXPECTED_ORIG:
+    print(f'prometheus_patch_status=PRECONDITION_FAILED (unexpected sha256_before={sha_before})')
+    sys.exit(1)
+
+txt = raw.decode()
 fixed = txt.replace("route_name = route.path", "route_name = getattr(route, 'path', 'unknown')")
 if fixed == txt:
-    print('prometheus routing.py: pattern not found (already patched or code changed upstream)')
-else:
-    with open(fp, 'w') as f:
-        f.write(fixed)
-    print('prometheus routing.py: patched route.path -> getattr')
+    print('prometheus_patch_status=PRECONDITION_FAILED (pattern not found despite matching sha256)')
+    sys.exit(1)
+
+with open(fp, 'w') as f:
+    f.write(fixed)
+
+with open(fp, 'rb') as f:
+    sha_after = hashlib.sha256(f.read()).hexdigest()
+print(f'prometheus_routing_sha256_after={sha_after}')
+
+if sha_after != EXPECTED_PATCHED:
+    print(f'prometheus_patch_status=VERIFY_FAILED (sha_after={sha_after})')
+    sys.exit(1)
+
+result = subprocess.run([sys.executable, '-m', 'py_compile', fp], capture_output=True, text=True)
+if result.returncode != 0:
+    print(f'prometheus_patch_status=SYNTAX_CHECK_FAILED ({result.stderr.strip()})')
+    sys.exit(1)
+
 pycache = os.path.dirname(fp) + '/__pycache__'
 for pyc in glob.glob(pycache + '/routing*.pyc'):
     os.remove(pyc)
-    print('removed ' + pyc)
+
+print('prometheus_patch_status=patched')
 PYEOF
     # shellcheck disable=SC2064
     trap "rm -f '${patch_src}'" RETURN
 
-    log "Patching prometheus routing.py in head container..."
-    run scp "${patch_src}" "${SPARK01}:/tmp/fix_prometheus_routing.py"
-    run ssh "${SPARK01}" \
+    log "Applying prometheus routing.py compatibility patch to head container..."
+    scp "${patch_src}" "${SPARK01}:/tmp/fix_prometheus_routing.py" 2>/dev/null \
+        || { warn "Failed to copy prometheus patch script to spark01"; return 1; }
+    local patch_out
+    patch_out=$(ssh "${SPARK01}" \
         "docker cp /tmp/fix_prometheus_routing.py vllm-spark-head:/tmp/fix_prometheus_routing.py \
-         && docker exec vllm-spark-head python3 /tmp/fix_prometheus_routing.py"
+         && docker exec vllm-spark-head python3 /tmp/fix_prometheus_routing.py" 2>&1)
+    local patch_rc=$?
+    log "Patch output: ${patch_out}"
 
-    # Restart both containers simultaneously — restarting head alone breaks the TCPStore
-    # connection that spark02's worker holds, causing a 601s reconnect timeout.
+    # Append patch state fields to meta_file
+    echo "${patch_out}" >> "${meta_file}"
+
+    if [[ ${patch_rc} -ne 0 ]]; then
+        warn "prometheus patch script returned non-zero (${patch_rc})"
+        return 1
+    fi
+    if echo "${patch_out}" | grep -q 'prometheus_patch_status=.*FAILED'; then
+        warn "prometheus patch reported failure: $(echo "${patch_out}" | grep 'prometheus_patch_status=')"
+        return 1
+    fi
+
+    # Restart both containers simultaneously — see function comment for rationale.
     log "Restarting both containers simultaneously to activate prometheus patch..."
     ssh "${SPARK01}" "cd '${REMOTE_REPO_ROOT}' && docker compose --profile head restart" &
     local pid_head=$!
     ssh "${SPARK02}" "cd '${REMOTE_REPO_ROOT}' && docker compose --profile worker restart" &
     local pid_worker=$!
-    wait "${pid_head}" || warn "Head container restart may have failed"
-    wait "${pid_worker}" || warn "Worker container restart may have failed"
+    wait "${pid_head}" || { warn "Head container restart failed"; return 1; }
+    wait "${pid_worker}" || warn "Worker container restart may have failed (non-fatal — worker will reconnect)"
     log "Containers restarted with prometheus patch active."
+    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -854,7 +923,14 @@ run_bt() {
     # when _IncludedRouter objects lack the 'path' attribute. This returns 500 for
     # /health, blocking the readiness check. Patch immediately after container start
     # (before model load completes) so only one model load is needed.
-    apply_prometheus_patch
+    if ! apply_prometheus_patch "${meta_file}"; then
+        warn "bt=${bt}: prometheus patch failed — aborting run."
+        echo "startup_result=PROMETHEUS_PATCH_FAILED" >> "${meta_file}"
+        echo "run_id,bt,status,failure_reason" > "${summary_file}"
+        echo "${run_id},${bt},STARTUP_FAIL,prometheus routing.py patch failed" >> "${summary_file}"
+        stop_containers
+        return 1
+    fi
 
     # --- Wait for API ---
     local api_ready=false
