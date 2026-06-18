@@ -377,8 +377,31 @@ Each bt run includes the following correctness tests:
 
 1. **Factual** — "largest prime < 100" → expects 97; max_tokens=100
 2. **Multi-step arithmetic** — "15 factorial" → expects 1307674368000; max_tokens=600
-3. **Unicode integrity** — Korean KTX question → checks for broken codepoints; max_tokens=400
+3. **Unicode integrity** — Korean KTX question → checks for Unicode corruption signals; max_tokens=400
 4. **Finish reason** — "2+2" → expects `stop` finish_reason; max_tokens=100
+
+### Verdict taxonomy
+
+| Verdict | Definition |
+|---------|-----------|
+| `PASS` | Expected answer found in content; `finish_reason=stop` |
+| `PASS_WITH_LENGTH_LIMIT` | Expected answer found before budget exhausted; `finish_reason=length` |
+| `FAIL_WRONG_ANSWER` | Output present but expected pattern absent; `finish_reason=stop` |
+| `FAIL_GARBLE` | Unicode corruption signal detected: U+FFFD replacement char, lone surrogates (U+D800–U+DFFF), Private Use Area dominance (>10% of sampled text), or pathological token repetition |
+| `INCONCLUSIVE_OUTPUT_BUDGET` | `finish_reason=length`; expected pattern not confirmed in sampled content; output not garbled |
+| `FAIL_API` | HTTP error, JSON parse error, or empty content with `finish_reason=stop` |
+
+**Important**: Characters outside ASCII and Korean ranges — including U+00B7 MIDDLE DOT (·),
+Latin Extended, and common Unicode punctuation — are **not** garble signals. The garble detector
+targets specific corruption artifacts (replacement chars, lone surrogates, PUA dominance,
+pathological repetition) and does not use a character whitelist.
+
+Per-test aggregation: `PASS` takes precedence over `PASS_WITH_LENGTH_LIMIT` over failures over
+`INCONCLUSIVE_OUTPUT_BUDGET`. A test passes if any run produces `PASS` or `PASS_WITH_LENGTH_LIMIT`.
+
+Suite status fields:
+- `observed_garble`: true only if at least one run produced `FAIL_GARBLE`
+- `All tests PASS (strict)`: true only if every individual run across all tests produced `PASS`
 
 A run is flagged `backend_validity=INVALID_MARLIN_NOT_CONFIRMED` if the MARLIN MoE
 backend log line (`Using 'MARLIN' NvFp4 MoE backend out of potential backends: [...]`)
@@ -604,13 +627,33 @@ bt=2048 reference (run_id=bt2048-20260618-093121): pp2048 d0=1034.86, d4096=1088
 |------|-------|-------|---------|
 | 1 — largest prime < 100 | PASS (97, 85 tokens) | PASS (97, 85 tokens) | **PASS** |
 | 2 — 15 factorial | PASS (1307674368000, 314 tokens) | PASS (1307674368000, 209 tokens) | **PASS** |
-| 3 — Korean KTX | FAIL_GARBLE (length=2048; first 400 chars valid Korean) | PASS (1850 tokens, stop) | **PASS** |
+| 3 — Korean KTX | ~~FAIL_GARBLE~~ → INCONCLUSIVE_OUTPUT_BUDGET (length=2048; content valid Korean; see note) | PASS (1850 tokens, stop) | **PASS** |
 | 4 — "What is 2+2?" | PASS (4, 93 tokens, stop) | PASS (4, 203 tokens, stop) | **PASS** |
 
-Note on Test 3 Run 1: `finish_reason=length` at 2048 tokens. The first 400 characters of content are valid Korean
-("서울에서 부산까지 KTX의 소요시간은 출발·도착 역과 정차역, 운행 열차 종류에 따라 조금 차이가 있습니다.").
-Verdict `FAIL_GARBLE` is assigned by the checker; the visible content does not exhibit broken codepoints or
-scrambled tokens. Run 2 completed normally (stop, valid Korean, 1850 tokens). Test 3 overall: PASS.
+**Note on Test 3 Run 1 — checker false positive (corrected):**
+
+The automated checker returned `FAIL_GARBLE` for Run 1. This was a false positive caused by a
+character-whitelist bug in the garble detector.
+
+| Field | Value |
+|-------|-------|
+| finish_reason | `length` |
+| completion_tokens | 2048 (budget exhausted) |
+| Sampled content (first 400 chars) | 서울에서 부산까지 KTX의 소요시간은 출발·도착 역과 정차역, 운행 열차 종류에 따라 조금 차이가 있습니다. |
+| Unicode validity | Valid UTF-8; no replacement chars (U+FFFD); no surrogates |
+| Garble signals observed | None |
+| Root cause of false positive | U+00B7 MIDDLE DOT (·) in Korean punctuation was outside the old whitelist range `\x00–\x9F`; the whitelist did not cover common Unicode punctuation above U+009F |
+| Automated verdict (original) | `FAIL_GARBLE` |
+| Revised verdict | `INCONCLUSIVE_OUTPUT_BUDGET` — `finish_reason=length`, content valid, answer completion unknown |
+| Checker fix | Commit replacing character whitelist with targeted garble signal detection |
+| Raw artifact | `correctness-extended.md` records the original automated verdict; this note documents the revision |
+
+Run 2 produced `PASS` (stop, 1850 tokens, valid Korean). Test 3 overall: `PASS`.
+
+**Suite status:**
+- `observed_garble: false` — no actual garble signals in any run
+- All 4 tests have at least one passing run
+- `All tests PASS (strict): false` — one Run 1 per the automated check was INCONCLUSIVE_OUTPUT_BUDGET (revised from the false-positive FAIL_GARBLE)
 
 `All 4 correctness tests PASS under bt=8192 Series A configuration. No garble observed.`
 
@@ -631,7 +674,7 @@ Both bt=8192 and bt=2048 measured with identical methodology: pp=1, tg=32, 5 run
 | d8192 | 10.71 ± 0.11 t/s             | 11.80 ± 0.22 t/s                 | **−9%** |
 | d16384 | 10.22 ± 0.73 t/s            | 10.84 ± 0.22 t/s                 | **−6%** |
 
-`Result A: bt=8192 short-context decode is 6–18% lower than bt=2048 at all depths. This is a controlled A/B using identical methodology; the regression is consistent and systematic.`
+`Result A: bt=8192 showed lower measured short-context decode throughput than bt=2048 at all tested depths (6–18%). Both were measured with the same methodology (pp=1, tg=32, 5 runs, 1 warmup). This operational comparison supports selecting bt=2048, but strict causal isolation has not been achieved through alternating same-session A/B measurements. Possible confounders include different boot sessions, JIT/Triton cache state, sequential test ordering, and thermal conditions. The bt setting's direct effect on decode speed has not been independently isolated.`
 
 bt=8192 pp=1 prefill measurements (context extension cost):
 
@@ -675,15 +718,17 @@ but not a strict A/B.
 
 ### Phase 15 — Production candidate judgment
 
-`bt=8192 does NOT improve the production case over bt=2048.`
+`bt=8192 does not provide a net improvement over bt=2048 for the tested MAX_NUM_SEQS=1 latency-oriented workload.`
 
-**Prefill**: bt=8192 delivers marginal prefill gains at d4096+ (+3–4%) but is flat at d0 (−0.7%, within noise).
-The practical impact on user-visible latency (TTFR) is small.
+**Prefill**: bt=8192 delivers marginal gains at d4096+ (+3–4%) but is flat at d0 (−0.7%, within noise).
+The practical impact on user-visible TTFR is small.
 
-**Short-context decode**: bt=8192 is consistently 6–18% slower than bt=2048 in the controlled pp=1 A/B across
-all four depths. This is the first controlled decode A/B between two bt values, and the regression is
-systematic. For Step-3.7-Flash serving with MAX_NUM_SEQS=1, decode speed dominates overall latency
-(reasoning `<think>` traces are 1000–3000+ tokens).
+**Short-context decode**: bt=8192 showed lower measured throughput than bt=2048 across all four tested depths
+(6–18%), using identical pp=1 methodology. The causal mechanism is not definitively isolated — different
+boot sessions, JIT cache state, and test ordering are potential confounders. However, the directional
+finding is consistent and the measured gap is larger than expected run-to-run variation (±3% typical).
+For Step-3.7-Flash serving with MAX_NUM_SEQS=1, decode speed dominates latency: reasoning `<think>`
+traces are 1000–3000+ tokens.
 
 **pp2048-context decode**: bt=8192 is comparable to bt=2048 (within ±8%, indistinguishable from noise).
 
@@ -742,33 +787,43 @@ If halted mid-matrix:
 > bt=8192. bt=8192 shows marginal prefill gains at deeper contexts but incurs a systematic
 > 6–18% short-context decode regression. Correctness PASS for all three values.
 
-**bt=2048**: Validated correctness-safe candidate with substantially improved prefill
-performance (+92% vs bt=256). Better short-context decode than bt=8192 across all depths.
-The pp2048-context decode cause-and-effect vs bt=256 remains unresolved, but this does not
-affect the bt=2048 vs bt=8192 comparison (both measured under identical conditions).
+**bt=2048**: Preferred measured value for the v0.23 Series A latency-oriented configuration.
+Correctness-safe across all 4 tests (2 supplement runs). Provides nearly the same pp2048
+prefill performance as bt=8192 at shallow context (d0: −0.7%, within noise), gives up only
+approximately 3–4% at deeper contexts, and delivered higher measured short-context decode
+throughput in the tested runs. Scoped to: MAX_NUM_SEQS=1, TP=2, EP-off, MARLIN, TRITON_ATTN,
+dual DGX Spark. Not generalized to other topologies, multi-user workloads, or EP-on configs.
+
+**bt=8192**: Valid measured candidate. No garble observed. Marginal prefill advantage at d4096+
+(+3–4%). Measured short-context decode lower than bt=2048 in the tested runs. Causal isolation
+was not achieved; strict same-session A/B was not performed. The measured difference supports
+choosing bt=2048 but does not prove that bt itself caused the decode throughput gap.
 
 | Candidate | bt | Status | Rationale |
 |-----------|---:|--------|-----------|
 | Conservative | 256 | Measured; correctness PASS | Current production; lower prefill ceiling |
-| **Recommended** | **2048** | **Measured; correctness PASS ×8** | +92% prefill vs bt=256; better decode than bt=8192 |
-| Measured; not recommended | 8192 | Measured; correctness PASS | +3–4% prefill at d4096+ but −6–18% short-context decode vs bt=2048 |
+| **Preferred** | **2048** | **Measured; correctness PASS ×8** | Best combined prefill/decode in tested runs; +92% prefill vs bt=256 |
+| Valid; not preferred | 8192 | Measured; correctness PASS | +3–4% prefill at d4096+; lower measured short-context decode; causal isolation not achieved |
 | Not measured | 16384 | Not executed | Better MoE chunk utilization; unknown risk |
 | Not measured | 32768 | Not executed | Matches MAX_MODEL_LEN; memory impact unknown |
+
+`MAX_NUM_BATCHED_TOKENS=2048 is the preferred measured value for the v0.23 Series A latency-oriented
+configuration. It provides nearly the same pp2048 prefill performance as bt=8192 at shallow context
+and gave up only ~3–4% at deeper prefixes, while delivering higher measured short-context decode
+throughput in the tested runs.`
+
+Caution: this conclusion applies to the specific tested environment (MAX_NUM_SEQS=1, dual DGX Spark,
+EP-off, MARLIN, TRITON_ATTN). It is not a general claim about bt=2048 being optimal across all vLLM
+configurations, hardware, or workload types.
 
 **Do not apply to `presets/step37-flash-nvfp4-tp2.env`** until full v023 production
 validation is complete. Apply only to the disposable env under `.local/`.
 
-Provisional candidate test diff (disposable env only — requires correctness validation
-before any production consideration):
-```diff
--MAX_NUM_BATCHED_TOKENS=256
-+MAX_NUM_BATCHED_TOKENS=8192
-```
-
-Revert:
+Proposed diff for production preset when ready to apply:
 ```diff
 -MAX_NUM_BATCHED_TOKENS=8192
-+MAX_NUM_BATCHED_TOKENS=256
++MAX_NUM_BATCHED_TOKENS=2048
++# Preferred measured value for v0.23 Series A (EP-off, MARLIN, TRITON_ATTN, MAX_NUM_SEQS=1).
 ```
 
 ---
