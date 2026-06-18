@@ -159,6 +159,15 @@ SERVER_ONLY_MODE=false
 SUPPLEMENT_MODE=false
 SUPPLEMENT_DECODE_RUNS=5
 SUPPLEMENT_OF=""
+# DECODE_CONTEXT_MODE: controls which decode contexts supplement runs measure.
+#   pp1      - tg32 after pp=1 context (negligible prefill); default for --supplement
+#   pp2048   - tg32 after pp=2048 context (same as full run); comparable to original bench
+#   both     - pp=1 first, then pp=2048 in a second llama-benchy pass
+# For full runs (run_bt), decode is always pp=2048 (embedded in the bench sweep).
+DECODE_CONTEXT_MODE="pp1"
+DECODE_WARMUP_RUNS=0
+RUN_CORRECTNESS=true
+AUTO_NEXT_BT=true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -182,6 +191,10 @@ while [[ $# -gt 0 ]]; do
         --supplement)            SUPPLEMENT_MODE=true; shift ;;
         --decode-runs)           SUPPLEMENT_DECODE_RUNS="$2"; shift 2 ;;
         --supplement-of)         SUPPLEMENT_OF="$2"; shift 2 ;;
+        --decode-context)        DECODE_CONTEXT_MODE="$2"; shift 2 ;;
+        --decode-warmup-runs)    DECODE_WARMUP_RUNS="$2"; shift 2 ;;
+        --no-correctness)        RUN_CORRECTNESS=false; shift ;;
+        --no-auto-next-bt)       AUTO_NEXT_BT=false; shift ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -201,6 +214,12 @@ fi
 case "${EXPECTED_EP}" in
     on|off|unknown) ;;
     *) echo "ERROR: --expected-ep must be 'on', 'off', or 'unknown'. Got: '${EXPECTED_EP}'" >&2; exit 1 ;;
+esac
+
+# Validate --decode-context value
+case "${DECODE_CONTEXT_MODE}" in
+    pp1|pp2048|both) ;;
+    *) echo "ERROR: --decode-context must be 'pp1', 'pp2048', or 'both'. Got: '${DECODE_CONTEXT_MODE}'" >&2; exit 1 ;;
 esac
 
 # Build effective bt list (used for normal runs and informational in preflight)
@@ -840,56 +859,96 @@ if unusual:
 }
 
 # ---------------------------------------------------------------------------
-# Decode-only benchmark (supplement mode): pp=1, tg=32, N runs at each depth
+# Decode-only benchmark (supplement mode)
 # ---------------------------------------------------------------------------
-# Uses llama-benchy with pp=1 (negligible prefill) to focus on decode t/s.
-# Measures tg32 at each depth in BENCH_DEPTHS. Saves to decode_file.
+# Controlled by DECODE_CONTEXT_MODE: pp1 | pp2048 | both
+#   pp1    - pp=1, tg=32 (short-context decode); negligible prefill; default
+#   pp2048 - pp=2048, tg=32 (pp2048-context decode); comparable to full run
+#   both   - pp1 pass first, then pp2048 pass
+# Results: decode-bench.md (pp1), decode-bench-pp2048.md (pp2048)
+# DECODE_WARMUP_RUNS warmup iterations are discarded before measured runs.
 decode_bench_supplement() {
     local run_dir="$1"
     local meta_file="$2"
-    local decode_file="${run_dir}/decode-bench.md"
     local bt="$3"
 
     local depth_args=""
     for d in ${BENCH_DEPTHS}; do depth_args="${depth_args} ${d}"; done
 
-    log "Running decode-only bench (pp=1, tg=32, runs=${SUPPLEMENT_DECODE_RUNS}, depths=${BENCH_DEPTHS})..."
-    echo "decode_bench_pp=1" >> "${meta_file}"
+    echo "decode_context_mode=${DECODE_CONTEXT_MODE}" >> "${meta_file}"
     echo "decode_bench_tg=32" >> "${meta_file}"
     echo "decode_bench_runs=${SUPPLEMENT_DECODE_RUNS}" >> "${meta_file}"
     echo "decode_bench_depths=${BENCH_DEPTHS}" >> "${meta_file}"
-    echo "decode_bench_note=pp=1 gives negligible prefill; measures decode t/s at each context depth" >> "${meta_file}"
+    echo "decode_bench_warmup_runs=${DECODE_WARMUP_RUNS}" >> "${meta_file}"
 
-    local decode_exit=0
-    # shellcheck disable=SC2086
-    ssh "${SPARK01}" "PYTHONUNBUFFERED=1 ${LLAMA_BENCHY_BIN} \
-        --base-url '${API_BASE}' \
-        --model '${SERVED_MODEL_NAME}' \
-        --tokenizer '${TOKENIZER_PATH}' \
-        --pp 1 \
-        --tg 32 \
-        --depth ${depth_args} \
-        --runs ${SUPPLEMENT_DECODE_RUNS} \
-        --latency-mode generation \
-        --format md \
-        --save-result '/tmp/decode-bench-supp-${bt}.md'" \
-        > "${run_dir}/decode-bench-stdout.log" 2>&1 \
-        && scp "${SPARK01}:/tmp/decode-bench-supp-${bt}.md" "${decode_file}" \
-        || decode_exit=$?
+    _run_decode_pass() {
+        local pp="$1"
+        local out_file="$2"
+        local log_file="${out_file%.md}-stdout.log"
+        local tmp_remote="/tmp/decode-bench-supp-bt${bt}-pp${pp}.md"
+        local mode_label="pp${pp}-context decode"
+        local exit_code=0
 
-    if [[ ${decode_exit} -ne 0 ]]; then
-        warn "Decode bench failed (exit ${decode_exit})"
-        echo "decode_bench_result=FAIL (exit=${decode_exit})" >> "${meta_file}"
-        return 1
-    elif [[ -f "${decode_file}" ]]; then
-        echo "decode_bench_result=OK" >> "${meta_file}"
-        log "Decode bench saved: ${decode_file}"
-        return 0
-    else
-        warn "Decode bench: output file missing"
-        echo "decode_bench_result=MISSING_OUTPUT" >> "${meta_file}"
-        return 1
+        if [[ ${DECODE_WARMUP_RUNS} -gt 0 ]]; then
+            log "  Warmup: ${DECODE_WARMUP_RUNS} run(s) before measured ${mode_label}..."
+            # shellcheck disable=SC2086
+            ssh "${SPARK01}" "PYTHONUNBUFFERED=1 ${LLAMA_BENCHY_BIN} \
+                --base-url '${API_BASE}' \
+                --model '${SERVED_MODEL_NAME}' \
+                --tokenizer '${TOKENIZER_PATH}' \
+                --pp ${pp} --tg 32 --depth ${depth_args} \
+                --runs ${DECODE_WARMUP_RUNS} --latency-mode generation --format md" \
+                > /dev/null 2>&1 || true
+        fi
+
+        log "  Running ${mode_label} (pp=${pp}, tg=32, runs=${SUPPLEMENT_DECODE_RUNS})..."
+        # shellcheck disable=SC2086
+        ssh "${SPARK01}" "PYTHONUNBUFFERED=1 ${LLAMA_BENCHY_BIN} \
+            --base-url '${API_BASE}' \
+            --model '${SERVED_MODEL_NAME}' \
+            --tokenizer '${TOKENIZER_PATH}' \
+            --pp ${pp} --tg 32 --depth ${depth_args} \
+            --runs ${SUPPLEMENT_DECODE_RUNS} \
+            --latency-mode generation \
+            --format md \
+            --save-result '${tmp_remote}'" \
+            > "${log_file}" 2>&1 \
+            && scp "${SPARK01}:${tmp_remote}" "${out_file}" \
+            || exit_code=$?
+
+        return ${exit_code}
+    }
+
+    local overall_ok=true
+
+    if [[ "${DECODE_CONTEXT_MODE}" == "pp1" || "${DECODE_CONTEXT_MODE}" == "both" ]]; then
+        local f="${run_dir}/decode-bench.md"
+        echo "decode_bench_pp=1" >> "${meta_file}"
+        echo "decode_bench_note=pp=1 gives negligible prefill; measures short-context decode t/s" >> "${meta_file}"
+        if _run_decode_pass 1 "${f}"; then
+            log "Decode bench (pp=1) saved: ${f}"
+            echo "decode_bench_result=OK" >> "${meta_file}"
+        else
+            warn "Decode bench (pp=1) failed"
+            echo "decode_bench_result=FAIL" >> "${meta_file}"
+            overall_ok=false
+        fi
     fi
+
+    if [[ "${DECODE_CONTEXT_MODE}" == "pp2048" || "${DECODE_CONTEXT_MODE}" == "both" ]]; then
+        local f="${run_dir}/decode-bench-pp2048.md"
+        echo "decode_bench_pp2048_note=pp=2048 context; comparable to full run tg32 measurement" >> "${meta_file}"
+        if _run_decode_pass 2048 "${f}"; then
+            log "Decode bench (pp=2048) saved: ${f}"
+            echo "decode_bench_pp2048_result=OK" >> "${meta_file}"
+        else
+            warn "Decode bench (pp=2048) failed"
+            echo "decode_bench_pp2048_result=FAIL" >> "${meta_file}"
+            overall_ok=false
+        fi
+    fi
+
+    ${overall_ok}
 }
 
 # ---------------------------------------------------------------------------
@@ -1033,10 +1092,12 @@ supplement_run() {
         echo "expert_parallel_expected_ep_flag=${EXPECTED_EP}"
         echo "supplement_correctness_max_tokens=2048"
         echo "supplement_correctness_runs_per_test=2"
+        echo "supplement_correctness_enabled=${RUN_CORRECTNESS}"
         echo "supplement_decode_runs=${SUPPLEMENT_DECODE_RUNS}"
-        echo "supplement_decode_pp=1"
+        echo "supplement_decode_context_mode=${DECODE_CONTEXT_MODE}"
         echo "supplement_decode_tg=32"
         echo "supplement_decode_depths=${BENCH_DEPTHS}"
+        echo "supplement_decode_warmup_runs=${DECODE_WARMUP_RUNS}"
         echo "head_boot_id=$(node_boot_id "${SPARK01}" 2>/dev/null || echo unknown)"
         echo "worker_boot_id=$(node_boot_id "${SPARK02}" 2>/dev/null || echo unknown)"
         echo "head_uptime_seconds=$(node_uptime_seconds "${SPARK01}" 2>/dev/null || echo unknown)"
@@ -1048,6 +1109,8 @@ supplement_run() {
 
     if ${DRY_RUN}; then
         log "[DRY-RUN] Would start bt=${bt} server, run extended correctness and decode bench, stop."
+        log "[DRY-RUN]   decode_context_mode=${DECODE_CONTEXT_MODE}, warmup_runs=${DECODE_WARMUP_RUNS}"
+        log "[DRY-RUN]   run_correctness=${RUN_CORRECTNESS}"
         log "[DRY-RUN] Run dir: ${run_dir}"
         echo "run_id,supplement_mode,bt,status" > "${summary_file}"
         echo "${run_id},true,${bt},DRY_RUN" >> "${summary_file}"
@@ -1140,7 +1203,12 @@ supplement_run() {
     fi
 
     # Extended correctness
-    correctness_check_extended "${bt}" "${correctness_file}"
+    if ${RUN_CORRECTNESS}; then
+        correctness_check_extended "${bt}" "${correctness_file}"
+    else
+        log "Skipping correctness check (--no-correctness)"
+        echo "correctness_skipped=true" >> "${meta_file}"
+    fi
 
     # Decode-only benchmark
     local decode_ok=true
@@ -1435,6 +1503,7 @@ run_bt() {
         echo "bench_tg=${BENCH_TG}"
         echo "bench_depths=${BENCH_DEPTHS}"
         echo "bench_runs=${BENCH_RUNS}"
+        echo "decode_context_mode=pp${BENCH_PP}"
         # Boot ID and uptime — use to verify both nodes were rebooted since prior run.
         # Compare head_boot_id / worker_boot_id against prior run's metadata to confirm
         # a fresh boot session. Different IDs = confirmed reboot between runs.
@@ -1832,6 +1901,10 @@ main() {
             run_csv=$(find "${RESULT_DIR}" -name "summary.csv" -newer "${master_csv}" | sort | tail -1)
             [[ -n "${run_csv}" ]] && tail -1 "${run_csv}" >> "${master_csv}" || true
             completed=$((completed + 1))
+            if ! ${AUTO_NEXT_BT}; then
+                log "bt=${bt}: --no-auto-next-bt set; halting after first completed run."
+                break
+            fi
         elif [[ ${run_exit} -eq 2 ]]; then
             warn "Halting matrix run due to memory safety failure (exit 2)."
             warn "Completed: ${completed}/${#BT_VALUES[@]} runs."
