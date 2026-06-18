@@ -6,3 +6,11 @@ __pycache__/
 
 # Local maintainer notes
 .local/
+
+# Benchmark run artifacts (raw outputs, per-run logs, generated CSVs)
+# Committed files under benchmarks/llama-benchy/ and benchmarks/results/*.md summaries
+# are explicitly tracked; the per-run subdirectory tree is not.
+benchmarks/results/bt-matrix/bt*/
+benchmarks/results/bt-matrix/matrix-summary-*.csv
+benchmarks/results/bt-matrix/analysis-*.md
+benchmarks/results/bt-matrix/logs/
