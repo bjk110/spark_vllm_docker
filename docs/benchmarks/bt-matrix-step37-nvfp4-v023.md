@@ -35,12 +35,12 @@ Decode throughput (tg) is near-identical. Prefill (pp) is ~57% lower across all 
 
 | # | Hypothesis | Confidence |
 |---|-----------|------------|
-| 1 | 2048-token prompt splits into 8 × 256-token micro-batches → 8× kernel launches | **Confirmed** (math) |
-| 2 | Each micro-batch runs MoE routing with ~7 tokens/expert (256×8/288) → MARLIN GEMM row starvation | **Strongly indicated** |
-| 3 | Per-micro-batch TP/EP NCCL collective (Socket) overhead accumulates | **Strongly indicated** |
-| 4 | TRITON_ATTN prefill path is slower than FlashInfer for long prefill | **Possible contributor** (not isolated) |
-| 5 | v023 per-se introduces prefill overhead independent of bt | **Possible contributor** (not isolated) |
-| 6 | bt=2048 is the exact single-chunk recovery point for pp=2048 | **Strongly indicated** |
+| 1 | 2048-token prompt is chunked into up to 8 × 256-token scheduler iterations | **Expected from budget math; scheduler iteration count not directly instrumented** |
+| 2 | Each chunk runs MoE routing with ~7.1 routed token assignments per expert on average (256×8/288) → MARLIN grouped GEMM below efficient row threshold | **Plausible mechanism; not directly profiled** |
+| 3 | Per-chunk TP all-reduce and collective overhead accumulates (EP was **disabled** in the bt=256 run — TP-only synchronization, no expert distribution across ranks) | **Plausible contributor; not isolated** |
+| 4 | TRITON_ATTN prefill path is slower than FlashInfer for long prefill | **Possible contributor; not isolated** |
+| 5 | v023 per-se introduces prefill overhead independent of bt | **Possible contributor; not isolated** |
+| 6 | bt=2048 is the exact single-chunk boundary for pp=2048 | **Expected from budget math; not yet measured on v023** |
 
 ---
 
@@ -56,7 +56,7 @@ All matrix runs use identical settings except `MAX_NUM_BATCHED_TOKENS`.
 | Memory | 121.63 GiB UMA per node |
 | Interconnect | 200 Gbps RoCE (NCCL_NET=Socket) |
 | TP | 2 |
-| EP | 2 (`--enable-expert-parallel`) |
+| EP | **See series note below** |
 | Distributed backend | mp (multiprocessing) |
 | MoE backend | `marlin` (**required** — v023 CUTLASS auto-selects for NVFP4 and garbles on SM_121) |
 | Attention backend | `TRITON_ATTN` (**required** — FlashInfer causes reasoning garble on SM_121) |
@@ -70,20 +70,43 @@ All matrix runs use identical settings except `MAX_NUM_BATCHED_TOKENS`.
 | Benchmark depths | pp2048 @ d0/4096/8192/16384 + tg32 @ same depths |
 | d32768 excluded | MAX_MODEL_LEN=32768 and llama-benchy adds 32 output tokens → overflow |
 
+> **EP series note**: The bt=256 measured run (`v023-triton-marlin-ep-off-bt256`) used
+> `.local/env/step37/v023-nomtp-fixed-kv-profile-skip.env`, which has **no
+> `--enable-expert-parallel`** (EP disabled, TP=2 only). This was confirmed from both
+> the env file and live `docker inspect vllm-spark-head` output.
+>
+> Future matrix runs will use `bt-matrix-base.env`, which **includes
+> `--enable-expert-parallel`** (EP enabled, 144 experts per rank). This is a different
+> topology. Raw throughput numbers cannot be compared across these two series as a
+> pure bt-variable change. To isolate bt as the single variable, future runs must also
+> use an EP-off config, or a separate EP-on series must be tracked independently.
+
 ---
 
 ## bt matrix
 
-| bt | pp2048 t/s | tg32 t/s | pp@d4096 | pp@d8192 | pp@d16384 | Notes |
-|---:|----------:|--------:|---------:|---------:|----------:|-------|
-| 256 | 537.94 | 12.26 | 563.47 | 564.00 | 530.91 | **Confirmed** (measured 2026-06-18) |
-| 512 | Not yet measured | — | — | — | — | |
-| 1024 | Not yet measured | — | — | — | — | |
-| 2048 | Not yet measured | — | — | — | — | **Key: first single-chunk point for pp2048** |
-| 4096 | Not yet measured | — | — | — | — | |
-| 8192 | Not yet measured | — | — | — | — | **v022 production default** |
-| 16384 | Not yet measured | — | — | — | — | |
-| 32768 | Not yet measured | — | — | — | — | Matches MAX_MODEL_LEN |
+**Series A — EP disabled** (bt=256 measured run, `v023-triton-marlin-ep-off-bt256`):
+
+| bt | EP | pp2048 t/s | tg32 t/s | pp@d4096 | pp@d8192 | pp@d16384 | Notes |
+|---:|:--:|----------:|--------:|---------:|---------:|----------:|-------|
+| 256 | off | 537.94 | 12.26 | 563.47 | 564.00 | 530.91 | Measured 2026-06-18; config_label=v023-triton-marlin-ep-off-bt256 |
+
+**Series B — EP enabled** (future matrix runs, `bt-matrix-base.env`):
+
+| bt | EP | pp2048 t/s | tg32 t/s | pp@d4096 | pp@d8192 | pp@d16384 | Notes |
+|---:|:--:|----------:|--------:|---------:|---------:|----------:|-------|
+| 256 | on | Not yet measured | — | — | — | — | For EP-on baseline comparison |
+| 512 | on | Not yet measured | — | — | — | — | |
+| 1024 | on | Not yet measured | — | — | — | — | |
+| 2048 | on | Not yet measured | — | — | — | — | Expected single-chunk boundary for pp=2048 (not yet measured on v023) |
+| 4096 | on | Not yet measured | — | — | — | — | |
+| 8192 | on | Not yet measured | — | — | — | — | v022 production default bt (different EP state; direct comparison requires caution) |
+| 16384 | on | Not yet measured | — | — | — | — | |
+| 32768 | on | Not yet measured | — | — | — | — | Matches MAX_MODEL_LEN |
+
+> Cross-series comparison (Series A bt=256 vs Series B) is **not** a pure bt variable
+> test. To isolate bt as the single variable across all values, run all entries with the
+> same EP setting.
 
 ---
 
@@ -145,19 +168,25 @@ If halted mid-matrix:
 
 ## Production recommendation
 
-*Pending measurement. Based on v022 history and hypothesis:*
+> **Status: Not validated.** No production `MAX_NUM_BATCHED_TOKENS` value has been
+> confirmed for the v023 correctness-safe configuration (MARLIN + TRITON_ATTN).
+> The table below lists provisional candidates for measurement, not validated
+> recommendations.
+
+*Pending bt-matrix measurement results. All entries are unvalidated on v023.*
 
 | Candidate | bt | Rationale | Risk |
 |-----------|---:|-----------|------|
-| Conservative | 4096 | 2× pp2048; safe headroom for other prompt sizes | Moderate |
-| **Recommended starting point** | **8192** | v022 production default; well-tested | Low |
-| Higher-perf candidate | 16384 | Better MoE utilization per chunk | Moderate — not tested on v023 |
-| Maximum single-chunk | 32768 | Matches MAX_MODEL_LEN; eliminates chunking for all prompts | Unknown |
+| Conservative candidate | 4096 | 2× pp2048; safe headroom for other prompt sizes | Moderate — may not fully recover prefill |
+| **Provisional starting candidate** | **8192** | v022 production default (different EP state — direct comparison requires caution); not yet measured on v023 | Unknown — memory and throughput impact on v023 unmeasured |
+| Higher-perf candidate | 16384 | Better MoE utilization per chunk; single chunk for most prompts | Moderate — not tested on v023 |
+| Maximum single-chunk | 32768 | Matches MAX_MODEL_LEN; eliminates chunking for all prompts | Unknown — memory impact not measured |
 
 **Do not apply to `presets/step37-flash-nvfp4-tp2.env`** until full v023 production
 validation is complete. Apply only to the disposable env under `.local/`.
 
-Diff to apply (disposable env only):
+Provisional candidate test diff (disposable env only — requires correctness validation
+before any production consideration):
 ```diff
 -MAX_NUM_BATCHED_TOKENS=256
 +MAX_NUM_BATCHED_TOKENS=8192

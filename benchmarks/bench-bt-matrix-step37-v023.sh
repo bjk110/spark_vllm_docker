@@ -4,30 +4,49 @@
 #
 # Purpose
 #   Benchmark MAX_NUM_BATCHED_TOKENS effect on Step-3.7-Flash-NVFP4 prefill
-#   throughput under vLLM 0.23.0 on dual DGX Spark GB10 (TP=2, EP=2, mp).
+#   throughput under vLLM 0.23.0 on dual DGX Spark GB10.
 #
 #   Background: bt=256 produced ~538 t/s vs ~1251 t/s on v022 baseline.
 #   Single variable: only MAX_NUM_BATCHED_TOKENS changes across runs.
 #   All other parameters fixed (see .local/env/step37/bt-matrix-base.env).
 #
 # Usage (run from homeserver in /home/bjk110/docker/vllm-spark/):
-#   bash benchmarks/bench-bt-matrix-step37-v023.sh [OPTIONS]
+#   bash benchmarks/bench-bt-matrix-step37-v023.sh --bt <value> [OPTIONS]
+#
+# IMPORTANT: --bt is required. Running a multi-value sweep auto-stops containers
+#   between runs and requires both nodes to have >50 GiB free. Reboot between
+#   runs is strongly recommended to avoid GB10 UMA driver memory accumulation.
+#   Use --all to intentionally run the full matrix (adds an explicit confirmation
+#   prompt unless --dry-run is set).
 #
 # Options:
-#   --bt <values>     Comma-separated bt values to test (default: all matrix)
-#                     Example: --bt 256,2048,8192
-#   --runs <n>        llama-benchy runs per test (default: 3)
-#   --skip-bt <vals>  Comma-separated bt values to skip
-#   --dry-run         Print commands without executing
-#   --no-stop         Skip container stop between runs (for manual testing only)
-#   --result-dir <d>  Override result directory (default: benchmarks/results/bt-matrix)
+#   --bt <values>         Comma-separated bt values to run (REQUIRED unless --all)
+#                         Example: --bt 2048
+#                         Example: --bt 2048,4096,8192
+#   --all                 Run all matrix values (256,512,...,32768). Requires
+#                         explicit confirmation unless --dry-run.
+#   --runs <n>            llama-benchy runs per test (default: 3)
+#   --skip-bt <vals>      Comma-separated bt values to skip (useful with --all)
+#   --dry-run             Print commands without executing
+#   --no-stop             Skip container stop between runs (manual testing only)
+#   --result-dir <d>      Override result directory (default: benchmarks/results/bt-matrix)
+#   --expected-ep <on|off|unknown>
+#                         Expected EP state from template env. Runner halts if
+#                         startup logs contradict this. Default: unknown (no check).
+#   --config-label <str>  Short label for this run series (recorded in metadata).
+#                         Example: v023-triton-marlin-ep-on-btNNN
+#   --continue-on-fail    Do not halt the matrix on benchmark failure (still halts
+#                         on memory-safety failure and startup failure).
 #
 # Safety rules (enforced):
 #   - Never modifies production preset (presets/step37-flash-nvfp4-tp2.env)
 #   - Never reboots, destroys volumes, or docker system prune
 #   - Halts if container stop does not recover memory below SAFE_MEM_GIB threshold
+#   - Halts if --expected-ep contradicts observed EP state in startup logs
 #   - Each run uses a separate disposable env file (deleted after success)
 #   - Never auto-promotes a result to production recommendation
+#   - Prints warning if no currently running containers found before starting
+#     (sanity check: you likely want to verify the environment is clean)
 #
 # Requirements:
 #   - SSH aliases: spark01, spark02 (configured in ~/.ssh/config)
@@ -86,18 +105,41 @@ BT_OVERRIDE=""
 SKIP_BT=""
 DRY_RUN=false
 NO_STOP=false
+RUN_ALL=false
+EXPECTED_EP="unknown"
+CONFIG_LABEL=""
+CONTINUE_ON_FAIL=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --bt)       BT_OVERRIDE="$2"; shift 2 ;;
-        --runs)     BENCH_RUNS="$2"; shift 2 ;;
-        --skip-bt)  SKIP_BT="$2"; shift 2 ;;
-        --dry-run)  DRY_RUN=true; shift ;;
-        --no-stop)  NO_STOP=true; shift ;;
-        --result-dir) RESULT_DIR="$2"; shift 2 ;;
+        --bt)             BT_OVERRIDE="$2"; shift 2 ;;
+        --all)            RUN_ALL=true; shift ;;
+        --runs)           BENCH_RUNS="$2"; shift 2 ;;
+        --skip-bt)        SKIP_BT="$2"; shift 2 ;;
+        --dry-run)        DRY_RUN=true; shift ;;
+        --no-stop)        NO_STOP=true; shift ;;
+        --result-dir)     RESULT_DIR="$2"; shift 2 ;;
+        --expected-ep)    EXPECTED_EP="$2"; shift 2 ;;
+        --config-label)   CONFIG_LABEL="$2"; shift 2 ;;
+        --continue-on-fail) CONTINUE_ON_FAIL=true; shift ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
+
+# Require --bt or --all
+if [[ -z "${BT_OVERRIDE}" ]] && ! ${RUN_ALL}; then
+    echo "ERROR: --bt <value(s)> is required." >&2
+    echo "  Single run:  --bt 2048" >&2
+    echo "  Multi-value: --bt 2048,4096,8192" >&2
+    echo "  Full matrix: --all (requires confirmation)" >&2
+    exit 1
+fi
+
+# Validate --expected-ep value
+case "${EXPECTED_EP}" in
+    on|off|unknown) ;;
+    *) echo "ERROR: --expected-ep must be 'on', 'off', or 'unknown'. Got: '${EXPECTED_EP}'" >&2; exit 1 ;;
+esac
 
 # Build effective bt list
 if [[ -n "${BT_OVERRIDE}" ]]; then
@@ -177,10 +219,11 @@ wait_for_api() {
 }
 
 # Extract key config fields from vLLM container logs on spark01
+# Writes extracted metadata to stdout. Saves full log to <log_file>.startup.
 extract_server_metadata() {
     local log_file="$1"
     ssh "${SPARK01}" "docker logs vllm-spark-head 2>&1" | tee "${log_file}.startup" | {
-        local version="" attn_backend="" moe_backend="" tp_size="" max_len="" max_seqs="" max_bt="" kv_dtype="" cudagraph="" mtp=""
+        local version="" attn_backend="" moe_backend="" tp_size="" max_len="" max_seqs="" max_bt="" kv_dtype="" cudagraph="" mtp="" ep_found=0
         while IFS= read -r line; do
             [[ "${line}" =~ vLLM\ version:\ ([0-9.]+) ]] && version="${BASH_REMATCH[1]}"
             [[ "${line}" =~ Using.*attention.*backend.*([A-Z_]+) ]] && attn_backend="${BASH_REMATCH[1]}"
@@ -192,11 +235,22 @@ extract_server_metadata() {
             [[ "${line}" =~ kv_cache_dtype=([a-z0-9_]+) ]] && kv_dtype="${BASH_REMATCH[1]}"
             [[ "${line}" =~ [Cc]uda.*graph.*([a-z]+) ]] && cudagraph="${BASH_REMATCH[1]}"
             [[ "${line}" =~ [Ss]peculative|[Mm][Tt][Pp] ]] && mtp="${line}"
+            # EP detection: vLLM logs "expert_parallel_size=N" in engine config summary
+            [[ "${line}" =~ expert_parallel_size=([0-9]+) ]] && ep_found="${BASH_REMATCH[1]}"
         done
+        local ep_observed
+        if [[ "${ep_found}" =~ ^[0-9]+$ ]] && [[ "${ep_found}" -gt 1 ]]; then
+            ep_observed="enabled (expert_parallel_size=${ep_found})"
+        elif [[ "${ep_found}" == "1" ]]; then
+            ep_observed="disabled (expert_parallel_size=1)"
+        else
+            ep_observed="not_found_in_logs"
+        fi
         echo "version=${version:-unknown}"
         echo "attention_backend=${attn_backend:-unknown}"
         echo "moe_backend=${moe_backend:-unknown}"
         echo "tp_size=${tp_size:-unknown}"
+        echo "ep_observed=${ep_observed}"
         echo "max_model_len=${max_len:-unknown}"
         echo "max_num_seqs=${max_seqs:-unknown}"
         echo "max_num_batched_tokens=${max_bt:-unknown}"
@@ -376,11 +430,36 @@ run_bt() {
     log "Generating env file with MAX_NUM_BATCHED_TOKENS=${bt}..."
     sed "s/__BT_PLACEHOLDER__/${bt}/" "${TEMPLATE_ENV}" > "${env_file}"
 
+    # Derive topology metadata from template env
+    local ep_requested="unknown"
+    if grep -q -- '--enable-expert-parallel' "${TEMPLATE_ENV}" 2>/dev/null; then
+        ep_requested="true"
+    elif grep -q -- '--no-enable-expert-parallel' "${TEMPLATE_ENV}" 2>/dev/null; then
+        ep_requested="false"
+    else
+        ep_requested="false (flag absent from VLLM_EXTRA_ARGS)"
+    fi
+    local distributed_backend
+    distributed_backend=$(grep '^DISTRIBUTED_BACKEND=' "${TEMPLATE_ENV}" 2>/dev/null | cut -d= -f2 || echo "unknown")
+    local moe_backend_req
+    moe_backend_req=$(grep -oP '(?<=--moe-backend )\S+' "${TEMPLATE_ENV}" 2>/dev/null | head -1 || echo "unknown")
+    local attn_backend_req
+    attn_backend_req=$(grep -oP '(?<=--attention-backend )\S+' "${TEMPLATE_ENV}" 2>/dev/null | head -1 || echo "unknown")
+
+    # Derive config_label if not provided
+    local effective_config_label="${CONFIG_LABEL}"
+    if [[ -z "${effective_config_label}" ]]; then
+        local ep_tag="ep-${ep_requested//[^a-z]/-}"
+        [[ "${ep_requested}" == "true" ]] && ep_tag="ep-on" || ep_tag="ep-off"
+        effective_config_label="v023-${moe_backend_req,,}-${attn_backend_req,,}-${ep_tag}-bt${bt}"
+    fi
+
     # Record metadata
     {
         echo "run_id=${run_id}"
         echo "bt=${bt}"
         echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "config_label=${effective_config_label}"
         echo "template_env=${TEMPLATE_ENV}"
         echo "git_commit=$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
         echo "model=${SERVED_MODEL_NAME}"
@@ -389,6 +468,11 @@ run_bt() {
         echo "max_num_seqs=$(grep '^MAX_NUM_SEQS=' "${env_file}" | cut -d= -f2)"
         echo "gpu_util=$(grep '^GPU_MEMORY_UTILIZATION=' "${env_file}" | cut -d= -f2)"
         echo "max_num_batched_tokens=${bt}"
+        echo "distributed_backend=${distributed_backend}"
+        echo "expert_parallel_requested=${ep_requested}"
+        echo "expert_parallel_expected_ep_flag=${EXPECTED_EP}"
+        echo "moe_backend_requested=${moe_backend_req}"
+        echo "attention_backend_requested=${attn_backend_req}"
         echo "bench_pp=${BENCH_PP}"
         echo "bench_tg=${BENCH_TG}"
         echo "bench_depths=${BENCH_DEPTHS}"
@@ -427,20 +511,57 @@ run_bt() {
     ssh "${SPARK01}" "docker logs vllm-spark-head 2>&1" > "${run_dir}/head-startup.log" 2>&1 || true
 
     # Verify garble-fix backends are active
-    local marlin_ok flashinfer_ok
+    local marlin_ok triton_ok
     marlin_ok=$(grep -c "Using 'MARLIN' NvFp4 MoE backend" "${run_dir}/head-startup.log" 2>/dev/null || echo 0)
-    flashinfer_ok=$(grep -c "TRITON" "${run_dir}/head-startup.log" 2>/dev/null || echo 0)
+    triton_ok=$(grep -c "TRITON" "${run_dir}/head-startup.log" 2>/dev/null || echo 0)
+
+    # Extract EP observed state from startup logs
+    local ep_size_log
+    ep_size_log=$(grep -oP 'expert_parallel_size=\K[0-9]+' "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
+    local ep_observed_str
+    if [[ -n "${ep_size_log}" ]] && [[ "${ep_size_log}" -gt 1 ]]; then
+        ep_observed_str="enabled (expert_parallel_size=${ep_size_log})"
+    elif [[ "${ep_size_log}" == "1" ]]; then
+        ep_observed_str="disabled (expert_parallel_size=1)"
+    else
+        ep_observed_str="not_found_in_logs"
+    fi
 
     {
         echo "marlin_confirmed=${marlin_ok}"
-        echo "triton_attn_log_hits=${flashinfer_ok}"
+        echo "triton_attn_log_hits=${triton_ok}"
+        echo "expert_parallel_observed=${ep_observed_str}"
+        echo "expert_parallel_evidence=startup log scan (expert_parallel_size field)"
     } >> "${meta_file}"
 
     if [[ "${marlin_ok}" -lt 1 ]]; then
         warn "bt=${bt}: MARLIN MoE backend NOT confirmed in logs — result flagged as INVALID."
         echo "backend_validity=INVALID_MARLIN_NOT_CONFIRMED" >> "${meta_file}"
+        stop_containers
+        return 1
     else
         echo "backend_validity=OK" >> "${meta_file}"
+    fi
+
+    # EP state validation against --expected-ep
+    if [[ "${EXPECTED_EP}" != "unknown" ]]; then
+        local ep_match=true
+        if [[ "${EXPECTED_EP}" == "on" ]] && [[ "${ep_observed_str}" != enabled* ]]; then
+            ep_match=false
+        elif [[ "${EXPECTED_EP}" == "off" ]] && [[ "${ep_observed_str}" != disabled* ]]; then
+            ep_match=false
+        fi
+        if ! ${ep_match}; then
+            warn "bt=${bt}: EP state mismatch! expected-ep=${EXPECTED_EP}, observed=${ep_observed_str}"
+            warn "Halting: topology does not match expectation. Check template env and --expected-ep flag."
+            echo "ep_validation=MISMATCH (expected=${EXPECTED_EP}, observed=${ep_observed_str})" >> "${meta_file}"
+            stop_containers
+            return 1
+        else
+            echo "ep_validation=OK (expected=${EXPECTED_EP}, observed=${ep_observed_str})" >> "${meta_file}"
+        fi
+    else
+        echo "ep_validation=SKIPPED (--expected-ep not set; check expert_parallel_observed manually)" >> "${meta_file}"
     fi
 
     # --- Correctness check ---
@@ -585,12 +706,14 @@ PYEOF
 # ---------------------------------------------------------------------------
 main() {
     log "bench-bt-matrix-step37-v023.sh"
-    log "Repository: ${REPO_ROOT}"
-    log "Template:   ${TEMPLATE_ENV}"
-    log "Results:    ${RESULT_DIR}"
-    log "bt matrix:  ${BT_VALUES[*]}"
-    log "Runs/test:  ${BENCH_RUNS}"
-    log "Depths:     ${BENCH_DEPTHS}"
+    log "Repository:   ${REPO_ROOT}"
+    log "Template:     ${TEMPLATE_ENV}"
+    log "Results:      ${RESULT_DIR}"
+    log "bt values:    ${BT_VALUES[*]}"
+    log "Runs/test:    ${BENCH_RUNS}"
+    log "Depths:       ${BENCH_DEPTHS}"
+    log "expected-ep:  ${EXPECTED_EP}"
+    [[ -n "${CONFIG_LABEL}" ]] && log "config-label: ${CONFIG_LABEL}"
     ${DRY_RUN} && log "DRY-RUN MODE: no containers will be started."
     echo ""
 
@@ -601,6 +724,32 @@ main() {
         || die "llama-benchy not found on spark01: ${LLAMA_BENCHY_BIN}"
     ${DRY_RUN} || ssh "${SPARK01}" "test -f '${TOKENIZER_PATH}/tokenizer.json'" \
         || die "Tokenizer not found on spark01: ${TOKENIZER_PATH}"
+
+    # Sanity check: warn if any vllm containers are currently running
+    if ! ${DRY_RUN}; then
+        local running_head running_worker
+        running_head=$(container_running "${SPARK01}" "vllm-spark-head")
+        running_worker=$(container_running "${SPARK02}" "vllm-spark-worker")
+        if [[ "${running_head}" == "true" ]] || [[ "${running_worker}" == "true" ]]; then
+            warn "========================================================"
+            warn "EXISTING CONTAINERS DETECTED:"
+            warn "  spark01 vllm-spark-head:   ${running_head}"
+            warn "  spark02 vllm-spark-worker: ${running_worker}"
+            warn "The runner will stop these before each new run."
+            warn "If this is unexpected, Ctrl-C now and verify state."
+            warn "========================================================"
+            sleep 3
+        fi
+    fi
+
+    # --all confirmation prompt (skip in dry-run)
+    if ${RUN_ALL} && ! ${DRY_RUN}; then
+        warn "--all flag: will run ${#BT_VALUES[@]} bt values sequentially."
+        warn "Each run stops and restarts containers. GB10 UMA may accumulate."
+        warn "Strongly recommended: reboot nodes between runs to prevent UMA thrash."
+        read -r -p "Confirm full matrix run? [yes/N]: " confirm
+        [[ "${confirm}" == "yes" ]] || { echo "Aborted."; exit 0; }
+    fi
 
     mkdir -p "${RESULT_DIR}/logs"
 
@@ -613,21 +762,29 @@ main() {
 
     for bt in "${BT_VALUES[@]}"; do
         log ""
-        if run_bt "${bt}"; then
+        local run_exit=0
+        run_bt "${bt}" || run_exit=$?
+
+        if [[ ${run_exit} -eq 0 ]]; then
             # Append this run's CSV row to master
             local run_csv
             run_csv=$(find "${RESULT_DIR}" -name "summary.csv" -newer "${master_csv}" | sort | tail -1)
             [[ -n "${run_csv}" ]] && tail -1 "${run_csv}" >> "${master_csv}" || true
             completed=$((completed + 1))
+        elif [[ ${run_exit} -eq 2 ]]; then
+            warn "Halting matrix run due to memory safety check failure."
+            warn "Completed: ${completed}/${#BT_VALUES[@]} runs."
+            warn "Resume: --bt <remaining_values> --skip-bt <completed_values>"
+            break
         else
-            local exit_code=$?
-            if [[ ${exit_code} -eq 2 ]]; then
-                warn "Halting matrix run due to memory safety check failure."
-                warn "Completed: ${completed}/${#BT_VALUES[@]} runs."
-                warn "Resume: --bt <remaining_values> --skip-bt <completed_values>"
-                break
-            fi
             failed=$((failed + 1))
+            if ! ${CONTINUE_ON_FAIL}; then
+                warn "bt=${bt} failed (exit ${run_exit}). Halting."
+                warn "Use --continue-on-fail to skip failures and continue the matrix."
+                break
+            else
+                warn "bt=${bt} failed (exit ${run_exit}). --continue-on-fail set, continuing."
+            fi
         fi
     done
 
