@@ -798,6 +798,7 @@ for n in range(3, 16):
         echo ""
 
         local all_verdicts=()
+        local prompt_bests=()
 
         for test_spec in \
             "1|What is the largest prime number less than 100? Answer with only the number.|97|exact" \
@@ -847,19 +848,54 @@ for n in range(3, 16):
                 [[ "${v}" == "FAIL_WRONG_ANSWER" ]] && [[ "${best}" != "PASS" && "${best}" != "PASS_WITH_LENGTH_LIMIT" && "${best}" != "FAIL_GARBLE" ]] && best="FAIL_WRONG_ANSWER"
                 [[ "${v}" == "FAIL_API" ]] && [[ "${best}" == "INCONCLUSIVE_OUTPUT_BUDGET" ]] && best="FAIL_API"
             done
-            echo "Test ${tid} overall: ${best}"
+            # prompt_best: coverage-oriented aggregation — did this prompt get at least
+            # one passing result? Does NOT imply all duplicate runs were strict PASS.
+            echo "Test ${tid} prompt_best: ${best}"
+            prompt_bests+=("${best}")
             echo ""
         done
 
         echo "## Overall summary"
         echo "All verdicts: ${all_verdicts[*]}"
-        local observed_garble=false all_pass=true
+        local observed_garble=false all_runs_strict_pass=true all_prompts_have_pass=true
+        local inconclusive_run_count=0 failed_run_count=0
         for v in "${all_verdicts[@]}"; do
             [[ "${v}" == "FAIL_GARBLE" ]] && observed_garble=true
-            [[ "${v}" != "PASS" ]] && all_pass=false
+            if [[ "${v}" != "PASS" && "${v}" != "PASS_WITH_LENGTH_LIMIT" ]]; then
+                all_runs_strict_pass=false
+            fi
+            if [[ "${v}" == "INCONCLUSIVE_OUTPUT_BUDGET" ]]; then
+                inconclusive_run_count=$(( inconclusive_run_count + 1 ))
+            fi
+            if [[ "${v}" == FAIL_* ]]; then
+                failed_run_count=$(( failed_run_count + 1 ))
+            fi
         done
+        for b in "${prompt_bests[@]}"; do
+            if [[ "${b}" != "PASS" && "${b}" != "PASS_WITH_LENGTH_LIMIT" ]]; then
+                all_prompts_have_pass=false
+            fi
+        done
+        local suite_status
+        if ${all_prompts_have_pass} && ${all_runs_strict_pass} && ! ${observed_garble}; then
+            suite_status="PASS_STRICT"
+        elif ${all_prompts_have_pass} && [[ "${failed_run_count}" -eq 0 ]] && ! ${observed_garble}; then
+            suite_status="PASS_WITH_INCONCLUSIVE_DUPLICATE"
+        elif ${all_prompts_have_pass} && [[ "${failed_run_count}" -gt 0 ]] && ! ${observed_garble}; then
+            suite_status="PASS_WITH_FAILED_DUPLICATE"
+        elif ${all_prompts_have_pass} && ${observed_garble}; then
+            suite_status="PASS_WITH_GARBLE_HISTORY"
+        elif ! ${all_prompts_have_pass} && [[ "${failed_run_count}" -eq 0 ]] && ! ${observed_garble}; then
+            suite_status="INCONCLUSIVE"
+        else
+            suite_status="FAIL_PROMPT"
+        fi
+        echo "all_prompts_have_pass: ${all_prompts_have_pass}"
+        echo "all_runs_strict_pass: ${all_runs_strict_pass}"
+        echo "inconclusive_run_count: ${inconclusive_run_count}"
+        echo "failed_run_count: ${failed_run_count}"
         echo "observed_garble: ${observed_garble}"
-        echo "All tests PASS (strict): ${all_pass}"
+        echo "suite_status: ${suite_status}"
         echo ""
         echo "Verdict taxonomy:"
         echo "  PASS                    - expected answer found; finish_reason=stop"
@@ -869,8 +905,16 @@ for n in range(3, 16):
         echo "  FAIL_API                - HTTP error, parse error, or empty stop response"
         echo "  INCONCLUSIVE_OUTPUT_BUDGET - finish_reason=length; expected pattern not found in sampled content"
         echo ""
-        echo "Note: PASS on any run is sufficient for a test to be considered covered."
-        echo "  PASS_WITH_LENGTH_LIMIT counts as a covered run."
+        echo "Suite status taxonomy:"
+        echo "  PASS_STRICT                   - all prompts covered, all runs strict pass, no garble"
+        echo "  PASS_WITH_INCONCLUSIVE_DUPLICATE - all prompts covered, no failures, some runs inconclusive"
+        echo "  PASS_WITH_FAILED_DUPLICATE    - all prompts covered, some runs failed (wrong answer/API)"
+        echo "  PASS_WITH_GARBLE_HISTORY      - all prompts covered, garble observed in at least one run"
+        echo "  INCONCLUSIVE                  - no prompt failures or garble, but not all prompts covered"
+        echo "  FAIL_PROMPT                   - at least one prompt has no passing result"
+        echo ""
+        echo "Note: prompt_best (per test) indicates coverage: did this prompt produce at least"
+        echo "  one PASS or PASS_WITH_LENGTH_LIMIT across its runs? It does NOT mean all runs passed."
         echo "  INCONCLUSIVE_OUTPUT_BUDGET is not a garble failure. Increase max_tokens for a definitive result."
 
     } > "${out_file}" 2>&1

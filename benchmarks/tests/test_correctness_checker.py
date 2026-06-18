@@ -103,7 +103,13 @@ _PRECEDENCE = {
 
 
 def best_verdict(verdicts: list) -> str:
-    """Reduce per-run verdicts to the best overall verdict for a test."""
+    """Coverage-oriented per-prompt aggregation.
+
+    Returns the best verdict across duplicate runs for one prompt.
+    Indicates whether the prompt produced at least one passing result.
+    Does NOT imply all duplicate runs were strict PASS.
+    Use suite_stats() to assess all_runs_strict_pass across the full suite.
+    """
     best = "INCONCLUSIVE_OUTPUT_BUDGET"
     for v in verdicts:
         if _PRECEDENCE.get(v, 0) > _PRECEDENCE.get(best, 0):
@@ -111,6 +117,63 @@ def best_verdict(verdicts: list) -> str:
         if best == "PASS":
             break
     return best
+
+
+# prompt_best_verdict is an alias for best_verdict — the name clarifies
+# that this is a per-prompt coverage aggregation, not a suite-level metric.
+prompt_best_verdict = best_verdict
+
+
+_STRICT_PASS = {"PASS", "PASS_WITH_LENGTH_LIMIT"}
+
+
+def suite_stats(verdicts_per_test: list) -> dict:
+    """Compute aggregate suite statistics from per-test verdict lists.
+
+    Args:
+        verdicts_per_test: list of lists; each inner list contains per-run
+                           verdicts for one prompt/test.
+
+    Returns a dict with:
+        all_prompts_have_pass  — every prompt has at least one PASS or PASS_WITH_LENGTH_LIMIT
+        all_runs_strict_pass   — every individual run is PASS or PASS_WITH_LENGTH_LIMIT
+        inconclusive_run_count — count of INCONCLUSIVE_OUTPUT_BUDGET runs
+        failed_run_count       — count of FAIL_* runs
+        observed_garble        — any FAIL_GARBLE seen
+        suite_status           — PASS_STRICT | PASS_WITH_INCONCLUSIVE_DUPLICATE |
+                                 PASS_WITH_FAILED_DUPLICATE | PASS_WITH_GARBLE_HISTORY |
+                                 INCONCLUSIVE | FAIL_PROMPT
+    """
+    all_verdicts = [v for runs in verdicts_per_test for v in runs]
+    prompt_bests = [best_verdict(runs) for runs in verdicts_per_test]
+
+    observed_garble = any(v == "FAIL_GARBLE" for v in all_verdicts)
+    all_runs_strict_pass = all(v in _STRICT_PASS for v in all_verdicts)
+    all_prompts_have_pass = all(b in _STRICT_PASS for b in prompt_bests)
+    inconclusive_run_count = sum(1 for v in all_verdicts if v == "INCONCLUSIVE_OUTPUT_BUDGET")
+    failed_run_count = sum(1 for v in all_verdicts if v.startswith("FAIL_"))
+
+    if all_prompts_have_pass and all_runs_strict_pass and not observed_garble:
+        suite_status = "PASS_STRICT"
+    elif all_prompts_have_pass and failed_run_count == 0 and not observed_garble:
+        suite_status = "PASS_WITH_INCONCLUSIVE_DUPLICATE"
+    elif all_prompts_have_pass and failed_run_count > 0 and not observed_garble:
+        suite_status = "PASS_WITH_FAILED_DUPLICATE"
+    elif all_prompts_have_pass and observed_garble:
+        suite_status = "PASS_WITH_GARBLE_HISTORY"
+    elif not all_prompts_have_pass and failed_run_count == 0 and not observed_garble:
+        suite_status = "INCONCLUSIVE"
+    else:
+        suite_status = "FAIL_PROMPT"
+
+    return {
+        "all_prompts_have_pass": all_prompts_have_pass,
+        "all_runs_strict_pass": all_runs_strict_pass,
+        "inconclusive_run_count": inconclusive_run_count,
+        "failed_run_count": failed_run_count,
+        "observed_garble": observed_garble,
+        "suite_status": suite_status,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +338,115 @@ def test_best_single_pass():
 
 def test_best_single_fail_garble():
     assert best_verdict(["FAIL_GARBLE"]) == "FAIL_GARBLE"
+
+def test_prompt_best_verdict_alias():
+    """prompt_best_verdict is an alias for best_verdict with the same semantics."""
+    assert prompt_best_verdict(["PASS", "INCONCLUSIVE_OUTPUT_BUDGET"]) == "PASS"
+    assert prompt_best_verdict(["INCONCLUSIVE_OUTPUT_BUDGET"]) == "INCONCLUSIVE_OUTPUT_BUDGET"
+
+
+# ---------------------------------------------------------------------------
+# Tests — suite_stats() aggregate semantics
+# ---------------------------------------------------------------------------
+
+_ALL_PASS = [["PASS", "PASS"], ["PASS", "PASS"], ["PASS", "PASS"], ["PASS", "PASS"]]
+_BT8192_LIKE = [
+    ["INCONCLUSIVE_OUTPUT_BUDGET", "PASS"],
+    ["PASS", "PASS"],
+    ["PASS", "PASS"],
+    ["PASS", "PASS"],
+]
+
+def test_suite_case1_all_strict_pass():
+    """Case 1: all runs PASS -> PASS_STRICT."""
+    s = suite_stats(_ALL_PASS)
+    assert s["all_prompts_have_pass"] is True
+    assert s["all_runs_strict_pass"] is True
+    assert s["inconclusive_run_count"] == 0
+    assert s["failed_run_count"] == 0
+    assert s["observed_garble"] is False
+    assert s["suite_status"] == "PASS_STRICT"
+
+def test_suite_case2_inconclusive_duplicate():
+    """Case 2: INCONCLUSIVE + PASS per prompt -> PASS_WITH_INCONCLUSIVE_DUPLICATE.
+    Mirrors bt=8192 Test 3 Run 1 (revised verdict) scenario.
+    """
+    s = suite_stats(_BT8192_LIKE)
+    assert s["all_prompts_have_pass"] is True, "each prompt has at least one PASS"
+    assert s["all_runs_strict_pass"] is False, "one run was INCONCLUSIVE"
+    assert s["inconclusive_run_count"] == 1
+    assert s["failed_run_count"] == 0
+    assert s["observed_garble"] is False
+    assert s["suite_status"] == "PASS_WITH_INCONCLUSIVE_DUPLICATE"
+
+def test_suite_case3_garble_with_pass():
+    """Case 3: FAIL_GARBLE + PASS in same prompt — observed_garble must remain true.
+    Coverage passes (PASS in run 2), but garble history is preserved.
+    """
+    data = [["FAIL_GARBLE", "PASS"], ["PASS", "PASS"], ["PASS", "PASS"], ["PASS", "PASS"]]
+    s = suite_stats(data)
+    assert s["all_prompts_have_pass"] is True, "prompt best = PASS"
+    assert s["observed_garble"] is True, "garble must not be hidden by later PASS"
+    assert s["suite_status"] == "PASS_WITH_GARBLE_HISTORY"
+
+def test_suite_case4_wrong_answer_with_pass():
+    """Case 4: FAIL_WRONG_ANSWER + PASS — coverage pass, but failed_run_count > 0."""
+    data = [["FAIL_WRONG_ANSWER", "PASS"], ["PASS", "PASS"], ["PASS", "PASS"], ["PASS", "PASS"]]
+    s = suite_stats(data)
+    assert s["all_prompts_have_pass"] is True
+    assert s["all_runs_strict_pass"] is False
+    assert s["failed_run_count"] == 1
+    assert s["observed_garble"] is False
+    assert s["suite_status"] == "PASS_WITH_FAILED_DUPLICATE"
+
+def test_suite_case5_all_inconclusive():
+    """Case 5: all runs INCONCLUSIVE -> no prompt coverage, suite INCONCLUSIVE."""
+    data = [
+        ["INCONCLUSIVE_OUTPUT_BUDGET", "INCONCLUSIVE_OUTPUT_BUDGET"],
+        ["INCONCLUSIVE_OUTPUT_BUDGET", "INCONCLUSIVE_OUTPUT_BUDGET"],
+        ["INCONCLUSIVE_OUTPUT_BUDGET", "INCONCLUSIVE_OUTPUT_BUDGET"],
+        ["INCONCLUSIVE_OUTPUT_BUDGET", "INCONCLUSIVE_OUTPUT_BUDGET"],
+    ]
+    s = suite_stats(data)
+    assert s["all_prompts_have_pass"] is False
+    assert s["inconclusive_run_count"] == 8
+    assert s["failed_run_count"] == 0
+    assert s["observed_garble"] is False
+    assert s["suite_status"] == "INCONCLUSIVE"
+
+def test_suite_case6_api_failure_with_pass():
+    """Case 6: FAIL_API + PASS — coverage pass; strict all-pass false."""
+    data = [["FAIL_API", "PASS"], ["PASS", "PASS"], ["PASS", "PASS"], ["PASS", "PASS"]]
+    s = suite_stats(data)
+    assert s["all_prompts_have_pass"] is True
+    assert s["all_runs_strict_pass"] is False
+    assert s["failed_run_count"] == 1
+    assert s["suite_status"] == "PASS_WITH_FAILED_DUPLICATE"
+
+def test_suite_bt2048_all_strict():
+    """bt=2048 supplement: all 4 prompts x 2 runs = 8 PASS -> PASS_STRICT."""
+    data = [["PASS", "PASS"]] * 4
+    s = suite_stats(data)
+    assert s["all_prompts_have_pass"] is True
+    assert s["all_runs_strict_pass"] is True
+    assert s["inconclusive_run_count"] == 0
+    assert s["suite_status"] == "PASS_STRICT"
+
+def test_suite_bt8192_actual():
+    """Reproduce bt=8192 actual suite: Test3 Run1=INCONCLUSIVE, all others=PASS."""
+    s = suite_stats(_BT8192_LIKE)
+    assert s["suite_status"] == "PASS_WITH_INCONCLUSIVE_DUPLICATE"
+    assert s["all_prompts_have_pass"] is True
+    assert s["all_runs_strict_pass"] is False
+
+def test_suite_bt2048_vs_bt8192_strict_difference():
+    """bt=2048 and bt=8192 have different strict completion status."""
+    bt2048 = suite_stats([["PASS", "PASS"]] * 4)
+    bt8192 = suite_stats(_BT8192_LIKE)
+    assert bt2048["all_runs_strict_pass"] is True
+    assert bt8192["all_runs_strict_pass"] is False
+    assert bt2048["suite_status"] == "PASS_STRICT"
+    assert bt8192["suite_status"] == "PASS_WITH_INCONCLUSIVE_DUPLICATE"
 
 
 # ---------------------------------------------------------------------------
