@@ -5,7 +5,18 @@
 is the primary cause of the observed prefill throughput regression in v023, and
 determine a safe production value.
 
-**Status**: bt=256, bt=2048, and bt=8192 measured (Series A, EP-off, 2026-06-18). All correctness tests PASS for all three values. bt=8192 analysis: prefill flat at d0 (−0.7%, within noise), +3–4% at d4096+; short-context decode (pp=1) −6–18% vs bt=2048 across all depths. **bt=2048 remains the validated production candidate.**
+**Status**: bt=256, bt=2048, and bt=8192 measured (Series A, EP-off, 2026-06-18). All prompts
+correctness-covered for all three values. bt=2048 supplement: all runs strict PASS
+(suite_status=PASS_STRICT). bt=8192: all prompts covered; one inconclusive duplicate run
+(suite_status=PASS_WITH_INCONCLUSIVE_DUPLICATE; not garble). bt=8192 analysis: prefill flat
+at d0 (−0.7%, within noise), +3–4% at d4096+; short-context decode (pp=1) −6–18% vs bt=2048.
+**bt=2048 remains the validated production candidate.**
+
+No additional benchmark was executed during the checker and documentation cleanup phase
+(commits e720e65, e61abe8, and subsequent). The bt=8192 measurement had already been completed
+in the preceding authorized benchmark session (run_id=bt8192-20260618-121533 and
+bt8192-supp-20260618-143154). bt=4096, bt=16384, bt=32768, and Series B (EP-on) were not
+executed in this benchmark campaign.
 
 ---
 
@@ -461,11 +472,13 @@ calls on the same server instance. curl timeout was 150s (runner fix not yet app
 Test 3 required 1512–1889 tokens (Supp #2) to complete the reasoning chain. Content was
 coherent Korean describing Seoul–Busan KTX travel times. No garble in either supplement.
 
-**Conclusion**: All 4 correctness tests PASS in both supplement runs. The original
-INCONCLUSIVE_OUTPUT_BUDGET classification for Tests 3 and 4 was correct — the reasoning
-chain requires ≥1400 tokens, well above the 400/100 token budgets used in the original run.
+**Conclusion**: All four prompts produced PASS in every duplicate run across both supplement
+runs (suite_status=PASS_STRICT for each supplement). The original INCONCLUSIVE_OUTPUT_BUDGET
+classification for Tests 3 and 4 was correct — the reasoning chain requires ≥1400 tokens,
+well above the 400/100 token budgets used in the original run.
 
-`All correctness tests completed without observed garble under the bt=2048 Series A configuration.`
+`All correctness tests completed without observed garble under the bt=2048 Series A configuration.
+suite_status=PASS_STRICT: all_prompts_have_pass=yes, all_runs_strict_pass=yes, observed_garble=no.`
 
 Full results (gitignored, not committed):
 - `benchmarks/results/bt-matrix/bt2048-supp-20260618-103333/correctness-extended.md`
@@ -648,14 +661,22 @@ character-whitelist bug in the garble detector.
 | Checker fix | Commit replacing character whitelist with targeted garble signal detection |
 | Raw artifact | `correctness-extended.md` records the original automated verdict; this note documents the revision |
 
-Run 2 produced `PASS` (stop, 1850 tokens, valid Korean). Test 3 overall: `PASS`.
+Run 2 produced `PASS` (stop, 1850 tokens, valid Korean). Test 3 prompt_best: `PASS`.
 
-**Suite status:**
-- `observed_garble: false` — no actual garble signals in any run
-- All 4 tests have at least one passing run
-- `All tests PASS (strict): false` — one Run 1 per the automated check was INCONCLUSIVE_OUTPUT_BUDGET (revised from the false-positive FAIL_GARBLE)
+**Suite aggregate (bt=8192 extended correctness run):**
 
-`All 4 correctness tests PASS under bt=8192 Series A configuration. No garble observed.`
+| Field | Value | Note |
+|-------|-------|------|
+| `all_prompts_have_pass` | yes | All 4 prompts have at least one PASS |
+| `all_runs_strict_pass` | no | Test 3 Run 1 = INCONCLUSIVE_OUTPUT_BUDGET (revised from false FAIL_GARBLE) |
+| `inconclusive_run_count` | 1 | Test 3 Run 1 only |
+| `failed_run_count` | 0 | No FAIL_WRONG_ANSWER, FAIL_GARBLE, or FAIL_API |
+| `observed_garble` | no | No actual garble signals in any run |
+| `suite_status` | `PASS_WITH_INCONCLUSIVE_DUPLICATE` | All prompts covered; one run exhausted output budget |
+
+All four prompts produced at least one passing result. One duplicate Korean run exhausted the
+output budget and was classified as INCONCLUSIVE_OUTPUT_BUDGET (revised from the false-positive
+FAIL_GARBLE caused by U+00B7 MIDDLE DOT). No garbled output was observed.
 
 Full results (gitignored):
 - `benchmarks/results/bt-matrix/bt8192-20260618-121533/correctness.md`
@@ -740,11 +761,11 @@ traces are 1000–3000+ tokens.
 - For a reasoning model with long decode chains, decode speed is the dominant latency factor.
 - bt=8192 is not recommended as a production change from bt=2048.
 
-| Candidate | bt | Status | Rationale |
-|-----------|---:|--------|-----------|
-| Conservative | 256 | Measured; correctness PASS | Current production; lower prefill ceiling |
-| **Recommended** | **2048** | **Measured; correctness PASS ×8** | Best combined prefill/decode profile |
-| Measured; not recommended | 8192 | Measured; correctness PASS | +3–4% prefill at d4096+; −6–18% short-context decode |
+| Candidate | bt | Status | Correctness | Rationale |
+|-----------|---:|--------|-------------|-----------|
+| Conservative | 256 | Measured | All prompts covered; strict complete | Current production; lower prefill ceiling |
+| **Recommended** | **2048** | **Measured** | **All prompts covered; all runs strict PASS** | Best combined prefill/decode profile |
+| Measured; not recommended | 8192 | Measured | All prompts covered; 1 inconclusive duplicate | +3–4% prefill at d4096+; −6–18% short-context decode |
 
 ### Phase 9: Runtime identity comparison (bt=8192)
 
@@ -785,7 +806,12 @@ If halted mid-matrix:
 > bt=256, bt=2048, and bt=8192 all measured under Series A (EP-off). bt=2048 delivers the best
 > combined prefill/decode profile: +92% prefill vs bt=256, and better short-context decode than
 > bt=8192. bt=8192 shows marginal prefill gains at deeper contexts but incurs a systematic
-> 6–18% short-context decode regression. Correctness PASS for all three values.
+> 6–18% short-context decode regression.
+>
+> Correctness summary: all three values are correctness-safe (no garble observed; all prompts
+> covered). bt=2048 supplement runs are all-runs strict PASS (suite_status=PASS_STRICT).
+> bt=8192 has one duplicate run classified as INCONCLUSIVE_OUTPUT_BUDGET
+> (suite_status=PASS_WITH_INCONCLUSIVE_DUPLICATE; not a garble or wrong-answer failure).
 
 **bt=2048**: Preferred measured value for the v0.23 Series A latency-oriented configuration.
 Correctness-safe across all 4 tests (2 supplement runs). Provides nearly the same pp2048
@@ -799,13 +825,13 @@ dual DGX Spark. Not generalized to other topologies, multi-user workloads, or EP
 was not achieved; strict same-session A/B was not performed. The measured difference supports
 choosing bt=2048 but does not prove that bt itself caused the decode throughput gap.
 
-| Candidate | bt | Status | Rationale |
-|-----------|---:|--------|-----------|
-| Conservative | 256 | Measured; correctness PASS | Current production; lower prefill ceiling |
-| **Preferred** | **2048** | **Measured; correctness PASS ×8** | Best combined prefill/decode in tested runs; +92% prefill vs bt=256 |
-| Valid; not preferred | 8192 | Measured; correctness PASS | +3–4% prefill at d4096+; lower measured short-context decode; causal isolation not achieved |
-| Not measured | 16384 | Not executed | Better MoE chunk utilization; unknown risk |
-| Not measured | 32768 | Not executed | Matches MAX_MODEL_LEN; memory impact unknown |
+| Candidate | bt | Status | Correctness | Rationale |
+|-----------|---:|--------|-------------|-----------|
+| Conservative | 256 | Measured | All prompts covered; strict complete | Current production; lower prefill ceiling |
+| **Preferred** | **2048** | **Measured** | **All prompts covered; all runs strict PASS** | Best combined prefill/decode in tested runs; +92% prefill vs bt=256 |
+| Valid; not preferred | 8192 | Measured | All prompts covered; 1 inconclusive duplicate | +3–4% prefill at d4096+; lower measured short-context decode; causal isolation not achieved |
+| Not measured | 16384 | Not executed in this benchmark campaign | Better MoE chunk utilization; unknown risk |
+| Not measured | 32768 | Not executed in this benchmark campaign | Matches MAX_MODEL_LEN; memory impact unknown |
 
 `MAX_NUM_BATCHED_TOKENS=2048 is the preferred measured value for the v0.23 Series A latency-oriented
 configuration. It provides nearly the same pp2048 prefill performance as bt=8192 at shallow context
@@ -913,9 +939,11 @@ After a production bt value is selected and validated, run MTP sweep:
 
 | File | Description |
 |------|-------------|
-| `.local/env/step37/bt-matrix-series-a-ep-off.env` | Series A template env (bt placeholder) |
+| `.local/env/step37/bt-matrix-series-a-ep-off.env` | Series A template env (bt placeholder; disposable) |
 | `benchmarks/bench-bt-matrix-step37-v023.sh` | Matrix runner |
 | `benchmarks/analyze-bt-matrix.sh` | Analysis and report generator |
-| `benchmarks/results/bt-matrix/` | Per-run results (gitignored via `.cache/`) |
-| `presets/step37-flash-nvfp4-tp2.env` | Production preset — **do not modify** |
-| `.local/env/step37/v023-nomtp-fixed-kv-profile-skip.env` | Current disposable env (bt=256) |
+| `benchmarks/tests/test_correctness_checker.py` | Checker unit tests (40 tests) |
+| `benchmarks/results/bt-matrix/` | Per-run results (gitignored) |
+| `presets/step37-flash-nvfp4-v023-tp2-latency.env` | v0.23 Series A latency preset (bt=2048, EP-off, MARLIN, TRITON_ATTN) |
+| `presets/step37-flash-nvfp4-tp2.env` | v0.22 general-purpose serving preset (EP-on, MAX_NUM_SEQS=4) |
+| `.local/env/step37/v023-nomtp-fixed-kv-profile-skip.env` | Original bt=256 disposable env |
