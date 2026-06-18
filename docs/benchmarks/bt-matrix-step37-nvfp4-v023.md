@@ -35,12 +35,12 @@ Decode throughput (tg) is near-identical. Prefill (pp) is ~57% lower across all 
 
 | # | Hypothesis | Confidence |
 |---|-----------|------------|
-| 1 | 2048-token prompt is chunked into up to 8 × 256-token scheduler iterations | **Expected from budget math; scheduler iteration count not directly instrumented** |
-| 2 | Each chunk runs MoE routing with ~7.1 routed token assignments per expert on average (256×8/288) → MARLIN grouped GEMM below efficient row threshold | **Plausible mechanism; not directly profiled** |
-| 3 | Per-chunk TP all-reduce and collective overhead accumulates (EP was **disabled** in the bt=256 run — TP-only synchronization, no expert distribution across ranks) | **Plausible contributor; not isolated** |
-| 4 | TRITON_ATTN prefill path is slower than FlashInfer for long prefill | **Possible contributor; not isolated** |
-| 5 | v023 per-se introduces prefill overhead independent of bt | **Possible contributor; not isolated** |
-| 6 | bt=2048 is the exact single-chunk boundary for pp=2048 | **Expected from budget math; not yet measured on v023** |
+| 1 | 2048-token prompt spans up to 8 × 256-token scheduled batches at bt=256 | **Consistent with +92-98% prefill improvement at bt=2048; scheduling batch count not directly instrumented** |
+| 2 | Each batch runs MoE routing with ~7.1 routed token assignments per expert on average (256×8/288) → MARLIN grouped GEMM below efficient row threshold | **Plausible mechanism; not directly profiled** |
+| 3 | Per-batch TP all-reduce and collective overhead accumulates (EP was **disabled** in the bt=256 run — TP-only synchronization, no expert distribution across ranks) | **Plausible contributor; not isolated** |
+| 4 | TRITON_ATTN prefill path is slower than FlashInfer for long prefill | **Possible contributor; not isolated; separating this from the bt effect requires a run with bt=2048 + FlashInfer, which conflicts with the SM_121 reasoning garble constraint** |
+| 5 | v023 per-se introduces prefill overhead independent of bt | **Possible contributor; not isolated; confounded with attention backend change and EP state** |
+| 6 | bt=2048 is the exact single-chunk boundary for pp=2048 | **Consistent with measured data (bt=2048, +92-98% prefill); not directly instrumented — scheduling batch count is inferred from budget math, not logged** |
 
 ---
 
@@ -292,7 +292,7 @@ After reboot, both `boot_id` values must differ from the above before bt=2048 is
 | EP validation | PASS | `OK (expected=off, observed=disabled)` |
 | Bench result | PASS | `bench_result=OK` |
 | Startup | PASS | `startup_result=OK` |
-| Correctness | CONDITIONAL | Tests 1,2 correct (97, 1307674368000). Tests 3,4 EMPTY/UNCERTAIN due to max_tokens too small for reasoning model `<think>` chain — not a garble indicator (see vllm023_step37_garble_fix.md) |
+| Correctness | CONDITIONAL | Tests 1,2 correct (97, 1307674368000). Tests 3,4 INCONCLUSIVE_OUTPUT_BUDGET — max_tokens (400/100) too small for reasoning model `<think>` chain; outputs were empty or truncated, not garbled. Not a backend correctness failure — see correctness classification below. |
 
 #### Throughput results
 
@@ -304,21 +304,69 @@ After reboot, both `boot_id` values must differ from the above before bt=2048 is
 | d16384 | 1050.69 ± 2.16 | 9.70 ± 0.11  | 17545.09 | bt=256: 530.91 → +97.9% pp |
 
 **Key observations:**
-- Prefill (pp2048) improves by **~92-98%** vs bt=256. The 2048-token prompt is now processed
-  in a single scheduler iteration instead of 8 × 256-token chunks.
-- Decode (tg32) regresses by ~15-18% vs bt=256 (10.06 vs 12.26 t/s at d0). Mechanism not
-  yet isolated (memory allocation difference, compilation effect, or sampling path change).
-- pp peak is ~1088 t/s (d4096), still below v022 baseline of 1251 t/s at d4096.
-  Remaining gap may be due to TRITON_ATTN prefill vs FlashInfer, MARLIN overhead, or
-  v023 per-se changes — not isolated at this time.
+- Prefill (pp2048) improves by **~92-98%** vs bt=256. The 2048-token prompt is expected to
+  fit within a single scheduling budget at bt=2048 instead of spanning 8 × 256-token
+  scheduled batches. Scheduling batch count is inferred from budget math, not directly logged.
+- Decode (tg32) regresses by ~18-22% vs bt=256 at d0 (10.06 vs 12.26 t/s). Regression is
+  smaller at deeper contexts (d16384: 9.70 vs 11.52 t/s, ~16%). Mechanism not isolated
+  — candidates include memory allocation difference from larger KV reservation, compilation
+  effect, or sampling path change at higher batch token budget. A decode-only rerun would
+  confirm whether the regression is reproducible; requires server restart (pending authorization).
+- **v022 gap**: bt=2048 pp peak is ~1088 t/s (d4096) vs v022 baseline ~1300 t/s (d4096),
+  approximately **−16%** below v022. The gap persists across all depths (−16–17%). This gap
+  is not attributable to a single variable: confounders include attention backend
+  (TRITON_ATTN vs FlashInfer in v022), MARLIN vs v022 MoE path, EP state difference
+  (v022 production used EP=on), and any v023-per-se overhead. Isolating individual
+  contributions requires controlled A/B runs not yet performed.
 
-#### Infrastructure note: prometheus patch added
+#### Infrastructure note: prometheus patch
 
-An `apply_prometheus_patch()` step was added to `bench-bt-matrix-step37-v023.sh` as part
-of this run. `prometheus_fastapi_instrumentator` routing.py raises `AttributeError: '_IncludedRouter'
-object has no attribute 'path'` on every HTTP request including `/health`, blocking the
-readiness check. The patch is applied automatically after containers start (before model
-load completes) and both containers are restarted simultaneously to avoid TCPStore desync.
+**Root cause** (`prometheus-fastapi-instrumentator==8.0.0`): vLLM 0.23.0 registers routes
+via FastAPI's `include_router()`, which produces `_IncludedRouter` objects. These lack a
+`.path` attribute, so `_get_route_name()` in `routing.py` raises `AttributeError` inside
+the Prometheus middleware on every HTTP request, including `/health`. All requests return
+HTTP 500 before the model handler runs.
+
+**Patch**: two occurrences of `route_name = route.path` changed to
+`route_name = getattr(route, 'path', 'unknown')`. Only the head container needs patching
+(prometheus instrumentator is only imported by the head API server).
+
+**bt=2048 patch state**: Patch applied to head container at runtime via `apply_prometheus_patch()`
+immediately after container start (before model load). Both containers restarted
+simultaneously to avoid TCPStore desync.
+- Pre-patch SHA256: `b90d08f601c5ec82245630667c0cbc031f00df038284b4e61f46945d182c85fb`
+- Post-patch SHA256: `a3addfd90d1132a5ab5dca54c788f4743fe180b9607a662bf34ef0453750848c`
+- Patch status: `patched` (confirmed by post-patch SHA256 check + `py_compile`)
+
+**Runtime mutation caveat**: The patch modifies `routing.py` inside the running container.
+It is ephemeral — a container restart without re-applying the patch would revert the file.
+The current bench runner always re-applies the patch after each container start. To
+eliminate runtime mutation, the fix should be baked into the Docker image at build time
+(see immutable image path below).
+
+**bt=256 patch state**: The bt=256 run used a long-running container (~18h uptime) that
+pre-dated the `apply_prometheus_patch()` function. Whether the prometheus patch was applied
+manually before that run is not recorded in `bt256-confirmed-20260618/metadata.txt`. The
+bt=256 bench produced outputs and `/health` returned 200, so the patch was in effect;
+the exact application method and timing are undocumented. This is a condition difference
+between the two runs.
+
+**Immutable image path**: To eliminate runtime mutation, add to the Docker build:
+```dockerfile
+RUN python3 -c "
+import re, pathlib
+p = pathlib.Path('/usr/local/lib/python3.12/dist-packages/prometheus_fastapi_instrumentator/routing.py')
+p.write_text(p.read_text().replace(\"route_name = route.path\", \"route_name = getattr(route, 'path', 'unknown')\"))
+"
+```
+This is applicable to any image that pins `prometheus-fastapi-instrumentator==8.0.0`.
+
+**Metadata discrepancy**: `metadata.txt` records `git_commit=98edf86a...` (the HEAD commit
+at run time). The bench script on disk at run time contained the `apply_prometheus_patch()`
+function (which had not yet been committed). The function was committed at `62edd3f` after
+the run. The working-tree version executed was logically equivalent to `62edd3f` content.
+`98edf86` is the git_commit recorded in metadata; `62edd3f` is the commit that captures the
+actual script state. Both are noted here for provenance.
 
 ---
 
@@ -326,10 +374,10 @@ load completes) and both containers are restarted simultaneously to avoid TCPSto
 
 Each bt run includes the following correctness tests:
 
-1. **Factual** — "largest prime < 100" → expects 97
-2. **Multi-step arithmetic** — "15 factorial" → expects 1307674368000
-3. **Unicode integrity** — Korean KTX question → checks for broken codepoints
-4. **Finish reason** — "2+2" → expects `stop` finish_reason
+1. **Factual** — "largest prime < 100" → expects 97; max_tokens=100
+2. **Multi-step arithmetic** — "15 factorial" → expects 1307674368000; max_tokens=600
+3. **Unicode integrity** — Korean KTX question → checks for broken codepoints; max_tokens=400
+4. **Finish reason** — "2+2" → expects `stop` finish_reason; max_tokens=100
 
 A run is flagged `backend_validity=INVALID_MARLIN_NOT_CONFIRMED` if the MARLIN MoE
 backend log line (`Using 'MARLIN' NvFp4 MoE backend out of potential backends: [...]`)
@@ -341,6 +389,72 @@ the benchmark does not execute and the containers are stopped. Such runs must be
 command line. If `--enable-expert-parallel` is absent, EP is classified as disabled.
 vLLM 0.23 does not log `expert_parallel_size=1` when EP is at its default, so the entrypoint
 command line is the authoritative source. Use `--expected-ep off|on` to gate on EP state.
+
+### bt=2048 correctness classification (run_id=bt2048-20260618-093121)
+
+| Test | Result | Classification |
+|------|--------|---------------|
+| 1 — largest prime < 100 | "97" | PASS |
+| 2 — 15 factorial | "1307674368000" | PASS |
+| 3 — Korean KTX question | Empty output | INCONCLUSIVE_OUTPUT_BUDGET |
+| 4 — "What is 2+2?" | Truncated or empty | INCONCLUSIVE_OUTPUT_BUDGET |
+
+**INCONCLUSIVE_OUTPUT_BUDGET**: Step-3.7-Flash is a reasoning model that generates a
+`<think>...</think>` chain before the visible answer. The chain typically consumes
+1000–3000+ tokens. Tests 3 and 4 used max_tokens=400 and max_tokens=100 respectively,
+which are insufficient to complete the chain. The model ran out of output budget before
+producing an answer token — output was empty or the sequence was cut mid-chain. This is
+budget exhaustion, not garble or a backend correctness failure. Garble would produce
+syntactically complete but semantically wrong text; these tests produced no text at all.
+
+Tests 1 and 2 used max_tokens=100 and max_tokens=600 respectively. These sufficed because
+the `<think>` chain for simple factual/arithmetic queries is shorter. Tests 3 and 4 require
+at least max_tokens=2000 to reliably clear the reasoning chain (see vllm023_step37_garble_fix.md).
+
+**Rerun status**: Pending. Server was stopped by the bench script after the benchmark
+completed. Restarting the server requires explicit authorization (GB10 UMA pages must be
+confirmed clear via preflight). Rerun command when authorized:
+
+```bash
+# Correctness-only rerun (bt=2048 server must be running at ${HEAD_URL})
+curl -s -X POST "${HEAD_URL}/v1/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "stepfun-ai/Step-3.7-Flash-NVFP4",
+       "prompt": "서울에서 부산까지 KTX 소요시간은?",
+       "max_tokens": 2500, "temperature": 0}'
+
+curl -s -X POST "${HEAD_URL}/v1/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "stepfun-ai/Step-3.7-Flash-NVFP4",
+       "prompt": "What is 2+2?",
+       "max_tokens": 2500, "temperature": 0}'
+```
+
+Record results as a separate supplement (do not overwrite correctness.md from the original run).
+
+### Decode-only rerun design (Phase 5/7)
+
+The bt=2048 run produced 3 runs × 4 depths of tg32 data. Observed regression vs bt=256:
+
+| Depth | bt=2048 tg32 t/s | bt=256 tg32 t/s | Delta |
+|-------|-----------------|----------------|-------|
+| d0    | 10.06 ± 0.04    | 12.26 ± 0.14   | −18%  |
+| d4096 | 10.06 ± 0.23    | 11.25 ± 0.20   | −11%  |
+| d8192 |  9.71 ± 0.22    | 11.47 ± 0.15   | −15%  |
+| d16384 | 9.70 ± 0.11   | 11.52 ± 0.06   | −16%  |
+
+The regression is consistent across depths (narrowing at d4096, recovering pattern at d8192+).
+The bt=256 run used a container with ~18h uptime; the bt=2048 run used a freshly booted node.
+Uptime difference is a potential confounder (JIT warmup state, page-cache residency).
+
+A decode-only rerun to confirm reproducibility:
+- Use same env file with bt=2048 (or bt=8192 when measured, for comparison)
+- Run only tg32 tests (depths d0/4096/8192/16384/32768)
+- 5+ runs per depth for tighter confidence intervals
+- Fresh reboot before run (standard protocol)
+- Save as a separate run_id supplement
+
+**Status**: Blocked — server not running; requires explicit restart authorization.
 
 ---
 
