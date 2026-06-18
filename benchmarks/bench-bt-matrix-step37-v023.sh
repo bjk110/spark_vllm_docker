@@ -20,23 +20,31 @@
 #   prompt unless --dry-run is set).
 #
 # Options:
-#   --bt <values>         Comma-separated bt values to run (REQUIRED unless --all)
-#                         Example: --bt 2048
-#                         Example: --bt 2048,4096,8192
-#   --all                 Run all matrix values (256,512,...,32768). Requires
-#                         explicit confirmation unless --dry-run.
-#   --runs <n>            llama-benchy runs per test (default: 3)
-#   --skip-bt <vals>      Comma-separated bt values to skip (useful with --all)
-#   --dry-run             Print commands without executing
-#   --no-stop             Skip container stop between runs (manual testing only)
-#   --result-dir <d>      Override result directory (default: benchmarks/results/bt-matrix)
+#   --bt <values>              Comma-separated bt values to run (REQUIRED unless --all)
+#                              Example: --bt 2048
+#                              Example: --bt 2048,4096,8192
+#   --all                      Run all matrix values (256,512,...,32768). Requires
+#                              explicit confirmation unless --dry-run.
+#   --template <path>          Override template env file. Default: bt-matrix-base.env
+#                              Use bt-matrix-series-a-ep-off.env for EP-off (Series A) runs.
+#   --runs <n>                 llama-benchy runs per test (default: 3)
+#   --skip-bt <vals>           Comma-separated bt values to skip (useful with --all)
+#   --dry-run                  Print commands without executing
+#   --no-stop                  Skip container stop between runs (manual testing only)
+#   --result-dir <d>           Override result directory (default: benchmarks/results/bt-matrix)
 #   --expected-ep <on|off|unknown>
-#                         Expected EP state from template env. Runner halts if
-#                         startup logs contradict this. Default: unknown (no check).
-#   --config-label <str>  Short label for this run series (recorded in metadata).
-#                         Example: v023-triton-marlin-ep-on-btNNN
-#   --continue-on-fail    Do not halt the matrix on benchmark failure (still halts
-#                         on memory-safety failure and startup failure).
+#                              Expected EP state. Runner halts if startup logs contradict this.
+#                              Checked against the entrypoint command line (--enable-expert-parallel).
+#                              NOTE: vLLM 0.23 does not log expert_parallel_size=1 when EP is
+#                              disabled, so log-based detection requires the entrypoint command.
+#                              Default: unknown (log check only, no halt on mismatch).
+#   --config-label <str>       Short label for this run series (recorded in metadata).
+#                              Example: v023-triton-marlin-ep-off-bt2048
+#   --continue-on-bench-fail   Do not halt the matrix on llama-benchy request failure only.
+#                              NEVER applies to: topology mismatch, backend mismatch, EP mismatch,
+#                              startup failure, memory threshold, NCCL failure. These are always
+#                              fatal. Use this only for known transient request errors.
+#   --continue-on-fail         Deprecated alias for --continue-on-bench-fail.
 #
 # Safety rules (enforced):
 #   - Never modifies production preset (presets/step37-flash-nvfp4-tp2.env)
@@ -64,6 +72,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# Default template: EP-on (Series B). For EP-off (Series A) runs, override with --template.
 TEMPLATE_ENV="${REPO_ROOT}/.local/env/step37/bt-matrix-base.env"
 COMPOSE_FILE="${REPO_ROOT}/docker-compose.yml"
 RESULT_DIR="${REPO_ROOT}/benchmarks/results/bt-matrix"
@@ -108,20 +117,24 @@ NO_STOP=false
 RUN_ALL=false
 EXPECTED_EP="unknown"
 CONFIG_LABEL=""
-CONTINUE_ON_FAIL=false
+CONTINUE_ON_BENCH_FAIL=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --bt)             BT_OVERRIDE="$2"; shift 2 ;;
-        --all)            RUN_ALL=true; shift ;;
-        --runs)           BENCH_RUNS="$2"; shift 2 ;;
-        --skip-bt)        SKIP_BT="$2"; shift 2 ;;
-        --dry-run)        DRY_RUN=true; shift ;;
-        --no-stop)        NO_STOP=true; shift ;;
-        --result-dir)     RESULT_DIR="$2"; shift 2 ;;
-        --expected-ep)    EXPECTED_EP="$2"; shift 2 ;;
-        --config-label)   CONFIG_LABEL="$2"; shift 2 ;;
-        --continue-on-fail) CONTINUE_ON_FAIL=true; shift ;;
+        --bt)                    BT_OVERRIDE="$2"; shift 2 ;;
+        --all)                   RUN_ALL=true; shift ;;
+        --template)              TEMPLATE_ENV="$2"; shift 2 ;;
+        --runs)                  BENCH_RUNS="$2"; shift 2 ;;
+        --skip-bt)               SKIP_BT="$2"; shift 2 ;;
+        --dry-run)               DRY_RUN=true; shift ;;
+        --no-stop)               NO_STOP=true; shift ;;
+        --result-dir)            RESULT_DIR="$2"; shift 2 ;;
+        --expected-ep)           EXPECTED_EP="$2"; shift 2 ;;
+        --config-label)          CONFIG_LABEL="$2"; shift 2 ;;
+        --continue-on-bench-fail) CONTINUE_ON_BENCH_FAIL=true; shift ;;
+        --continue-on-fail)      CONTINUE_ON_BENCH_FAIL=true
+                                 echo "[WARN] --continue-on-fail is deprecated; use --continue-on-bench-fail" >&2
+                                 shift ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -510,58 +523,84 @@ run_bt() {
     log "Extracting server metadata from container logs..."
     ssh "${SPARK01}" "docker logs vllm-spark-head 2>&1" > "${run_dir}/head-startup.log" 2>&1 || true
 
-    # Verify garble-fix backends are active
-    local marlin_ok triton_ok
-    marlin_ok=$(grep -c "Using 'MARLIN' NvFp4 MoE backend" "${run_dir}/head-startup.log" 2>/dev/null || echo 0)
-    triton_ok=$(grep -c "TRITON" "${run_dir}/head-startup.log" 2>/dev/null || echo 0)
+    # --- Backend verification (garble-fix guards) ---
+    # MARLIN: exact string from vLLM 0.23 nvfp4.py log
+    local marlin_ok marlin_line triton_ok triton_line
+    marlin_line=$(grep "Using 'MARLIN' NvFp4 MoE backend" "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
+    marlin_ok=$(echo "${marlin_line}" | grep -c "MARLIN" || echo 0)
+    # TRITON_ATTN: exact string from vLLM 0.23 cuda.py log (not generic TRITON grep)
+    triton_line=$(grep "Using AttentionBackendEnum.TRITON_ATTN backend" "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
+    triton_ok=$(echo "${triton_line}" | grep -c "TRITON_ATTN" || echo 0)
 
-    # Extract EP observed state from startup logs
-    local ep_size_log
-    ep_size_log=$(grep -oP 'expert_parallel_size=\K[0-9]+' "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
-    local ep_observed_str
-    if [[ -n "${ep_size_log}" ]] && [[ "${ep_size_log}" -gt 1 ]]; then
-        ep_observed_str="enabled (expert_parallel_size=${ep_size_log})"
-    elif [[ "${ep_size_log}" == "1" ]]; then
-        ep_observed_str="disabled (expert_parallel_size=1)"
-    else
+    # EP detection: primary source is the entrypoint command line in the container log.
+    # vLLM 0.23 does NOT log expert_parallel_size=1 when EP is disabled (default), so
+    # log config parsing alone cannot distinguish EP-off from log-unavailable.
+    local entrypoint_cmd ep_observed_str ep_evidence
+    entrypoint_cmd=$(grep '\[entrypoint\] Running: vllm serve' "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
+    if [[ -z "${entrypoint_cmd}" ]]; then
         ep_observed_str="not_found_in_logs"
+        ep_evidence="entrypoint command line not captured in head-startup.log"
+    elif echo "${entrypoint_cmd}" | grep -q -- '--enable-expert-parallel'; then
+        ep_observed_str="enabled"
+        ep_evidence="--enable-expert-parallel present in entrypoint command line"
+    else
+        ep_observed_str="disabled"
+        ep_evidence="--enable-expert-parallel absent from entrypoint command line"
     fi
 
     {
         echo "marlin_confirmed=${marlin_ok}"
-        echo "triton_attn_log_hits=${triton_ok}"
+        echo "marlin_evidence_line=${marlin_line:-not found}"
+        echo "triton_attn_confirmed=${triton_ok}"
+        echo "triton_evidence_line=${triton_line:-not found}"
         echo "expert_parallel_observed=${ep_observed_str}"
-        echo "expert_parallel_evidence=startup log scan (expert_parallel_size field)"
+        echo "expert_parallel_evidence=${ep_evidence}"
+        echo "backend_validation_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     } >> "${meta_file}"
 
+    # MARLIN hard gate (topology-critical — always fatal, never continuable)
     if [[ "${marlin_ok}" -lt 1 ]]; then
-        warn "bt=${bt}: MARLIN MoE backend NOT confirmed in logs — result flagged as INVALID."
+        warn "bt=${bt}: MARLIN MoE backend NOT confirmed in logs — FATAL."
+        warn "  Expected: \"Using 'MARLIN' NvFp4 MoE backend\""
+        warn "  Found:    ${marlin_line:-<nothing>}"
         echo "backend_validity=INVALID_MARLIN_NOT_CONFIRMED" >> "${meta_file}"
         stop_containers
-        return 1
-    else
-        echo "backend_validity=OK" >> "${meta_file}"
+        return 1  # fatal — not bench-continuable
     fi
 
-    # EP state validation against --expected-ep
+    # TRITON_ATTN hard gate (topology-critical — always fatal, never continuable)
+    if [[ "${triton_ok}" -lt 1 ]]; then
+        warn "bt=${bt}: TRITON_ATTN attention backend NOT confirmed in logs — FATAL."
+        warn "  Expected: \"Using AttentionBackendEnum.TRITON_ATTN backend\""
+        warn "  Found:    ${triton_line:-<nothing>}"
+        echo "backend_validity=INVALID_TRITON_NOT_CONFIRMED" >> "${meta_file}"
+        stop_containers
+        return 1  # fatal — not bench-continuable
+    fi
+
+    echo "backend_validity=OK (MARLIN confirmed, TRITON_ATTN confirmed)" >> "${meta_file}"
+
+    # EP state validation against --expected-ep (topology-critical — always fatal, never continuable)
     if [[ "${EXPECTED_EP}" != "unknown" ]]; then
         local ep_match=true
-        if [[ "${EXPECTED_EP}" == "on" ]] && [[ "${ep_observed_str}" != enabled* ]]; then
+        if [[ "${EXPECTED_EP}" == "on" ]] && [[ "${ep_observed_str}" != "enabled" ]]; then
             ep_match=false
-        elif [[ "${EXPECTED_EP}" == "off" ]] && [[ "${ep_observed_str}" != disabled* ]]; then
+        elif [[ "${EXPECTED_EP}" == "off" ]] && [[ "${ep_observed_str}" != "disabled" ]]; then
             ep_match=false
         fi
         if ! ${ep_match}; then
-            warn "bt=${bt}: EP state mismatch! expected-ep=${EXPECTED_EP}, observed=${ep_observed_str}"
-            warn "Halting: topology does not match expectation. Check template env and --expected-ep flag."
+            warn "bt=${bt}: EP state mismatch — FATAL."
+            warn "  expected-ep=${EXPECTED_EP}, observed=${ep_observed_str}"
+            warn "  evidence: ${ep_evidence}"
+            warn "  Check template env and --expected-ep flag. Halting."
             echo "ep_validation=MISMATCH (expected=${EXPECTED_EP}, observed=${ep_observed_str})" >> "${meta_file}"
             stop_containers
-            return 1
+            return 1  # fatal — not bench-continuable
         else
             echo "ep_validation=OK (expected=${EXPECTED_EP}, observed=${ep_observed_str})" >> "${meta_file}"
         fi
     else
-        echo "ep_validation=SKIPPED (--expected-ep not set; check expert_parallel_observed manually)" >> "${meta_file}"
+        echo "ep_validation=SKIPPED (--expected-ep not set; review expert_parallel_observed field)" >> "${meta_file}"
     fi
 
     # --- Correctness check ---
@@ -576,6 +615,7 @@ run_bt() {
 
     # Run on spark01 (where API is served)
     # shellcheck disable=SC2086
+    local bench_exit=0
     ssh "${SPARK01}" "PYTHONUNBUFFERED=1 ${LLAMA_BENCHY_BIN} \
         --base-url '${API_BASE}' \
         --model '${SERVED_MODEL_NAME}' \
@@ -588,9 +628,18 @@ run_bt() {
         --save-result '/tmp/bench-bt-${bt}.md'" \
         > "${run_dir}/bench-stdout.log" 2>&1 \
         && scp "${SPARK01}:/tmp/bench-bt-${bt}.md" "${bench_out}" \
-        || { warn "Benchmark failed for bt=${bt}"; echo "bench_result=FAIL" >> "${meta_file}"; }
+        || bench_exit=$?
 
-    [[ -f "${bench_out}" ]] && echo "bench_result=OK" >> "${meta_file}" || true
+    if [[ ${bench_exit} -ne 0 ]]; then
+        warn "Benchmark request failed for bt=${bt} (exit ${bench_exit}). This is a bench-continuable failure."
+        echo "bench_result=FAIL (exit=${bench_exit})" >> "${meta_file}"
+    elif [[ -f "${bench_out}" ]]; then
+        echo "bench_result=OK" >> "${meta_file}"
+    else
+        warn "Benchmark output file not found for bt=${bt}."
+        echo "bench_result=MISSING_OUTPUT" >> "${meta_file}"
+        bench_exit=99
+    fi
 
     # --- Extract key numbers for CSV summary ---
     {
@@ -697,6 +746,12 @@ PYEOF
         fi
     fi
 
+    # Propagate bench failure as exit 3 (only bench-continuable failure code)
+    if [[ ${bench_exit} -ne 0 ]]; then
+        log "bt=${bt} complete with bench failure (exit 3)."
+        return 3
+    fi
+
     log "bt=${bt} complete."
     return 0
 }
@@ -706,14 +761,15 @@ PYEOF
 # ---------------------------------------------------------------------------
 main() {
     log "bench-bt-matrix-step37-v023.sh"
-    log "Repository:   ${REPO_ROOT}"
-    log "Template:     ${TEMPLATE_ENV}"
-    log "Results:      ${RESULT_DIR}"
-    log "bt values:    ${BT_VALUES[*]}"
-    log "Runs/test:    ${BENCH_RUNS}"
-    log "Depths:       ${BENCH_DEPTHS}"
-    log "expected-ep:  ${EXPECTED_EP}"
-    [[ -n "${CONFIG_LABEL}" ]] && log "config-label: ${CONFIG_LABEL}"
+    log "Repository:        ${REPO_ROOT}"
+    log "Template:          ${TEMPLATE_ENV}"
+    log "Results:           ${RESULT_DIR}"
+    log "bt values:         ${BT_VALUES[*]}"
+    log "Runs/test:         ${BENCH_RUNS}"
+    log "Depths:            ${BENCH_DEPTHS}"
+    log "expected-ep:       ${EXPECTED_EP}"
+    log "bench-continuable: ${CONTINUE_ON_BENCH_FAIL}"
+    [[ -n "${CONFIG_LABEL}" ]] && log "config-label:      ${CONFIG_LABEL}"
     ${DRY_RUN} && log "DRY-RUN MODE: no containers will be started."
     echo ""
 
@@ -772,19 +828,27 @@ main() {
             [[ -n "${run_csv}" ]] && tail -1 "${run_csv}" >> "${master_csv}" || true
             completed=$((completed + 1))
         elif [[ ${run_exit} -eq 2 ]]; then
-            warn "Halting matrix run due to memory safety check failure."
+            # Memory safety failure — always halt (cannot be overridden)
+            warn "Halting matrix run due to memory safety failure (exit 2)."
             warn "Completed: ${completed}/${#BT_VALUES[@]} runs."
-            warn "Resume: --bt <remaining_values> --skip-bt <completed_values>"
+            warn "Resume after reboot: --bt <remaining_values> --skip-bt <completed_values>"
             break
-        else
+        elif [[ ${run_exit} -eq 3 ]]; then
+            # Benchmark request failure — only continuable failure code
             failed=$((failed + 1))
-            if ! ${CONTINUE_ON_FAIL}; then
-                warn "bt=${bt} failed (exit ${run_exit}). Halting."
-                warn "Use --continue-on-fail to skip failures and continue the matrix."
+            if ! ${CONTINUE_ON_BENCH_FAIL}; then
+                warn "bt=${bt}: benchmark request failed (exit 3). Halting."
+                warn "Use --continue-on-bench-fail to skip request failures and continue the matrix."
                 break
             else
-                warn "bt=${bt} failed (exit ${run_exit}). --continue-on-fail set, continuing."
+                warn "bt=${bt}: benchmark request failed. --continue-on-bench-fail set, continuing."
             fi
+        else
+            # exit 1 or unexpected: fatal (topology, startup, backend, EP mismatch) — NEVER continuable
+            failed=$((failed + 1))
+            warn "bt=${bt}: FATAL failure (exit ${run_exit}). Topology/startup/backend error — not continuable."
+            warn "Fix the underlying issue before retrying. Do not use --continue-on-bench-fail to bypass."
+            break
         fi
     done
 

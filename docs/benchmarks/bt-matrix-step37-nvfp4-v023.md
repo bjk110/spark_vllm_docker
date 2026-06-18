@@ -87,9 +87,20 @@ All matrix runs use identical settings except `MAX_NUM_BATCHED_TOKENS`.
 
 **Series A — EP disabled** (bt=256 measured run, `v023-triton-marlin-ep-off-bt256`):
 
+EP evidence classification: **A — Historical runtime evidence.**
+Container 566574c5 was created at 2026-06-17T22:19:04Z, started at 22:39:38Z, and had
+RestartCount=0 through the bt=256 benchmark at 2026-06-18T16:17:24Z — confirming the
+inspected container is the same instance that served the benchmark. The entrypoint
+command in the startup log shows no `--enable-expert-parallel` in the `vllm serve`
+invocation (direct runtime observation, not configuration inference).
+Note: vLLM 0.23 does not log `expert_parallel_size` when EP is at its default of 1,
+so absence of the flag in the entrypoint command is the primary evidence source.
+
 | bt | EP | pp2048 t/s | tg32 t/s | pp@d4096 | pp@d8192 | pp@d16384 | Notes |
 |---:|:--:|----------:|--------:|---------:|---------:|----------:|-------|
 | 256 | off | 537.94 | 12.26 | 563.47 | 564.00 | 530.91 | Measured 2026-06-18; config_label=v023-triton-marlin-ep-off-bt256 |
+| 2048 | off | Not yet measured | — | — | — | — | Next scheduled run (Series A continuation) |
+| 8192 | off | Not yet measured | — | — | — | — | Provisional candidate; not yet measured on v023 |
 
 **Series B — EP enabled** (future matrix runs, `bt-matrix-base.env`):
 
@@ -112,19 +123,50 @@ All matrix runs use identical settings except `MAX_NUM_BATCHED_TOKENS`.
 
 ## How to run
 
+**Series A — EP-off (preferred for bt comparison against bt=256 baseline)**:
+
 ```bash
 # From homeserver in /home/bjk110/docker/vllm-spark/
-# Dry run (check commands without executing):
-bash benchmarks/bench-bt-matrix-step37-v023.sh --dry-run
 
-# Run full matrix:
-bash benchmarks/bench-bt-matrix-step37-v023.sh
+# Dry-run first (verify env, template, config-label):
+bash benchmarks/bench-bt-matrix-step37-v023.sh \
+  --bt 2048 \
+  --template .local/env/step37/bt-matrix-series-a-ep-off.env \
+  --expected-ep off \
+  --config-label v023-triton-marlin-ep-off-bt2048 \
+  --dry-run
 
-# Run subset only:
-bash benchmarks/bench-bt-matrix-step37-v023.sh --bt 2048,4096,8192
+# Actual single bt=2048 run (Series A, EP-off):
+bash benchmarks/bench-bt-matrix-step37-v023.sh \
+  --bt 2048 \
+  --template .local/env/step37/bt-matrix-series-a-ep-off.env \
+  --expected-ep off \
+  --config-label v023-triton-marlin-ep-off-bt2048
 
-# Skip already-completed values:
-bash benchmarks/bench-bt-matrix-step37-v023.sh --skip-bt 256
+# Next: bt=8192 (provisional candidate, Series A):
+bash benchmarks/bench-bt-matrix-step37-v023.sh \
+  --bt 8192 \
+  --template .local/env/step37/bt-matrix-series-a-ep-off.env \
+  --expected-ep off \
+  --config-label v023-triton-marlin-ep-off-bt8192
+```
+
+**Series B — EP-on (separate series, uses default template)**:
+
+```bash
+bash benchmarks/bench-bt-matrix-step37-v023.sh \
+  --bt 2048 \
+  --expected-ep on \
+  --config-label v023-triton-marlin-ep-on-bt2048
+```
+
+**Full matrix (use only after individual runs succeed)**:
+
+```bash
+bash benchmarks/bench-bt-matrix-step37-v023.sh \
+  --all \
+  --template .local/env/step37/bt-matrix-series-a-ep-off.env \
+  --expected-ep off
 
 # After completion, generate analysis report:
 bash benchmarks/analyze-bt-matrix.sh benchmarks/results/bt-matrix
@@ -132,8 +174,11 @@ bash benchmarks/analyze-bt-matrix.sh benchmarks/results/bt-matrix
 
 **Prerequisites**:
 - Both spark01 and spark02 must be up and have free memory above 50 GiB.
-- The current running container must be stopped before running the matrix.
+- Both nodes must be rebooted before each run to clear GB10 UMA driver-retained pages.
+- The current running container must be stopped (and nodes rebooted) before running.
 - SSH aliases `spark01` and `spark02` must be configured.
+- `--template` selects the topology series (Series A = EP-off, Series B = default EP-on).
+- `--expected-ep off|on` validates the observed EP state from startup logs before benchmarking.
 
 ---
 
@@ -146,8 +191,16 @@ Each bt run includes the following correctness tests:
 3. **Unicode integrity** — Korean KTX question → checks for broken codepoints
 4. **Finish reason** — "2+2" → expects `stop` finish_reason
 
-A run is flagged `backend_validity=INVALID` if the MARLIN MoE backend confirmation
-log line (`Using 'MARLIN' NvFp4 MoE backend`) is not found. Such runs must be discarded.
+A run is flagged `backend_validity=INVALID_MARLIN_NOT_CONFIRMED` if the MARLIN MoE
+backend log line (`Using 'MARLIN' NvFp4 MoE backend out of potential backends: [...]`)
+is not found. A run is flagged `INVALID_TRITON_NOT_CONFIRMED` if the TRITON_ATTN line
+(`Using AttentionBackendEnum.TRITON_ATTN backend.`) is not found. Both are hard gates;
+the benchmark does not execute and the containers are stopped. Such runs must be discarded.
+
+**EP validation**: The runner detects EP state from the `[entrypoint] Running: vllm serve`
+command line. If `--enable-expert-parallel` is absent, EP is classified as disabled.
+vLLM 0.23 does not log `expert_parallel_size=1` when EP is at its default, so the entrypoint
+command line is the authoritative source. Use `--expected-ep off|on` to gate on EP state.
 
 ---
 
