@@ -123,27 +123,67 @@ so absence of the flag in the entrypoint command is the primary evidence source.
 
 ## How to run
 
-**Series A — EP-off (preferred for bt comparison against bt=256 baseline)**:
+### Phase 0: Pre-run preflight (before reboot)
+
+Capture boot IDs and memory state while the current server is still running:
 
 ```bash
 # From homeserver in /home/bjk110/docker/vllm-spark/
+bash benchmarks/bench-bt-matrix-step37-v023.sh \
+  --preflight-only \
+  --template .local/env/step37/bt-matrix-series-a-ep-off.env \
+  --expected-ep off
+```
 
-# Dry-run first (verify env, template, config-label):
+Save the output. After rebooting, run preflight again and verify:
+- `spark0X_boot_id` changed on both nodes
+- `spark0X_uptime_seconds` is low (e.g. < 600) on both nodes
+- `spark0X_mem_available_gib` > 50 GiB on both nodes (no server loaded)
+
+### Phase 1: Validate current container (optional, read-only)
+
+If the server is still up, confirm the running container already uses MARLIN + TRITON_ATTN:
+
+```bash
+bash benchmarks/bench-bt-matrix-step37-v023.sh \
+  --validate-existing-container \
+  --expected-ep off
+```
+
+Reads docker logs from the live head container. No container ops. Prints detection
+results to stdout and saves to `benchmarks/results/bt-matrix/.validate-*/`.
+
+### Phase 2: Dry-run (verify config before live run)
+
+After both nodes have been rebooted and memory is confirmed clean:
+
+```bash
 bash benchmarks/bench-bt-matrix-step37-v023.sh \
   --bt 2048 \
   --template .local/env/step37/bt-matrix-series-a-ep-off.env \
   --expected-ep off \
   --config-label v023-triton-marlin-ep-off-bt2048 \
   --dry-run
+```
 
-# Actual single bt=2048 run (Series A, EP-off):
+### Phase 3: Series A — EP-off, bt=2048 (required first)
+
+bt=2048 is the required next measurement. Run this **before** bt=8192.
+
+```bash
 bash benchmarks/bench-bt-matrix-step37-v023.sh \
   --bt 2048 \
   --template .local/env/step37/bt-matrix-series-a-ep-off.env \
   --expected-ep off \
   --config-label v023-triton-marlin-ep-off-bt2048
+```
 
-# Next: bt=8192 (provisional candidate, Series A):
+### Phase 4: Series A — EP-off, bt=8192 (provisional candidate, after bt=2048)
+
+Run only after bt=2048 completes successfully. bt=8192 is the provisional candidate
+but is NOT validated until measured on the v023 correctness-safe stack.
+
+```bash
 bash benchmarks/bench-bt-matrix-step37-v023.sh \
   --bt 8192 \
   --template .local/env/step37/bt-matrix-series-a-ep-off.env \
@@ -151,7 +191,7 @@ bash benchmarks/bench-bt-matrix-step37-v023.sh \
   --config-label v023-triton-marlin-ep-off-bt8192
 ```
 
-**Series B — EP-on (separate series, uses default template)**:
+### Series B — EP-on (separate series, separate template)
 
 ```bash
 bash benchmarks/bench-bt-matrix-step37-v023.sh \
@@ -160,7 +200,7 @@ bash benchmarks/bench-bt-matrix-step37-v023.sh \
   --config-label v023-triton-marlin-ep-on-bt2048
 ```
 
-**Full matrix (use only after individual runs succeed)**:
+### Full matrix (after individual runs validate)
 
 ```bash
 bash benchmarks/bench-bt-matrix-step37-v023.sh \
@@ -168,17 +208,37 @@ bash benchmarks/bench-bt-matrix-step37-v023.sh \
   --template .local/env/step37/bt-matrix-series-a-ep-off.env \
   --expected-ep off
 
-# After completion, generate analysis report:
+# Generate analysis report after completion:
 bash benchmarks/analyze-bt-matrix.sh benchmarks/results/bt-matrix
 ```
 
 **Prerequisites**:
-- Both spark01 and spark02 must be up and have free memory above 50 GiB.
-- Both nodes must be rebooted before each run to clear GB10 UMA driver-retained pages.
-- The current running container must be stopped (and nodes rebooted) before running.
+- Both spark01 and spark02 must be rebooted before each run (GB10 UMA driver retains pages after container stop — only reboot recovers them).
+- After reboot, both nodes must have > 50 GiB free memory (verified by preflight).
 - SSH aliases `spark01` and `spark02` must be configured.
 - `--template` selects the topology series (Series A = EP-off, Series B = default EP-on).
-- `--expected-ep off|on` validates the observed EP state from startup logs before benchmarking.
+- `--expected-ep off|on` gates the run on observed EP state from startup logs.
+
+---
+
+## Acceptance criteria for bt=2048
+
+A bt=2048 result is valid for production consideration **only if all of the following hold**:
+
+| Criterion | Metadata field | Required value |
+|-----------|---------------|----------------|
+| Both nodes rebooted before run | `head_boot_id` / `worker_boot_id` changed vs prior run metadata | Different from bt=256 run |
+| Same image | `image` | `vllm-spark:v023-step3p7-fixed-kv-profile-skip-candidate` |
+| EP confirmed off | `expert_parallel_observed` | `disabled` |
+| MARLIN confirmed | `marlin_confirmed` | `1` |
+| TRITON_ATTN confirmed | `triton_attn_confirmed` | `1` |
+| Backend validity | `backend_validity` | `OK (MARLIN confirmed, TRITON_ATTN confirmed)` |
+| EP validation | `ep_validation` | `OK (expected=off, observed=disabled)` |
+| Bench result | `bench_result` | `OK` |
+| Startup | `startup_result` | `OK` |
+| Correctness | All checks in `correctness.md` | No garble, no systematic failures |
+
+bt=8192 requires the same criteria. Do not run bt=8192 before bt=2048 completes.
 
 ---
 

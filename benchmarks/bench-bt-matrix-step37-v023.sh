@@ -13,48 +13,69 @@
 # Usage (run from homeserver in /home/bjk110/docker/vllm-spark/):
 #   bash benchmarks/bench-bt-matrix-step37-v023.sh --bt <value> [OPTIONS]
 #
-# IMPORTANT: --bt is required. Running a multi-value sweep auto-stops containers
-#   between runs and requires both nodes to have >50 GiB free. Reboot between
-#   runs is strongly recommended to avoid GB10 UMA driver memory accumulation.
-#   Use --all to intentionally run the full matrix (adds an explicit confirmation
-#   prompt unless --dry-run is set).
+# IMPORTANT: --bt is required for benchmark runs. Running a multi-value sweep
+#   auto-stops containers between runs and requires both nodes to have >50 GiB
+#   free AFTER container stop. Reboot between runs is strongly recommended to
+#   avoid GB10 UMA driver memory accumulation.
+#   Use --all to intentionally run the full matrix.
 #
 # Options:
-#   --bt <values>              Comma-separated bt values to run (REQUIRED unless --all)
+#   --bt <values>              Comma-separated bt values to run (REQUIRED for
+#                              normal run; optional with --preflight-only or
+#                              --validate-existing-container)
 #                              Example: --bt 2048
 #                              Example: --bt 2048,4096,8192
-#   --all                      Run all matrix values (256,512,...,32768). Requires
-#                              explicit confirmation unless --dry-run.
-#   --template <path>          Override template env file. Default: bt-matrix-base.env
-#                              Use bt-matrix-series-a-ep-off.env for EP-off (Series A) runs.
+#   --all                      Run all matrix values (256,512,...,32768).
+#                              Requires explicit confirmation unless --dry-run.
+#   --template <path>          Override template env file.
+#                              Default: bt-matrix-base.env (Series B, EP-on)
+#                              Use bt-matrix-series-a-ep-off.env for Series A.
 #   --runs <n>                 llama-benchy runs per test (default: 3)
-#   --skip-bt <vals>           Comma-separated bt values to skip (useful with --all)
+#   --skip-bt <vals>           Comma-separated bt values to skip (with --all)
 #   --dry-run                  Print commands without executing
-#   --no-stop                  Skip container stop between runs (manual testing only)
-#   --result-dir <d>           Override result directory (default: benchmarks/results/bt-matrix)
+#   --no-stop                  Skip container stop between runs (testing only)
+#   --result-dir <d>           Override result directory
 #   --expected-ep <on|off|unknown>
-#                              Expected EP state. Runner halts if startup logs contradict this.
-#                              Checked against the entrypoint command line (--enable-expert-parallel).
-#                              NOTE: vLLM 0.23 does not log expert_parallel_size=1 when EP is
-#                              disabled, so log-based detection requires the entrypoint command.
-#                              Default: unknown (log check only, no halt on mismatch).
-#   --config-label <str>       Short label for this run series (recorded in metadata).
+#                              Expected EP state. Runner halts if startup logs
+#                              contradict this. Checked against the entrypoint
+#                              command line (--enable-expert-parallel presence).
+#                              NOTE: vLLM 0.23 does not log expert_parallel_size=1
+#                              when EP is disabled, so entrypoint command is
+#                              the authoritative source.
+#                              Default: unknown (log check only, no halt).
+#   --config-label <str>       Short label for this run (recorded in metadata).
 #                              Example: v023-triton-marlin-ep-off-bt2048
-#   --continue-on-bench-fail   Do not halt the matrix on llama-benchy request failure only.
-#                              NEVER applies to: topology mismatch, backend mismatch, EP mismatch,
-#                              startup failure, memory threshold, NCCL failure. These are always
-#                              fatal. Use this only for known transient request errors.
+#   --continue-on-bench-fail   Do not halt matrix on llama-benchy request
+#                              failure only (exit 3). NEVER applies to:
+#                              topology mismatch, backend mismatch, EP mismatch,
+#                              startup failure, memory threshold. These are
+#                              always fatal.
 #   --continue-on-fail         Deprecated alias for --continue-on-bench-fail.
+#   --preflight-only           Read-only pre-start checks: SSH, boot ID, uptime,
+#                              memory state, container state, stale process
+#                              detection. No container ops. Exits after checks.
+#                              Safe to run with containers up.
+#   --validate-existing-container
+#                              Read-only backend detection against the currently
+#                              running head container. Applies MARLIN, TRITON_ATTN,
+#                              and EP detection. No container stop/start.
+#                              Use --expected-ep to gate on EP state.
+#
+# Memory checks:
+#   SAFE_MEM_GIB (default: 50) applies ONLY to the post-stop check. It is NOT
+#   applied to the pre-start check. On GB10 UMA, a running vLLM server holding
+#   ~75 GiB will leave only ~46 GiB free — this is expected and NOT a failure.
+#   Pre-start memory is recorded in metadata (spark0X_free_gib_before) for
+#   reference; it is informational only, not a gate.
 #
 # Safety rules (enforced):
 #   - Never modifies production preset (presets/step37-flash-nvfp4-tp2.env)
 #   - Never reboots, destroys volumes, or docker system prune
-#   - Halts if container stop does not recover memory below SAFE_MEM_GIB threshold
+#   - Halts if post-stop memory does not recover above SAFE_MEM_GIB threshold
 #   - Halts if --expected-ep contradicts observed EP state in startup logs
 #   - Each run uses a separate disposable env file (deleted after success)
 #   - Never auto-promotes a result to production recommendation
-#   - Prints warning if no currently running containers found before starting
-#     (sanity check: you likely want to verify the environment is clean)
+#   - Warns if running containers detected before starting
 #
 # Requirements:
 #   - SSH aliases: spark01, spark02 (configured in ~/.ssh/config)
@@ -99,9 +120,9 @@ BENCH_PP=2048
 BENCH_TG=32
 BENCH_DEPTHS="0 4096 8192 16384"
 
-# Memory safety: after container stop, free GiB must exceed this threshold
-# before next run is allowed. GB10 UMA: ~121.63 GiB total; 2× weight load
-# (head + profiling) peaks ~65-75 GiB. 50 GiB free is a conservative floor.
+# Post-stop memory safety threshold. Applied ONLY after container stop —
+# NOT to the pre-start check. On GB10 UMA, a running vLLM server occupies
+# ~75 GiB, leaving ~46 GiB free; this is expected and not a failure here.
 SAFE_MEM_GIB=50
 
 # Default bt matrix (run all unless --bt or --skip-bt override)
@@ -118,6 +139,8 @@ RUN_ALL=false
 EXPECTED_EP="unknown"
 CONFIG_LABEL=""
 CONTINUE_ON_BENCH_FAIL=false
+PREFLIGHT_ONLY=false
+VALIDATE_EXISTING=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -135,16 +158,20 @@ while [[ $# -gt 0 ]]; do
         --continue-on-fail)      CONTINUE_ON_BENCH_FAIL=true
                                  echo "[WARN] --continue-on-fail is deprecated; use --continue-on-bench-fail" >&2
                                  shift ;;
+        --preflight-only)        PREFLIGHT_ONLY=true; shift ;;
+        --validate-existing-container) VALIDATE_EXISTING=true; shift ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
-# Require --bt or --all
-if [[ -z "${BT_OVERRIDE}" ]] && ! ${RUN_ALL}; then
+# --bt is required for normal benchmark runs, but NOT for preflight/validate modes
+if [[ -z "${BT_OVERRIDE}" ]] && ! ${RUN_ALL} && ! ${PREFLIGHT_ONLY} && ! ${VALIDATE_EXISTING}; then
     echo "ERROR: --bt <value(s)> is required." >&2
-    echo "  Single run:  --bt 2048" >&2
-    echo "  Multi-value: --bt 2048,4096,8192" >&2
-    echo "  Full matrix: --all (requires confirmation)" >&2
+    echo "  Single run:       --bt 2048" >&2
+    echo "  Multi-value:      --bt 2048,4096,8192" >&2
+    echo "  Full matrix:      --all (requires confirmation)" >&2
+    echo "  Pre-flight only:  --preflight-only (no --bt needed)" >&2
+    echo "  Validate live:    --validate-existing-container (no --bt needed)" >&2
     exit 1
 fi
 
@@ -154,15 +181,17 @@ case "${EXPECTED_EP}" in
     *) echo "ERROR: --expected-ep must be 'on', 'off', or 'unknown'. Got: '${EXPECTED_EP}'" >&2; exit 1 ;;
 esac
 
-# Build effective bt list
+# Build effective bt list (used for normal runs and informational in preflight)
 if [[ -n "${BT_OVERRIDE}" ]]; then
     IFS=',' read -r -a BT_VALUES <<< "${BT_OVERRIDE}"
-else
+elif ${RUN_ALL}; then
     BT_VALUES=("${DEFAULT_BT_VALUES[@]}")
+else
+    BT_VALUES=()
 fi
 
 # Filter out skip list
-if [[ -n "${SKIP_BT}" ]]; then
+if [[ -n "${SKIP_BT}" ]] && [[ ${#BT_VALUES[@]} -gt 0 ]]; then
     IFS=',' read -r -a SKIP_ARRAY <<< "${SKIP_BT}"
     FILTERED=()
     for bt in "${BT_VALUES[@]}"; do
@@ -199,10 +228,24 @@ ssh_run() {
     fi
 }
 
-# Check free GiB on a Spark node (reads /proc/meminfo MemAvailable)
+# Check free GiB on a Spark node using /proc/meminfo MemAvailable.
+# This is the correct metric for GB10 UMA where nvidia-smi --query-gpu CSV
+# returns N/A for memory fields (UMA pools are not tracked as separate GPU memory).
 node_free_gib() {
     local host="$1"
     ssh "${host}" "awk '/MemAvailable/ {printf \"%.1f\", \$2/1048576}' /proc/meminfo"
+}
+
+# Boot ID from /proc/sys/kernel/random/boot_id — changes on every reboot.
+node_boot_id() {
+    local host="$1"
+    ssh "${host}" "cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown"
+}
+
+# Uptime in seconds from /proc/uptime (first field, integer part).
+node_uptime_seconds() {
+    local host="$1"
+    ssh "${host}" "awk '{printf \"%d\", \$1}' /proc/uptime 2>/dev/null || echo unknown"
 }
 
 # Check if a container is running on a host
@@ -231,46 +274,274 @@ wait_for_api() {
     return 1
 }
 
-# Extract key config fields from vLLM container logs on spark01
-# Writes extracted metadata to stdout. Saves full log to <log_file>.startup.
-extract_server_metadata() {
-    local log_file="$1"
-    ssh "${SPARK01}" "docker logs vllm-spark-head 2>&1" | tee "${log_file}.startup" | {
-        local version="" attn_backend="" moe_backend="" tp_size="" max_len="" max_seqs="" max_bt="" kv_dtype="" cudagraph="" mtp="" ep_found=0
-        while IFS= read -r line; do
-            [[ "${line}" =~ vLLM\ version:\ ([0-9.]+) ]] && version="${BASH_REMATCH[1]}"
-            [[ "${line}" =~ Using.*attention.*backend.*([A-Z_]+) ]] && attn_backend="${BASH_REMATCH[1]}"
-            [[ "${line}" =~ Using.*([A-Z_]+).*NvFp4\ MoE\ backend ]] && moe_backend="${BASH_REMATCH[1]}"
-            [[ "${line}" =~ tensor_parallel_size=([0-9]+) ]] && tp_size="${BASH_REMATCH[1]}"
-            [[ "${line}" =~ max_model_len=([0-9]+) ]] && max_len="${BASH_REMATCH[1]}"
-            [[ "${line}" =~ max_num_seqs=([0-9]+) ]] && max_seqs="${BASH_REMATCH[1]}"
-            [[ "${line}" =~ max_num_batched_tokens=([0-9]+) ]] && max_bt="${BASH_REMATCH[1]}"
-            [[ "${line}" =~ kv_cache_dtype=([a-z0-9_]+) ]] && kv_dtype="${BASH_REMATCH[1]}"
-            [[ "${line}" =~ [Cc]uda.*graph.*([a-z]+) ]] && cudagraph="${BASH_REMATCH[1]}"
-            [[ "${line}" =~ [Ss]peculative|[Mm][Tt][Pp] ]] && mtp="${line}"
-            # EP detection: vLLM logs "expert_parallel_size=N" in engine config summary
-            [[ "${line}" =~ expert_parallel_size=([0-9]+) ]] && ep_found="${BASH_REMATCH[1]}"
-        done
-        local ep_observed
-        if [[ "${ep_found}" =~ ^[0-9]+$ ]] && [[ "${ep_found}" -gt 1 ]]; then
-            ep_observed="enabled (expert_parallel_size=${ep_found})"
-        elif [[ "${ep_found}" == "1" ]]; then
-            ep_observed="disabled (expert_parallel_size=1)"
+# ---------------------------------------------------------------------------
+# Preflight check (--preflight-only mode)
+#
+# Read-only checks against both Spark nodes:
+#   - SSH connectivity
+#   - boot ID (changes on every reboot — use to verify nodes were rebooted)
+#   - uptime
+#   - host memory state (/proc/meminfo, UMA-safe)
+#   - running container list
+#   - stale vllm processes outside containers
+#   - template env file validity
+#
+# No container ops. Safe to run with containers up.
+# Exit 0: all checks pass (or only warnings — running server with low free
+#         memory is expected and is NOT a failure here).
+# Exit 1: critical failure (SSH unreachable, template missing).
+# ---------------------------------------------------------------------------
+preflight_check() {
+    local pf_dir="${RESULT_DIR}/.preflight-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "${pf_dir}"
+    local pf_file="${pf_dir}/preflight.txt"
+    local critical_fail=false
+
+    log "=== Preflight check (read-only, no container ops) ==="
+    log "Results will be saved to: ${pf_file}"
+
+    {
+        echo "preflight_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "bt_values=${BT_VALUES[*]:-<not specified>}"
+        echo "template_env=${TEMPLATE_ENV}"
+        echo "expected_ep=${EXPECTED_EP}"
+        echo ""
+
+        # 1. Template validity
+        echo "## Template check"
+        if [[ -f "${TEMPLATE_ENV}" ]]; then
+            echo "template_exists=OK"
+            if grep -q '__BT_PLACEHOLDER__' "${TEMPLATE_ENV}"; then
+                echo "template_bt_placeholder=OK"
+            else
+                echo "template_bt_placeholder=WARN (no __BT_PLACEHOLDER__ in file)"
+            fi
+            local ep_in_template
+            # Check VLLM_EXTRA_ARGS line only — comments may contain the flag text
+            if grep '^VLLM_EXTRA_ARGS=' "${TEMPLATE_ENV}" 2>/dev/null | grep -q -- '--enable-expert-parallel'; then
+                ep_in_template="yes (in VLLM_EXTRA_ARGS)"
+            else
+                ep_in_template="no (absent from VLLM_EXTRA_ARGS)"
+            fi
+            echo "template_has_enable_expert_parallel=${ep_in_template}"
         else
-            ep_observed="not_found_in_logs"
+            echo "template_exists=FAIL (not found: ${TEMPLATE_ENV})"
         fi
-        echo "version=${version:-unknown}"
-        echo "attention_backend=${attn_backend:-unknown}"
-        echo "moe_backend=${moe_backend:-unknown}"
-        echo "tp_size=${tp_size:-unknown}"
-        echo "ep_observed=${ep_observed}"
-        echo "max_model_len=${max_len:-unknown}"
-        echo "max_num_seqs=${max_seqs:-unknown}"
-        echo "max_num_batched_tokens=${max_bt:-unknown}"
-        echo "kv_cache_dtype=${kv_dtype:-unknown}"
-        echo "cuda_graph=${cudagraph:-unknown}"
-        echo "mtp_line=${mtp:-not found}"
+        echo ""
+
+        # 2. SSH connectivity
+        echo "## SSH connectivity"
+        for host in "${SPARK01}" "${SPARK02}"; do
+            if ssh -o ConnectTimeout=5 "${host}" "echo ok" &>/dev/null; then
+                echo "ssh_${host}=OK"
+            else
+                echo "ssh_${host}=FAIL"
+                critical_fail=true
+            fi
+        done
+        echo ""
+
+    } > "${pf_file}"
+
+    # Per-node checks (SSH required — skip if unreachable)
+    {
+        # 3. Boot ID + uptime
+        echo "## Boot ID and uptime"
+        for host in "${SPARK01}" "${SPARK02}"; do
+            local boot_id uptime_s
+            boot_id=$(ssh -o ConnectTimeout=5 "${host}" "cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown" 2>/dev/null || echo "ssh_fail")
+            uptime_s=$(ssh -o ConnectTimeout=5 "${host}" "awk '{printf \"%d\", \$1}' /proc/uptime 2>/dev/null || echo unknown" 2>/dev/null || echo "ssh_fail")
+            echo "${host}_boot_id=${boot_id}"
+            echo "${host}_uptime_seconds=${uptime_s}"
+        done
+        echo ""
+
+        # 4. Host memory state
+        # NOTE: SAFE_MEM_GIB applies to post-stop checks, not here. A running vLLM
+        # server on GB10 UMA holds ~75 GiB, leaving ~46 GiB free — below SAFE_MEM_GIB.
+        # This is expected and is logged as INFO, not FAIL.
+        echo "## Host memory (pre-start, informational only)"
+        echo "## SAFE_MEM_GIB=${SAFE_MEM_GIB} applies to post-stop only, not here."
+        for host in "${SPARK01}" "${SPARK02}"; do
+            local free_gib
+            free_gib=$(ssh -o ConnectTimeout=5 "${host}" "awk '/MemAvailable/ {printf \"%.1f\", \$2/1048576}' /proc/meminfo" 2>/dev/null || echo "ssh_fail")
+            echo "${host}_mem_available_gib=${free_gib}"
+            if [[ "${free_gib}" == "ssh_fail" ]]; then
+                echo "${host}_memory_prestart=ssh_fail"
+            elif awk "BEGIN { exit (${free_gib} >= ${SAFE_MEM_GIB}) }"; then
+                echo "${host}_memory_prestart=BELOW_THRESHOLD (${free_gib} GiB < ${SAFE_MEM_GIB} GiB threshold — EXPECTED if server is running)"
+            else
+                echo "${host}_memory_prestart=OK (${free_gib} GiB free — sufficient for cold-start)"
+            fi
+        done
+        echo ""
+
+        # 5. Running container list
+        echo "## Running containers"
+        for host in "${SPARK01}" "${SPARK02}"; do
+            local running_containers
+            running_containers=$(ssh -o ConnectTimeout=5 "${host}" \
+                "docker ps --filter 'name=vllm-spark' --format '{{.Names}} ({{.Status}})' 2>/dev/null" \
+                2>/dev/null || echo "docker_unavailable")
+            echo "${host}_vllm_containers=${running_containers:-none}"
+        done
+        echo ""
+
+        # 6. Stale vllm processes outside containers.
+        # If a vllm-spark container is running, its internal vllm processes are
+        # visible from the host via pgrep — these are NOT stale. Only flag processes
+        # when no vllm-spark container is running on that host.
+        echo "## Stale vllm processes (outside containers)"
+        for host in "${SPARK01}" "${SPARK02}"; do
+            local running_count stale_procs
+            running_count=$(ssh -o ConnectTimeout=5 "${host}" \
+                "docker ps --filter 'name=vllm-spark' --format '{{.Names}}' 2>/dev/null | wc -l" \
+                2>/dev/null || echo "0")
+            if [[ "${running_count}" =~ ^[1-9] ]]; then
+                echo "${host}_stale_vllm_procs=skipped (${running_count} vllm-spark container(s) running — in-container vllm processes expected)"
+            else
+                stale_procs=$(ssh -o ConnectTimeout=5 "${host}" \
+                    "pgrep -a -f 'vllm serve' 2>/dev/null | head -3 || echo none" \
+                    2>/dev/null || echo "check_failed")
+                echo "${host}_stale_vllm_procs=${stale_procs:-none}"
+            fi
+        done
+        echo ""
+
+    } >> "${pf_file}"
+
+    # Print to stdout
+    cat "${pf_file}"
+
+    log "Preflight results saved: ${pf_file}"
+
+    if ${critical_fail}; then
+        log "Preflight: CRITICAL failures detected. Fix before running benchmark."
+        return 1
+    fi
+    log "Preflight: No critical failures."
+    log "Note: BELOW_THRESHOLD memory is expected if a server is currently running."
+    log "After reboot, memory should exceed ${SAFE_MEM_GIB} GiB on both nodes."
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Validate existing container (--validate-existing-container mode)
+#
+# Reads docker logs from the currently running head container and applies
+# the same MARLIN, TRITON_ATTN, and EP detection as run_bt().
+# No container start/stop. Read-only.
+#
+# Uses tail -1 to get the most recent occurrence of each log pattern
+# (head may restart vllm serve internally without restarting the container).
+#
+# Exit 0: both MARLIN and TRITON_ATTN confirmed (EP check advisory only).
+# Exit 1: container not running, log fetch failed, or backend not confirmed.
+# ---------------------------------------------------------------------------
+validate_existing_container() {
+    local vc_dir="${RESULT_DIR}/.validate-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "${vc_dir}"
+    local vc_file="${vc_dir}/validate-existing.txt"
+    local log_file="${vc_dir}/head-startup.log"
+
+    log "=== Validate existing container (read-only, no container ops) ==="
+
+    # Check container is running
+    local running
+    running=$(container_running "${SPARK01}" "vllm-spark-head")
+    if [[ "${running}" != "true" ]]; then
+        warn "vllm-spark-head is not running on ${SPARK01} (state=${running})"
+        echo "container_running=false" | tee "${vc_file}"
+        return 1
+    fi
+
+    # Fetch logs
+    log "Fetching container logs from ${SPARK01}:vllm-spark-head..."
+    ssh "${SPARK01}" "docker logs vllm-spark-head 2>&1" > "${log_file}" 2>&1 || {
+        warn "Failed to fetch container logs from ${SPARK01}"
+        return 1
     }
+    local log_lines
+    log_lines=$(wc -l < "${log_file}")
+    log "Fetched ${log_lines} log lines -> ${log_file}"
+
+    # Apply same detection logic as run_bt (tail -1: most recent occurrence)
+    local marlin_line triton_line entrypoint_cmd
+    marlin_line=$(grep "Using 'MARLIN' NvFp4 MoE backend" "${log_file}" 2>/dev/null | tail -1 || echo "")
+    triton_line=$(grep "Using AttentionBackendEnum.TRITON_ATTN backend" "${log_file}" 2>/dev/null | tail -1 || echo "")
+    entrypoint_cmd=$(grep '\[entrypoint\] Running: vllm serve' "${log_file}" 2>/dev/null | tail -1 || echo "")
+
+    local marlin_ok triton_ok ep_observed_str ep_evidence
+    marlin_ok=$(echo "${marlin_line}" | grep -c "MARLIN" || echo 0)
+    triton_ok=$(echo "${triton_line}" | grep -c "TRITON_ATTN" || echo 0)
+
+    if [[ -z "${entrypoint_cmd}" ]]; then
+        ep_observed_str="not_found_in_logs"
+        ep_evidence="entrypoint command line not captured in log"
+    elif echo "${entrypoint_cmd}" | grep -q -- '--enable-expert-parallel'; then
+        ep_observed_str="enabled"
+        ep_evidence="--enable-expert-parallel present in entrypoint command line"
+    else
+        ep_observed_str="disabled"
+        ep_evidence="--enable-expert-parallel absent from entrypoint command line"
+    fi
+
+    local backend_valid="OK"
+    [[ ${marlin_ok} -lt 1 ]] && backend_valid="FAIL_MARLIN_NOT_CONFIRMED"
+    [[ ${triton_ok} -lt 1 ]] && backend_valid="FAIL_TRITON_NOT_CONFIRMED"
+
+    {
+        echo "validate_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "container_running=true"
+        echo "log_lines_fetched=${log_lines}"
+        echo "log_file=${log_file}"
+        echo ""
+        echo "## Backend detection"
+        echo "marlin_confirmed=${marlin_ok}"
+        echo "marlin_evidence=${marlin_line:-not found}"
+        echo ""
+        echo "triton_attn_confirmed=${triton_ok}"
+        echo "triton_evidence=${triton_line:-not found}"
+        echo ""
+        echo "## EP detection"
+        echo "expert_parallel_observed=${ep_observed_str}"
+        echo "ep_evidence=${ep_evidence}"
+        if [[ -n "${entrypoint_cmd}" ]]; then
+            echo "entrypoint_cmd=${entrypoint_cmd}"
+        fi
+        echo ""
+        echo "## Summary"
+        echo "backend_valid=${backend_valid}"
+    } | tee "${vc_file}"
+
+    # EP check against --expected-ep (advisory in validate mode — no halt)
+    if [[ "${EXPECTED_EP}" != "unknown" ]]; then
+        local ep_match=true
+        if [[ "${EXPECTED_EP}" == "on" ]] && [[ "${ep_observed_str}" != "enabled" ]]; then
+            ep_match=false
+        elif [[ "${EXPECTED_EP}" == "off" ]] && [[ "${ep_observed_str}" != "disabled" ]]; then
+            ep_match=false
+        fi
+        if ! ${ep_match}; then
+            warn "EP mismatch: expected=${EXPECTED_EP}, observed=${ep_observed_str}"
+            echo "ep_validation=MISMATCH (expected=${EXPECTED_EP}, observed=${ep_observed_str})" | tee -a "${vc_file}"
+        else
+            echo "ep_validation=OK (expected=${EXPECTED_EP}, observed=${ep_observed_str})" | tee -a "${vc_file}"
+        fi
+    fi
+
+    log "Validation results saved: ${vc_file}"
+
+    if [[ ${marlin_ok} -lt 1 ]]; then
+        warn "MARLIN not confirmed — container would fail backend gate in a benchmark run."
+        return 1
+    fi
+    if [[ ${triton_ok} -lt 1 ]]; then
+        warn "TRITON_ATTN not confirmed — container would fail backend gate in a benchmark run."
+        return 1
+    fi
+    log "Backend validation: PASS (MARLIN confirmed, TRITON_ATTN confirmed, EP=${ep_observed_str})"
+    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -279,7 +550,6 @@ extract_server_metadata() {
 correctness_check() {
     local bt="$1"
     local out_file="$2"
-    local pass=true
     local model="${SERVED_MODEL_NAME}"
     local api="http://localhost:8000/v1/chat/completions"
 
@@ -308,7 +578,6 @@ correctness_check() {
             echo "Result: PASS (correct: 97)"
         else
             echo "Result: FAIL or UNCERTAIN (expected '97', got: '${c1:0:200}')"
-            # Not hard-fail: reasoning model may wrap answer
         fi
         echo ""
 
@@ -333,7 +602,6 @@ correctness_check() {
         local c3
         c3=$(echo "${r3}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message'].get('content','') or '')" 2>/dev/null || echo "ERROR")
         echo "Response (truncated): ${c3:0:300}"
-        # Check for broken Unicode or gibberish (simple heuristic: no replacement chars)
         if echo "${c3}" | grep -qP '[\x{FFFD}]|[^\x{0000}-\x{9FFF}\x{AC00}-\x{D7A3}\x{F900}-\x{FFEF}\x{1F000}-\x{1FFFF} \t\n\r\.,!?]' 2>/dev/null; then
             echo "Result: POSSIBLE_GARBLE (unexpected codepoints detected)"
         elif [[ -z "${c3}" ]] || echo "${c3}" | grep -q "ERROR"; then
@@ -371,14 +639,13 @@ correctness_check() {
 }
 
 # ---------------------------------------------------------------------------
-# Memory safety check
+# Memory safety check (post-stop only)
 # ---------------------------------------------------------------------------
 check_memory_safe() {
     local host="$1"
     local free_gib
     free_gib=$(node_free_gib "${host}")
-    log "${host}: free memory = ${free_gib} GiB (threshold: ${SAFE_MEM_GIB} GiB)"
-    # Use awk for float comparison
+    log "${host}: post-stop free memory = ${free_gib} GiB (threshold: ${SAFE_MEM_GIB} GiB)"
     if awk "BEGIN { exit (${free_gib} < ${SAFE_MEM_GIB}) }"; then
         return 0  # safe
     else
@@ -443,11 +710,12 @@ run_bt() {
     log "Generating env file with MAX_NUM_BATCHED_TOKENS=${bt}..."
     sed "s/__BT_PLACEHOLDER__/${bt}/" "${TEMPLATE_ENV}" > "${env_file}"
 
-    # Derive topology metadata from template env
+    # Derive topology metadata from template env.
+    # Check VLLM_EXTRA_ARGS line only — comments may contain the flag text.
     local ep_requested="unknown"
-    if grep -q -- '--enable-expert-parallel' "${TEMPLATE_ENV}" 2>/dev/null; then
+    if grep '^VLLM_EXTRA_ARGS=' "${TEMPLATE_ENV}" 2>/dev/null | grep -q -- '--enable-expert-parallel'; then
         ep_requested="true"
-    elif grep -q -- '--no-enable-expert-parallel' "${TEMPLATE_ENV}" 2>/dev/null; then
+    elif grep '^VLLM_EXTRA_ARGS=' "${TEMPLATE_ENV}" 2>/dev/null | grep -q -- '--no-enable-expert-parallel'; then
         ep_requested="false"
     else
         ep_requested="false (flag absent from VLLM_EXTRA_ARGS)"
@@ -462,10 +730,24 @@ run_bt() {
     # Derive config_label if not provided
     local effective_config_label="${CONFIG_LABEL}"
     if [[ -z "${effective_config_label}" ]]; then
-        local ep_tag="ep-${ep_requested//[^a-z]/-}"
+        local ep_tag
         [[ "${ep_requested}" == "true" ]] && ep_tag="ep-on" || ep_tag="ep-off"
         effective_config_label="v023-${moe_backend_req,,}-${attn_backend_req,,}-${ep_tag}-bt${bt}"
     fi
+
+    # Boot ID and uptime at run start (for reboot verification)
+    local head_boot_id worker_boot_id head_uptime_s worker_uptime_s
+    head_boot_id=$(node_boot_id "${SPARK01}" 2>/dev/null || echo "unknown")
+    worker_boot_id=$(node_boot_id "${SPARK02}" 2>/dev/null || echo "unknown")
+    head_uptime_s=$(node_uptime_seconds "${SPARK01}" 2>/dev/null || echo "unknown")
+    worker_uptime_s=$(node_uptime_seconds "${SPARK02}" 2>/dev/null || echo "unknown")
+
+    # Pre-start memory (informational only — NOT a gate).
+    # On GB10 UMA, a running vLLM server holds ~75 GiB, leaving ~46 GiB free.
+    # SAFE_MEM_GIB applies only to the post-stop check below.
+    local spark01_free_before spark02_free_before
+    spark01_free_before=$(node_free_gib "${SPARK01}" 2>/dev/null || echo "unknown")
+    spark02_free_before=$(node_free_gib "${SPARK02}" 2>/dev/null || echo "unknown")
 
     # Record metadata
     {
@@ -490,13 +772,28 @@ run_bt() {
         echo "bench_tg=${BENCH_TG}"
         echo "bench_depths=${BENCH_DEPTHS}"
         echo "bench_runs=${BENCH_RUNS}"
-        echo "spark01_free_gib_before=$(node_free_gib "${SPARK01}")"
-        echo "spark02_free_gib_before=$(node_free_gib "${SPARK02}")"
+        # Boot ID and uptime — use to verify both nodes were rebooted since prior run.
+        # Compare head_boot_id / worker_boot_id against prior run's metadata to confirm
+        # a fresh boot session. Different IDs = confirmed reboot between runs.
+        echo "head_boot_id=${head_boot_id}"
+        echo "worker_boot_id=${worker_boot_id}"
+        echo "head_uptime_seconds=${head_uptime_s}"
+        echo "worker_uptime_seconds=${worker_uptime_s}"
+        # Pre-start memory (informational, not a gate — see SAFE_MEM_GIB comment above)
+        echo "spark01_free_gib_before=${spark01_free_before}"
+        echo "spark02_free_gib_before=${spark02_free_before}"
+        # spark02 nvidia-smi note: GB10 UMA causes nvidia-smi --query-gpu CSV to return
+        # N/A for GPU memory fields. /proc/meminfo MemAvailable is the correct metric.
+        echo "memory_metric_source=proc_meminfo_MemAvailable (nvidia-smi N/A on GB10 UMA)"
     } > "${meta_file}"
 
     if ${DRY_RUN}; then
         log "[DRY-RUN] Would start containers, wait for API, run benchmark, stop containers."
         log "[DRY-RUN] Env file: ${env_file}"
+        log "[DRY-RUN] head_boot_id=${head_boot_id} uptime=${head_uptime_s}s"
+        log "[DRY-RUN] worker_boot_id=${worker_boot_id} uptime=${worker_uptime_s}s"
+        log "[DRY-RUN] spark01 free before: ${spark01_free_before} GiB"
+        log "[DRY-RUN] spark02 free before: ${spark02_free_before} GiB"
         echo "run_id,bt,status,pp2048_tps,tg32_tps" > "${summary_file}"
         echo "${run_id},${bt},DRY_RUN,N/A,N/A" >> "${summary_file}"
         return 0
@@ -519,22 +816,20 @@ run_bt() {
     fi
     echo "startup_result=OK" >> "${meta_file}"
 
-    # --- Extract server metadata from logs ---
-    log "Extracting server metadata from container logs..."
+    # --- Extract server startup log ---
+    log "Fetching startup log from head container..."
     ssh "${SPARK01}" "docker logs vllm-spark-head 2>&1" > "${run_dir}/head-startup.log" 2>&1 || true
 
     # --- Backend verification (garble-fix guards) ---
-    # MARLIN: exact string from vLLM 0.23 nvfp4.py log
+    # Both are hard gates — mismatch stops containers and exits 1 (never bench-continuable).
     local marlin_ok marlin_line triton_ok triton_line
     marlin_line=$(grep "Using 'MARLIN' NvFp4 MoE backend" "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
     marlin_ok=$(echo "${marlin_line}" | grep -c "MARLIN" || echo 0)
-    # TRITON_ATTN: exact string from vLLM 0.23 cuda.py log (not generic TRITON grep)
     triton_line=$(grep "Using AttentionBackendEnum.TRITON_ATTN backend" "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
     triton_ok=$(echo "${triton_line}" | grep -c "TRITON_ATTN" || echo 0)
 
-    # EP detection: primary source is the entrypoint command line in the container log.
-    # vLLM 0.23 does NOT log expert_parallel_size=1 when EP is disabled (default), so
-    # log config parsing alone cannot distinguish EP-off from log-unavailable.
+    # EP detection: entrypoint command line is the authoritative source.
+    # vLLM 0.23 does NOT log expert_parallel_size=1 when EP is disabled (default).
     local entrypoint_cmd ep_observed_str ep_evidence
     entrypoint_cmd=$(grep '\[entrypoint\] Running: vllm serve' "${run_dir}/head-startup.log" 2>/dev/null | head -1 || echo "")
     if [[ -z "${entrypoint_cmd}" ]]; then
@@ -558,29 +853,29 @@ run_bt() {
         echo "backend_validation_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     } >> "${meta_file}"
 
-    # MARLIN hard gate (topology-critical — always fatal, never continuable)
+    # MARLIN hard gate
     if [[ "${marlin_ok}" -lt 1 ]]; then
         warn "bt=${bt}: MARLIN MoE backend NOT confirmed in logs — FATAL."
         warn "  Expected: \"Using 'MARLIN' NvFp4 MoE backend\""
         warn "  Found:    ${marlin_line:-<nothing>}"
         echo "backend_validity=INVALID_MARLIN_NOT_CONFIRMED" >> "${meta_file}"
         stop_containers
-        return 1  # fatal — not bench-continuable
+        return 1
     fi
 
-    # TRITON_ATTN hard gate (topology-critical — always fatal, never continuable)
+    # TRITON_ATTN hard gate
     if [[ "${triton_ok}" -lt 1 ]]; then
         warn "bt=${bt}: TRITON_ATTN attention backend NOT confirmed in logs — FATAL."
         warn "  Expected: \"Using AttentionBackendEnum.TRITON_ATTN backend\""
         warn "  Found:    ${triton_line:-<nothing>}"
         echo "backend_validity=INVALID_TRITON_NOT_CONFIRMED" >> "${meta_file}"
         stop_containers
-        return 1  # fatal — not bench-continuable
+        return 1
     fi
 
     echo "backend_validity=OK (MARLIN confirmed, TRITON_ATTN confirmed)" >> "${meta_file}"
 
-    # EP state validation against --expected-ep (topology-critical — always fatal, never continuable)
+    # EP validation against --expected-ep (always fatal, never bench-continuable)
     if [[ "${EXPECTED_EP}" != "unknown" ]]; then
         local ep_match=true
         if [[ "${EXPECTED_EP}" == "on" ]] && [[ "${ep_observed_str}" != "enabled" ]]; then
@@ -595,7 +890,7 @@ run_bt() {
             warn "  Check template env and --expected-ep flag. Halting."
             echo "ep_validation=MISMATCH (expected=${EXPECTED_EP}, observed=${ep_observed_str})" >> "${meta_file}"
             stop_containers
-            return 1  # fatal — not bench-continuable
+            return 1
         else
             echo "ep_validation=OK (expected=${EXPECTED_EP}, observed=${ep_observed_str})" >> "${meta_file}"
         fi
@@ -613,7 +908,6 @@ run_bt() {
         depth_args="${depth_args} ${d}"
     done
 
-    # Run on spark01 (where API is served)
     # shellcheck disable=SC2086
     local bench_exit=0
     ssh "${SPARK01}" "PYTHONUNBUFFERED=1 ${LLAMA_BENCHY_BIN} \
@@ -656,7 +950,6 @@ lines = open(result_file).readlines()
 values = {}
 
 for line in lines:
-    # Match table rows like: | model | test | t/s | ...
     line = line.strip()
     if not line.startswith('|') or 'model' in line or '---' in line:
         continue
@@ -675,7 +968,6 @@ for line in lines:
         sd = 'N/A'
     values[test] = (tps, sd)
 
-# Also get peak tg from peak t/s column (col 4 if present)
 for line in lines:
     line = line.strip()
     if not line.startswith('|') or 'model' in line or '---' in line:
@@ -717,13 +1009,14 @@ PYEOF
     if ! ${NO_STOP}; then
         stop_containers
 
-        # Memory safety check
-        log "Checking memory recovery after container stop..."
+        # Post-stop memory safety check (SAFE_MEM_GIB gate applies here only).
+        # If memory does not recover, GB10 UMA driver is retaining pages.
+        # Only reboot can recover them; rmmod nvidia_uvm does NOT help.
+        log "Checking post-stop memory recovery (threshold: ${SAFE_MEM_GIB} GiB)..."
         local safe=true
         if ! check_memory_safe "${SPARK01}"; then
-            warn "spark01 memory below safe threshold after container stop."
-            warn "GB10 UMA driver memory leak: container stop does NOT always release GPU pages."
-            warn "You may need to reboot spark01 before the next run."
+            warn "spark01 post-stop memory below ${SAFE_MEM_GIB} GiB — GB10 UMA driver leak."
+            warn "Reboot spark01 before the next run. rmmod nvidia_uvm does not help."
             echo "post_stop_memory_safe_spark01=UNSAFE" >> "${meta_file}"
             safe=false
         else
@@ -731,8 +1024,8 @@ PYEOF
         fi
 
         if ! check_memory_safe "${SPARK02}"; then
-            warn "spark02 memory below safe threshold after container stop."
-            warn "You may need to reboot spark02 before the next run."
+            warn "spark02 post-stop memory below ${SAFE_MEM_GIB} GiB — GB10 UMA driver leak."
+            warn "Reboot spark02 before the next run."
             echo "post_stop_memory_safe_spark02=UNSAFE" >> "${meta_file}"
             safe=false
         else
@@ -740,7 +1033,7 @@ PYEOF
         fi
 
         if ! ${safe}; then
-            warn "Memory not recovered sufficiently. Halting matrix run."
+            warn "Memory not recovered. Halting matrix run."
             warn "Reboot affected nodes and resume with --skip-bt for completed values."
             return 2
         fi
@@ -764,14 +1057,32 @@ main() {
     log "Repository:        ${REPO_ROOT}"
     log "Template:          ${TEMPLATE_ENV}"
     log "Results:           ${RESULT_DIR}"
-    log "bt values:         ${BT_VALUES[*]}"
+    [[ ${#BT_VALUES[@]} -gt 0 ]] && log "bt values:         ${BT_VALUES[*]}"
     log "Runs/test:         ${BENCH_RUNS}"
     log "Depths:            ${BENCH_DEPTHS}"
     log "expected-ep:       ${EXPECTED_EP}"
     log "bench-continuable: ${CONTINUE_ON_BENCH_FAIL}"
     [[ -n "${CONFIG_LABEL}" ]] && log "config-label:      ${CONFIG_LABEL}"
     ${DRY_RUN} && log "DRY-RUN MODE: no containers will be started."
+    ${PREFLIGHT_ONLY} && log "PREFLIGHT-ONLY MODE: read-only checks, no container ops."
+    ${VALIDATE_EXISTING} && log "VALIDATE-EXISTING-CONTAINER MODE: read-only backend detection."
     echo ""
+
+    mkdir -p "${RESULT_DIR}/logs"
+
+    # --- Preflight-only mode ---
+    if ${PREFLIGHT_ONLY}; then
+        preflight_check
+        exit $?
+    fi
+
+    # --- Validate-existing-container mode ---
+    if ${VALIDATE_EXISTING}; then
+        validate_existing_container
+        exit $?
+    fi
+
+    # --- Normal benchmark run ---
 
     # Validate prerequisites
     [[ -f "${TEMPLATE_ENV}" ]] || die "Template env not found: ${TEMPLATE_ENV}"
@@ -807,8 +1118,6 @@ main() {
         [[ "${confirm}" == "yes" ]] || { echo "Aborted."; exit 0; }
     fi
 
-    mkdir -p "${RESULT_DIR}/logs"
-
     # Master CSV aggregation file
     local master_csv="${RESULT_DIR}/matrix-summary-$(date +%Y%m%d-%H%M%S).csv"
     echo "run_id,bt,status,pp2048_tps,pp2048_tps_sd,tg32_tps,tg32_tps_peak,pp_d4096_tps,pp_d8192_tps,pp_d16384_tps,tg_d4096_tps,tg_d8192_tps,tg_d16384_tps" > "${master_csv}"
@@ -822,32 +1131,28 @@ main() {
         run_bt "${bt}" || run_exit=$?
 
         if [[ ${run_exit} -eq 0 ]]; then
-            # Append this run's CSV row to master
             local run_csv
             run_csv=$(find "${RESULT_DIR}" -name "summary.csv" -newer "${master_csv}" | sort | tail -1)
             [[ -n "${run_csv}" ]] && tail -1 "${run_csv}" >> "${master_csv}" || true
             completed=$((completed + 1))
         elif [[ ${run_exit} -eq 2 ]]; then
-            # Memory safety failure — always halt (cannot be overridden)
             warn "Halting matrix run due to memory safety failure (exit 2)."
             warn "Completed: ${completed}/${#BT_VALUES[@]} runs."
             warn "Resume after reboot: --bt <remaining_values> --skip-bt <completed_values>"
             break
         elif [[ ${run_exit} -eq 3 ]]; then
-            # Benchmark request failure — only continuable failure code
             failed=$((failed + 1))
             if ! ${CONTINUE_ON_BENCH_FAIL}; then
                 warn "bt=${bt}: benchmark request failed (exit 3). Halting."
-                warn "Use --continue-on-bench-fail to skip request failures and continue the matrix."
+                warn "Use --continue-on-bench-fail to skip request failures and continue."
                 break
             else
                 warn "bt=${bt}: benchmark request failed. --continue-on-bench-fail set, continuing."
             fi
         else
-            # exit 1 or unexpected: fatal (topology, startup, backend, EP mismatch) — NEVER continuable
             failed=$((failed + 1))
             warn "bt=${bt}: FATAL failure (exit ${run_exit}). Topology/startup/backend error — not continuable."
-            warn "Fix the underlying issue before retrying. Do not use --continue-on-bench-fail to bypass."
+            warn "Fix the underlying issue before retrying."
             break
         fi
     done
