@@ -10,7 +10,9 @@ correctness-covered for all three values. bt=2048 supplement: all runs strict PA
 (suite_status=PASS_STRICT). bt=8192: all prompts covered; one inconclusive duplicate run
 (suite_status=PASS_WITH_INCONCLUSIVE_DUPLICATE; not garble). bt=8192 analysis: prefill flat
 at d0 (−0.7%, within noise), +3–4% at d4096+; short-context decode (pp=1) −6–18% vs bt=2048.
-**bt=2048 remains the validated production candidate.**
+**bt=2048 remains the validated production candidate.** Preset `presets/step37-flash-nvfp4-v023-tp2-latency.env`
+runtime smoke-validated (2026-06-18): PASS_STRICT correctness, VALIDATED_32K context capacity.
+See "Preset smoke validation" section.
 
 No additional benchmark was executed during the checker and documentation cleanup phase
 (commits e720e65, e61abe8, and subsequent). The bt=8192 measurement had already been completed
@@ -922,6 +924,86 @@ pp2048-context decode comparison: bt=8192 result vs bt=2048 (10.06 t/s at d0) un
 identical pp2048 methodology. This is the first controlled decode A/B; if matched server
 uptime and sequence are held constant, the bt-setting effect on pp2048-context decode
 can begin to be isolated.
+
+---
+
+## Preset smoke validation (2026-06-18)
+
+**Scope**: Runtime smoke validation of `presets/step37-flash-nvfp4-v023-tp2-latency.env`
+on dual DGX Spark GB10. No throughput benchmark — correctness and context-capacity only.
+
+**Run ID**: `bt2048-server-20260618-155929` (server-only mode, --config-label
+`v023-step37-latency-preset-smoke`)
+
+**Template used**: `.local/env/step37/bt-matrix-series-a-ep-off.env` (bt=2048, Series A
+EP-off). Config diff vs preset: functionally identical (`DIFF_CLEAN`). MASTER_PORT
+difference: preset=29500, actual=29501 (compose default; Series A template has no
+MASTER_PORT override). Functionally equivalent — internal PyTorch distributed port only.
+
+**Image**: `vllm-spark:v023-step3p7-fixed-kv-profile-skip-candidate` (sha `5c2c74f54872`)
+confirmed on both nodes before start.
+
+**Pre-start memory**: spark01 53.0 GiB / spark02 53.1 GiB free. No reboot required.
+
+### Backend confirmation
+
+| Backend | Expected | Confirmed in startup log |
+|---------|----------|--------------------------|
+| MoE backend | MARLIN | `marlin_confirmed=1` |
+| Attention backend | TRITON_ATTN | `triton_attn_confirmed=1` |
+| Prometheus patch | patched | `prometheus_patch_status=patched` |
+| API ready | within 600s | ready at 320s |
+
+### API smoke
+
+| Test | Result |
+|------|--------|
+| `GET /health` | HTTP 200 |
+| `GET /v1/models` | `stepfun-ai/Step-3.7-Flash-NVFP4` |
+| Chat completion "2+2?" | `'4'`, finish=stop |
+
+### Correctness smoke (suite_status = PASS_STRICT)
+
+| Prompt | Run 1 | Run 2 | Verdict |
+|--------|-------|-------|---------|
+| 15! = 1307674368000 | PASS (253 ctok) | PASS (209 ctok) | PASS_STRICT |
+| 진시황 통일 연도 (221 BC) | PASS (981 ctok) | PASS (1073 ctok) | PASS_STRICT |
+
+No garble detected on either prompt. All finish_reason=stop.
+
+### Context-capacity smoke (verdict = VALIDATED_32K)
+
+KV cache at startup: **141,403 tokens** (2 GiB fixed, `num_gpu_blocks=10922`,
+`block_size=16`, `kv_cache_dtype=fp8`). Maximum concurrency at 32,768 tokens: **4.32×**.
+
+| Context size | Prompt tokens | Result | Content |
+|---|---|---|---|
+| 4k | 3,632 | PASS | `'The'` (correct first word) |
+| 16k | 14,532 | PASS | `'The'` |
+| 30k | 27,032 | PASS | `'The'` |
+
+All near-32k requests served correctly with finish=stop, no garble.
+
+### Memory during serving
+
+| Node | Pre-start free | During serving free | Post-stop free |
+|------|---------------|---------------------|----------------|
+| spark01 | 53.0 GiB | 25 GiB | 30 GiB |
+| spark02 | 53.1 GiB | 38 GiB | 42 GiB |
+
+Post-stop residual is the expected GB10 UMA pattern (driver retains pages).
+`VLLM_SKIP_INIT_MEMORY_CHECK=1` in the preset covers re-start without reboot.
+
+### Smoke validation verdict
+
+**VALIDATED** — all phases pass. `presets/step37-flash-nvfp4-v023-tp2-latency.env`
+is confirmed for single-user latency serving on dual DGX Spark GB10 (SM_121) with
+vLLM 0.23.0:
+
+- Backend guards (MARLIN + TRITON_ATTN) active and confirmed
+- Correctness: PASS_STRICT (no garble, no wrong answers)
+- Context capacity: VALIDATED_32K (30k prompt served correctly)
+- Memory: within expected UMA bounds
 
 ---
 
