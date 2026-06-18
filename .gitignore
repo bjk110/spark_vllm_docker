@@ -14,3 +14,5 @@ benchmarks/results/bt-matrix/bt*/
 benchmarks/results/bt-matrix/matrix-summary-*.csv
 benchmarks/results/bt-matrix/analysis-*.md
 benchmarks/results/bt-matrix/logs/
+benchmarks/results/bt-matrix/.validate-*/
+benchmarks/results/bt-matrix/.preflight-*/

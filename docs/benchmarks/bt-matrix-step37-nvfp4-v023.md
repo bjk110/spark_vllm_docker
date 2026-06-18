@@ -242,6 +242,65 @@ bt=8192 requires the same criteria. Do not run bt=8192 before bt=2048 completes.
 
 ---
 
+## Pre-run validation state (2026-06-18)
+
+### Re-validation of bt=256 historical container
+
+A second `--validate-existing-container` run at `2026-06-18T08:45:44Z` against the same
+container (ID `566574c5`, RestartCount=0, started `2026-06-17T22:39:38Z`) confirms all
+three classification criteria remain consistent:
+
+| Item | Status | Evidence |
+|------|--------|---------|
+| MARLIN backend | confirmed | `Worker_TP0 pid=304` (2026-06-17T22:40:26) |
+| TRITON_ATTN backend | confirmed | `Worker_TP0 pid=304` (2026-06-17T22:40:26) |
+| EP state | disabled | `--enable-expert-parallel` absent from entrypoint command line |
+| `backend_valid` | OK | both gates pass |
+| `ep_validation` | OK (expected=off, observed=disabled) | entrypoint cmd |
+
+This is a third independent read of the same container instance. Classification A evidence
+is unchanged. The result does not add new information about bt=256 throughput numbers.
+
+### Preflight baseline (pre-reboot reference values)
+
+Captured `2026-06-18T08:45:51Z` while the server is running. Use these boot IDs to verify
+reboot occurred before the bt=2048 run.
+
+| Field | spark01 | spark02 |
+|-------|---------|---------|
+| `boot_id` | `31eedf8e-c268-49e8-a029-5c1af037e09a` | `6ccea774-a076-407f-b791-da65cca9fe23` |
+| `uptime_seconds` | ~146608 (~40.7 h) | ~146606 (~40.7 h) |
+| `mem_available_gib` | 47.9 (server loaded) | 49.5 (server loaded) |
+| container state | `vllm-spark-head` Up ~10 h | `vllm-spark-worker` Up ~10 h |
+
+After reboot, both `boot_id` values must differ from the above before bt=2048 is executed.
+
+### bt=2048 execution status
+
+**Blocked: explicit stop/reboot authorization not present.**
+
+The dry-run completed successfully at `2026-06-18T08:45:45Z`. All parameters validated:
+
+| Parameter | Value |
+|-----------|-------|
+| `MAX_NUM_BATCHED_TOKENS` | 2048 |
+| `MAX_MODEL_LEN` | 32768 |
+| `MAX_NUM_SEQS` | 1 |
+| `GPU_MEMORY_UTILIZATION` | 0.79 |
+| `DISTRIBUTED_BACKEND` | mp |
+| `MoE backend` | marlin (in VLLM_EXTRA_ARGS) |
+| `Attention backend` | TRITON_ATTN (in VLLM_EXTRA_ARGS) |
+| `EP flag` | absent from VLLM_EXTRA_ARGS (confirmed EP-off) |
+| `VLLM_USE_BREAKABLE_CUDAGRAPH` | 0 |
+| `NCCL_NET` | Socket |
+| `FLASHINFER_CUDA_ARCH_LIST` | 12.1 |
+| `config-label` | v023-triton-marlin-ep-off-bt2048 |
+
+Pending: container stop authorization + spark01/spark02 reboot authorization.
+Once both are granted, execute Phase 3 command in the "How to run" section.
+
+---
+
 ## Correctness validation
 
 Each bt run includes the following correctness tests:
