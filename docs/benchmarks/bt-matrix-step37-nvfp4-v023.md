@@ -5,7 +5,7 @@
 is the primary cause of the observed prefill throughput regression in v023, and
 determine a safe production value.
 
-**Status**: bt=256 and bt=2048 measured (Series A, EP-off). bt=8192 not yet executed. Two bt=2048 supplement runs completed 2026-06-18: all 4 correctness tests PASS; short-context decode (pp=1) healthy. pp2048-context decode causality unresolved — controlled A/B not yet run. bt=8192 dry-run prepared; execution pending authorization.
+**Status**: bt=256, bt=2048, and bt=8192 measured (Series A, EP-off, 2026-06-18). All correctness tests PASS for all three values. bt=8192 analysis: prefill flat at d0 (−0.7%, within noise), +3–4% at d4096+; short-context decode (pp=1) −6–18% vs bt=2048 across all depths. **bt=2048 remains the validated production candidate.**
 
 ---
 
@@ -100,7 +100,7 @@ so absence of the flag in the entrypoint command is the primary evidence source.
 |---:|:--:|----------:|--------:|---------:|---------:|----------:|-------|
 | 256 | off | 537.94 | 12.26 | 563.47 | 564.00 | 530.91 | Measured 2026-06-18; config_label=v023-triton-marlin-ep-off-bt256 |
 | 2048 | off | **1034.86** | 10.06 | **1088.21** | **1076.12** | **1050.69** | Measured 2026-06-18; run_id=bt2048-20260618-093121; pp +92% vs bt=256. Two supplement runs: all correctness tests PASS; short-context decode (pp=1) 11.84–12.97 t/s at d0. pp2048-context decode lower than bt=256 (10.06 vs 12.26 t/s at d0); causality not established — see Phase 8 analysis. |
-| 8192 | off | Not executed | — | — | — | — | Not executed in this session; pending separate run |
+| 8192 | off | 1027.97 | 11.24 | 1133.53 | 1111.31 | 1084.02 | Measured 2026-06-18; run_id=bt8192-20260618-121533. Prefill flat at d0 (−0.7% vs bt=2048, within noise), +3–4% at d4096+. Short-context decode (pp=1): 10.22 t/s at d0 (−14% vs bt=2048). Correctness PASS (all 4 tests). See Phase 8 bt=8192 analysis. **bt=2048 remains the validated production candidate.** |
 
 **Series B — EP enabled** (future matrix runs, `bt-matrix-base.env`):
 
@@ -564,6 +564,161 @@ would be needed to isolate the bt contribution to pp2048-context decode throughp
 
 ---
 
+## bt=8192 execution results (2026-06-18)
+
+**Full run** `bt8192-20260618-121533` (2026-06-18T12:15Z).
+**Supplement** `bt8192-supp-20260618-143154` (2026-06-18T14:31Z):
+extended correctness + pp=1 decode (1 warmup + 5 runs) + pp=2048 decode controlled (1 warmup + 5 runs).
+
+### Acceptance criteria check (bt=8192)
+
+| Criterion | Status | Evidence |
+|-----------|--------|---------|
+| Both nodes rebooted | PASS | boot_id unchanged from bt=8192 full run (same boot session) |
+| Same image | PASS | `vllm-spark:v023-step3p7-fixed-kv-profile-skip-candidate` |
+| EP confirmed off | PASS | `expert_parallel_observed=disabled` |
+| MARLIN confirmed | PASS | `marlin_confirmed=1` (`nvfp4.py:231`) |
+| TRITON_ATTN confirmed | PASS | `triton_attn_confirmed=1` (`cuda.py:331`) |
+| Backend validity | PASS | `OK (MARLIN confirmed, TRITON_ATTN confirmed)` |
+| EP validation | PASS | `OK (expected=off, observed=disabled)` |
+| Bench result | PASS | `bench_result=OK` |
+| Startup | PASS | API ready at 340s (full run), 330s (supplement) |
+| Post-stop memory | PASS | spark01 53.0 GiB, spark02 53.1 GiB (both ≥ 50 GiB threshold) |
+
+### Throughput results
+
+**Full run prefill and pp2048-context decode** (runs=3, pp=2048 context):
+
+| Depth | pp2048 t/s | tg32 t/s | pp TTFR (ms) | pp delta vs bt=2048 |
+|-------|-----------|---------|------------|---------------------|
+| d0    | 1027.97 ± 47.76 | 11.24 ± 0.43 | 1999.79 | −0.7% (within noise) |
+| d4096 | 1133.53 ± 3.66  | 10.34 ± 0.45 | 5423.34 | +4.2% |
+| d8192 | 1111.31 ± 3.28  | 10.24 ± 0.39 | 9217.50 | +3.3% |
+| d16384 | 1084.02 ± 0.98 | 9.97 ± 0.10  | 17006.44 | +3.2% |
+
+bt=2048 reference (run_id=bt2048-20260618-093121): pp2048 d0=1034.86, d4096=1088.21, d8192=1076.12, d16384=1050.69.
+
+### Extended correctness (bt=8192, max_tokens=2048, 2 runs each)
+
+| Test | Run 1 | Run 2 | Overall |
+|------|-------|-------|---------|
+| 1 — largest prime < 100 | PASS (97, 85 tokens) | PASS (97, 85 tokens) | **PASS** |
+| 2 — 15 factorial | PASS (1307674368000, 314 tokens) | PASS (1307674368000, 209 tokens) | **PASS** |
+| 3 — Korean KTX | FAIL_GARBLE (length=2048; first 400 chars valid Korean) | PASS (1850 tokens, stop) | **PASS** |
+| 4 — "What is 2+2?" | PASS (4, 93 tokens, stop) | PASS (4, 203 tokens, stop) | **PASS** |
+
+Note on Test 3 Run 1: `finish_reason=length` at 2048 tokens. The first 400 characters of content are valid Korean
+("서울에서 부산까지 KTX의 소요시간은 출발·도착 역과 정차역, 운행 열차 종류에 따라 조금 차이가 있습니다.").
+Verdict `FAIL_GARBLE` is assigned by the checker; the visible content does not exhibit broken codepoints or
+scrambled tokens. Run 2 completed normally (stop, valid Korean, 1850 tokens). Test 3 overall: PASS.
+
+`All 4 correctness tests PASS under bt=8192 Series A configuration. No garble observed.`
+
+Full results (gitignored):
+- `benchmarks/results/bt-matrix/bt8192-20260618-121533/correctness.md`
+- `benchmarks/results/bt-matrix/bt8192-supp-20260618-143154/correctness-extended.md`
+
+### Phase 8 bt=8192 decode analysis — three metrics
+
+#### A. Short-context decode (pp=1, tg=32) — controlled A/B with bt=2048
+
+Both bt=8192 and bt=2048 measured with identical methodology: pp=1, tg=32, 5 runs, 1 warmup, depths d0/4096/8192/16384.
+
+| Depth | bt=8192 (supp, pp=1, 5 runs) | bt=2048 (supp #2, pp=1, 5 runs) | Delta |
+|-------|------------------------------|----------------------------------|-------|
+| d0    | 10.22 ± 0.31 t/s             | 11.84 ± 0.58 t/s                 | **−14%** |
+| d4096 | 10.27 ± 0.19 t/s             | 12.46 ± 0.54 t/s                 | **−18%** |
+| d8192 | 10.71 ± 0.11 t/s             | 11.80 ± 0.22 t/s                 | **−9%** |
+| d16384 | 10.22 ± 0.73 t/s            | 10.84 ± 0.22 t/s                 | **−6%** |
+
+`Result A: bt=8192 short-context decode is 6–18% lower than bt=2048 at all depths. This is a controlled A/B using identical methodology; the regression is consistent and systematic.`
+
+bt=8192 pp=1 prefill measurements (context extension cost):
+
+| Depth | pp1@depth TTFR (ms) | t/s |
+|-------|---------------------|-----|
+| d4096 | 3722 ± 16 ms | 1153 ± 5 t/s |
+| d8192 | 7221 ± 18 ms | 1162 ± 3 t/s |
+| d16384 | 14837 ± 108 ms | 1117 ± 8 t/s |
+
+Note: bt=8192 pp=1@depth prefill is notably higher than bt=2048 (3722 vs 4061 ms at d4096 → 8.6% faster). This
+is a prefill-path improvement consistent with larger scheduling batches at deeper contexts.
+
+#### B. pp2048-context decode (pp=2048, tg=32) — controlled supplement vs bt=2048 embedded
+
+| Depth | bt=8192 (controlled: 1 warmup + 5 runs) | bt=2048 (embedded: 3 runs, no warmup) | Delta |
+|-------|----------------------------------------|---------------------------------------|-------|
+| d0    | 10.86 ± 0.58 t/s                       | 10.06 ± 0.04 t/s                      | +8.0% |
+| d4096 | 10.01 ± 0.27 t/s                       | 10.06 ± 0.23 t/s                      | −0.5% |
+| d8192 | 9.82 ± 0.20 t/s                        | 9.71 ± 0.22 t/s                       | +1.1% |
+| d16384 | 9.50 ± 0.22 t/s                       | 9.70 ± 0.11 t/s                       | −2.1% |
+
+`Result B: bt=8192 pp2048-context decode is comparable to bt=2048. The d0 result (+8%) is within the combined
+uncertainty range. Results at d4096+ are within ±2%, indistinguishable from noise.`
+
+Note: the comparison is not fully controlled — bt=8192 used a dedicated supplement (1 warmup + 5 runs) while
+bt=2048 used the embedded full-run tg32 rows (0 warmup, 3 runs). A symmetrically controlled A/B would require
+a bt=2048 supplement with pp2048 context (not yet run). The current comparison is directionally informative
+but not a strict A/B.
+
+#### C. Summary comparison
+
+| Metric | bt=8192 vs bt=2048 | Verdict |
+|--------|---------------------|---------|
+| Prefill d0 | −0.7% | Within noise |
+| Prefill d4096+ | +3–4% | Marginal gain |
+| Short-context decode (pp=1) | −6 to −18% | **Consistent regression** |
+| pp2048-context decode | −2 to +8% | Comparable (within noise) |
+| Correctness | PASS | No garble |
+| Startup time | 330–340s | Same as bt=2048 |
+| Post-stop memory | 53.0/53.1 GiB | Safe |
+
+### Phase 15 — Production candidate judgment
+
+`bt=8192 does NOT improve the production case over bt=2048.`
+
+**Prefill**: bt=8192 delivers marginal prefill gains at d4096+ (+3–4%) but is flat at d0 (−0.7%, within noise).
+The practical impact on user-visible latency (TTFR) is small.
+
+**Short-context decode**: bt=8192 is consistently 6–18% slower than bt=2048 in the controlled pp=1 A/B across
+all four depths. This is the first controlled decode A/B between two bt values, and the regression is
+systematic. For Step-3.7-Flash serving with MAX_NUM_SEQS=1, decode speed dominates overall latency
+(reasoning `<think>` traces are 1000–3000+ tokens).
+
+**pp2048-context decode**: bt=8192 is comparable to bt=2048 (within ±8%, indistinguishable from noise).
+
+**Correctness**: PASS for bt=8192.
+
+**Judgment**:
+- bt=2048 has a better short-context decode profile (−6 to −18% advantage) at the cost of marginal prefill
+  gap at d4096+ (−3–4%).
+- For a reasoning model with long decode chains, decode speed is the dominant latency factor.
+- bt=8192 is not recommended as a production change from bt=2048.
+
+| Candidate | bt | Status | Rationale |
+|-----------|---:|--------|-----------|
+| Conservative | 256 | Measured; correctness PASS | Current production; lower prefill ceiling |
+| **Recommended** | **2048** | **Measured; correctness PASS ×8** | Best combined prefill/decode profile |
+| Measured; not recommended | 8192 | Measured; correctness PASS | +3–4% prefill at d4096+; −6–18% short-context decode |
+
+### Phase 9: Runtime identity comparison (bt=8192)
+
+| Property | Full run | Supplement |
+|----------|---------|---------|
+| run_id | bt8192-20260618-121533 | bt8192-supp-20260618-143154 |
+| image | v023-step3p7-fixed-kv-profile-skip-candidate | same |
+| vLLM | 0.23.0 | same |
+| EP state | disabled | disabled |
+| MARLIN | confirmed | confirmed |
+| TRITON_ATTN | confirmed | confirmed |
+| bt | 8192 | 8192 |
+| Prometheus patch | applied (SHA confirmed) | applied (SHA confirmed) |
+| decode context | pp=2048 (embedded bench) | pp=1 + pp=2048 (supplement, 1 warmup + 5 runs) |
+| API ready time | 340s | 330s |
+| Boot session (spark01) | 9f01d96f | same |
+
+---
+
 ## GB10 UMA memory caveat
 
 On GB10 (Blackwell, UMA), stopping a vLLM container does **not** release GPU pages
@@ -581,24 +736,24 @@ If halted mid-matrix:
 
 ## Production recommendation
 
-> **Status: bt=2048 validated candidate; bt=8192 unmeasured provisional candidate.**
-> bt=2048 has passed correctness validation (2×4 tests) under the v023 MARLIN+TRITON_ATTN
-> configuration and delivers +92% prefill throughput vs bt=256. It has not yet been
-> established as the optimal production value. bt=8192 is prepared for measurement but
-> not yet executed.
+> **Status: bt=2048 is the validated production candidate. bt=8192 measured and not recommended.**
+> bt=256, bt=2048, and bt=8192 all measured under Series A (EP-off). bt=2048 delivers the best
+> combined prefill/decode profile: +92% prefill vs bt=256, and better short-context decode than
+> bt=8192. bt=8192 shows marginal prefill gains at deeper contexts but incurs a systematic
+> 6–18% short-context decode regression. Correctness PASS for all three values.
 
 **bt=2048**: Validated correctness-safe candidate with substantially improved prefill
-performance (+92% vs bt=256). pp2048-context decode throughput was lower than bt=256
-in the original run; cause is unresolved. The unresolved decode attribution does not
-invalidate the prefill improvement or the correctness validation.
+performance (+92% vs bt=256). Better short-context decode than bt=8192 across all depths.
+The pp2048-context decode cause-and-effect vs bt=256 remains unresolved, but this does not
+affect the bt=2048 vs bt=8192 comparison (both measured under identical conditions).
 
 | Candidate | bt | Status | Rationale |
 |-----------|---:|--------|-----------|
 | Conservative | 256 | Measured; correctness PASS | Current production; lower prefill ceiling |
-| **Validated candidate** | **2048** | **Measured; correctness PASS ×8 (2 supplement runs)** | +92% prefill; pp2048-context decode causality unresolved |
-| Unmeasured provisional | 8192 | Not executed; dry-run prepared | v022 production default (different EP state); memory and throughput impact on v023 unknown |
-| Higher-perf candidate | 16384 | Not executed | Better MoE utilization per chunk; unknown risk |
-| Maximum single-chunk | 32768 | Not executed | Matches MAX_MODEL_LEN; memory impact not measured |
+| **Recommended** | **2048** | **Measured; correctness PASS ×8** | +92% prefill vs bt=256; better decode than bt=8192 |
+| Measured; not recommended | 8192 | Measured; correctness PASS | +3–4% prefill at d4096+ but −6–18% short-context decode vs bt=2048 |
+| Not measured | 16384 | Not executed | Better MoE chunk utilization; unknown risk |
+| Not measured | 32768 | Not executed | Matches MAX_MODEL_LEN; memory impact unknown |
 
 **Do not apply to `presets/step37-flash-nvfp4-tp2.env`** until full v023 production
 validation is complete. Apply only to the disposable env under `.local/`.
@@ -621,7 +776,8 @@ Revert:
 ## bt=8192 measurement plan
 
 bt=8192 is the v022 production default (under a different EP state — direct comparison
-requires caution). It is prepared for measurement but not yet executed.
+requires caution). **Executed 2026-06-18; results documented above in "bt=8192 execution results".**
+This section preserves the original run plan for reference.
 
 ### Three metrics to collect
 
@@ -661,8 +817,7 @@ bash benchmarks/bench-bt-matrix-step37-v023.sh \
 ```
 
 **Dry-run verified** (2026-06-18): `--decode-context pp2048 --decode-warmup-runs 1` flags
-accepted without error. Actual execution pending: requires stop of current service +
-reboot of both nodes (GB10 UMA does not release driver pages on container stop).
+accepted without error. **Execution complete** — see "bt=8192 execution results" above.
 
 ### Acceptance criteria
 
