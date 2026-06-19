@@ -48,6 +48,9 @@ services:
       # GB10 UMA: bypass request_memory() startup pre-check (patch_skip_init_memory_check.py).
       # 1 = skip (any real OOM still surfaces at weight load). See docs/dsv4-flash-tp2.md §11.6.
       - VLLM_SKIP_INIT_MEMORY_CHECK=${VLLM_SKIP_INIT_MEMORY_CHECK:-0}
+      # GB10 UMA: skip profile_run() in fixed-KV branch (patch_dgx_spark_fixed_kv_profile_skip.py).
+      # 1 = skip. Requires --kv-cache-memory-bytes > 0 (fail-closed otherwise).
+      - VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN=${VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN:-0}
       # ---- Multi-node networking (200Gbps RoCE) ----
       # All RDMA vars use empty defaults so single-Spark users do not need
       # to set them. entrypoint.sh normalizes for CLUSTER_MODE=single by
@@ -227,6 +230,9 @@ services:
       # GB10 UMA: bypass request_memory() startup pre-check (patch_skip_init_memory_check.py).
       # 1 = skip (any real OOM still surfaces at weight load). See docs/dsv4-flash-tp2.md §11.6.
       - VLLM_SKIP_INIT_MEMORY_CHECK=${VLLM_SKIP_INIT_MEMORY_CHECK:-0}
+      # GB10 UMA: skip profile_run() in fixed-KV branch (patch_dgx_spark_fixed_kv_profile_skip.py).
+      # 1 = skip. Requires --kv-cache-memory-bytes > 0 (fail-closed otherwise).
+      - VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN=${VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN:-0}
       # ---- unholy-fusion: NCCL / RoCE tuning ----
       - NCCL_NET=${NCCL_NET:-}
       - NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-}
