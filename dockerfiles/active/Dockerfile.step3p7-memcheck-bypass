@@ -1,0 +1,45 @@
+# =============================================================================
+# UMA init-memory-check bypass layer on top of step3p7-modelopt-cache-release
+#
+# Adds three patches that allow VLLM_SKIP_INIT_MEMORY_CHECK=1 to bypass the
+# GB10 UMA startup free-memory check that fires on driver 610 (idle baseline
+# ~71 GiB used → only ~50 GiB CUDA-free, below the 0.88×121.63=107 GiB
+# required threshold).
+#
+# Patches applied (in order):
+#   1. patch_envs_register_skip_memcheck.py   — register VLLM_SKIP_INIT_MEMORY_CHECK
+#      in vllm/envs.py (suppress Unknown-var warning at startup)
+#   2. patch_skip_init_memory_check.py        — add env-var bypass to
+#      request_memory() in vllm/v1/worker/utils.py; genuine OOM still surfaces
+#      at the weight-load step
+#   3. patch_relax_profile_assertion.py       — relax post-profile free-memory
+#      assertion in vllm/v1/worker/gpu_worker.py; on GB10 UMA the OS may
+#      reclaim page cache during profiling, legitimately raising the metric
+#
+# NOTE: VLLM_SKIP_INIT_MEMORY_CHECK is NOT set to 1 in this Dockerfile.
+#       The bypass is activated only when the env var is passed at runtime
+#       (from the compose env file or host env). Default behavior is unchanged.
+#
+# Build tag : vllm-spark:v022-d568-step3p7-memcheck-bypass
+# Base image: vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release
+# Build host: spark01 or spark02 (aarch64 GB10/SM121)
+#
+# Usage:
+#   docker build \
+#     -f dockerfiles/active/Dockerfile.step3p7-memcheck-bypass \
+#     -t vllm-spark:v022-d568-step3p7-memcheck-bypass \
+#     .
+# =============================================================================
+
+FROM vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release
+
+COPY patches/common/patch_envs_register_skip_memcheck.py /tmp/patch_envs_register_skip_memcheck.py
+COPY patches/common/patch_skip_init_memory_check.py /tmp/patch_skip_init_memory_check.py
+COPY patches/common/patch_relax_profile_assertion.py /tmp/patch_relax_profile_assertion.py
+
+RUN python3 /tmp/patch_envs_register_skip_memcheck.py && \
+    python3 /tmp/patch_skip_init_memory_check.py && \
+    python3 /tmp/patch_relax_profile_assertion.py && \
+    rm /tmp/patch_envs_register_skip_memcheck.py \
+       /tmp/patch_skip_init_memory_check.py \
+       /tmp/patch_relax_profile_assertion.py
