@@ -2,7 +2,7 @@
 
 **Date**: 2026-06-19  
 **Preset**: `presets/step37-flash-nvfp4-tp2.env`  
-**Status**: `EXPERIMENTAL — Stage A (eager, 32k, seq1) and Stage B (CUDA graph, 32k, seq1) validated with EP-on + mp backend from a clean boot. 262k context and multi-sequence operation remain unvalidated.`
+**Status**: `EXPERIMENTAL — Stage A (eager, 32k, seq1), Stage B (CUDA graph, 32k, seq1), and Stage C (CUDA graph, 262k, seq1) validated with EP-on + mp backend from a clean boot. Multi-sequence operation remains unvalidated.`
 
 ## Hardware
 
@@ -166,13 +166,72 @@ VLLM_SKIP_INIT_MEMORY_CHECK=1 — skipping startup free-memory check
 
 ---
 
+## Stage C — EP-on + mp + CUDA graph (262k, seq1)
+
+**Env**: `.local/env/step37/v022-longctx-stage-c-262k-seq1.env`  
+**Config delta from Stage B**: `MAX_MODEL_LEN` 32768 → 262144.  
+**Result**: `STAGE_C_VALIDATED_262K_STARTUP_SEQ1` ✅
+
+**Stage C metrics**:
+
+| Metric | Value | Stage B delta |
+|---|---|---|
+| torch.compile | 82.26 s (cache miss: different `max_seq_len` key) | −1.93 s |
+| Initial profiling/warmup | 102.70 s | +4.84 s |
+| CUDA graph mode | FULL_AND_PIECEWISE, sizes=[1,2] | identical |
+| CUDA graph memory | −0.06 GiB (net freed) | −0.08 GiB |
+| KV cache (head) | 36.16 GiB | +0.08 GiB |
+| GPU KV cache tokens | **2,838,891** | +1,098,566 (+63%) |
+| KV capacity @ 262144 | 10.8× (capacity >> requirement) | — |
+| Peak RAM during startup | ~108 GiB | no thrash ✅ |
+
+Note: torch.compile cache key includes `max_seq_len`, so Stage C (262144) produces
+a different cache entry than Stage B (32768). Recompile took 82 s (same duration as
+Stage B first compile — expected).
+
+**API validation**:
+
+| Test | Result |
+|---|---|
+| `GET /health` | 200 OK ✅ |
+| `GET /v1/models` | `stepfun-ai/Step-3.7-Flash-NVFP4` ✅ |
+| `2+2` | `4` ✅ |
+| `15!` | `1307674368000` ✅ |
+| Korean ("대한민국 수도") | `대한민국의 수도는 서울특별시입니다.` ✅ |
+| Code generation | Python `sum_list` function ✅ |
+| Garble check | none ✅ |
+
+**Context needle tests** (max_tokens=2000, stop=stop):
+
+| Context | prompt_tokens | Secret | Result |
+|---|---|---|---|
+| 4k needle | 4,882 | 코드7731 | `7731` ✅ |
+| 16k needle | 19,382 | 코드4829 | `4829` ✅ |
+| 30k needle | 29,039 | 코드9157 | `9157` ✅ |
+
+All needle tests used ≤ 29,039 input tokens (< 32k constraint). No >32k requests
+were sent during Stage C validation.
+
+**Memory checkpoints**:
+
+| Checkpoint | spark01 MemAvailable | spark02 MemAvailable |
+|---|---|---|
+| Stage C pre-start (post reboot) | 117.7 GiB | 118.0 GiB |
+| Stage C server running (post-test) | 12.69 GiB | 12.99 GiB |
+| Stage C post-stop | 18.34 GiB | 18.48 GiB |
+
+Post-stop retention ~103 GiB per node — standard GB10 UMA behaviour. Reboot required
+before next launch (≥ 110 GiB gate).
+
+---
+
 ## Stages Not Run
 
 | Stage | Config | Status |
 |---|---|---|
 | Stage A | ep+mp, eager, 32k/seq1 | ✅ VALIDATED |
 | Stage B | ep+mp, CUDA graph, 32k/seq1 | ✅ VALIDATED |
-| Stage C | 262k/seq1 startup | NOT_RUN |
+| Stage C | ep+mp, CUDA graph, 262k/seq1 | ✅ VALIDATED |
 | Stage D | context ladder 32k→262k | NOT_RUN |
 | Stage E | 262k/seq2 | NOT_RUN |
 | Stage F/G | 262k/seq4 (exact preset) | NOT_RUN |
@@ -187,6 +246,11 @@ VLLM_SKIP_INIT_MEMORY_CHECK=1 — skipping startup free-memory check
 | Stage A profiling peak | 107 GiB used | 84 GiB used |
 | Post Stage A stop | ~19.7 GiB (retained) | ~19.8 GiB (retained) |
 | After Stage A reboot (both) | 117.6 GiB | 118.0 GiB |
+| Stage B post-stop (retained) | ~18.5 GiB | ~18.6 GiB |
+| After Stage B reboot (both) | 117.7 GiB | 118.0 GiB |
+| Stage C pre-start | 117.7 GiB | 118.0 GiB |
+| Stage C server running | 12.69 GiB | 12.99 GiB |
+| Stage C post-stop (retained) | 18.34 GiB | 18.48 GiB |
 
 ## Path-Specific Preflight
 
@@ -202,8 +266,9 @@ If either node fails, reboot it — this is the only confirmed recovery for GB10
 ## Preset Status
 
 `presets/step37-flash-nvfp4-tp2.env` remains `EXPERIMENTAL`.
-Stage A (eager, 32k, seq1, dynamic KV) validated with bypass image from clean boot.
-CUDA graph, 262k context, and multi-sequence modes are unvalidated as of 2026-06-19.
+Stage A (eager, 32k, seq1), Stage B (CUDA graph, 32k, seq1), and Stage C (CUDA graph,
+262k, seq1) validated with bypass image from clean boot. Multi-sequence operation
+remains unvalidated.
 
 **For validated production serving**: `presets/step37-flash-nvfp4-v023-tp2-latency.env`
 (vLLM 0.23.0, MARLIN MoE, TRITON_ATTN — see `vllm023_step37_garble_fix.md`).
