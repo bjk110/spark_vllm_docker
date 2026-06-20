@@ -17,8 +17,19 @@ See "Preset smoke validation" section.
 No additional benchmark was executed during the checker and documentation cleanup phase
 (commits e720e65, e61abe8, and subsequent). The bt=8192 measurement had already been completed
 in the preceding authorized benchmark session (run_id=bt8192-20260618-121533 and
-bt8192-supp-20260618-143154). bt=4096, bt=16384, bt=32768, and Series B (EP-on) were not
-executed in this benchmark campaign.
+bt8192-supp-20260618-143154). bt=4096, bt=16384, bt=32768 were not executed in this benchmark
+campaign.
+
+**Update 2026-06-20 (Series B, EP-on)**: bt=2048 (run_id=bt2048-20260620-083037) and bt=8192
+(run_id=bt8192-20260620-090850) were measured under the EP-on template (`bt-matrix-base.env`),
+EP confirmed on from the entrypoint command line. EP-on results agree with the Series A EP-off
+production-path conclusion: bt=2048 recovers most prefill throughput, and bt=8192 adds only a
+modest deep-context prefill edge. The production preset is **EP-off** and already pins
+`MAX_NUM_BATCHED_TOKENS=2048`; the Series B runs are an EP-on experimental cross-check, not a
+production-path measurement, and are **not** merged into the production conclusion. Also during
+this session the benchmark runner's API readiness wait was made configurable via
+`API_READY_TIMEOUT` (default 600) — bt=8192 startup took ~610s and exceeded the former
+hard-coded 600s limit. bt=512, bt=1024, bt=4096, bt=16384, bt=32768 remain unmeasured in both series.
 
 ---
 
@@ -122,15 +133,51 @@ so absence of the flag in the entrypoint command is the primary evidence source.
 | 256 | on | Not yet measured | — | — | — | — | For EP-on baseline comparison |
 | 512 | on | Not yet measured | — | — | — | — | |
 | 1024 | on | Not yet measured | — | — | — | — | |
-| 2048 | on | Not yet measured | — | — | — | — | Expected single-chunk boundary for pp=2048 (not yet measured on v023) |
+| 2048 | on | **1051.40 ± 51.29** | 12.47 | 1064.39 | 1044.51 | 1028.13 | Measured 2026-06-20; run_id=bt2048-20260620-083037; EP confirmed on (`--enable-expert-parallel` in entrypoint). pp +1.6% vs Series A EP-off bt=2048. Correctness: no garble; short tests pass, longer reasoning tests output-budget inconclusive (finish_reason=length). |
 | 4096 | on | Not yet measured | — | — | — | — | |
-| 8192 | on | Not yet measured | — | — | — | — | v022 production default bt (different EP state; direct comparison requires caution) |
+| 8192 | on | 1069.84 ± 54.44 | 10.01 | 1145.10 | 1116.09 | 1088.93 | Measured 2026-06-20; run_id=bt8192-20260620-090850; EP confirmed on. Prefill +1.8% vs EP-on bt=2048 at d0, +5.9% at d16384; pp2048-context decode −19.7% vs EP-on bt=2048 (12.47→10.01). Startup ~610s exceeded the former 600s readiness limit — retried with API_READY_TIMEOUT=1200. Correctness: no garble; same output-budget-inconclusive pattern. v022 default bt comparison still requires caution (different vLLM/image/EP state). |
 | 16384 | on | Not yet measured | — | — | — | — | |
 | 32768 | on | Not yet measured | — | — | — | — | Matches MAX_MODEL_LEN |
 
 > Cross-series comparison (Series A bt=256 vs Series B) is **not** a pure bt variable
 > test. To isolate bt as the single variable across all values, run all entries with the
 > same EP setting.
+
+### Series B (EP-on) results — provenance and reading (2026-06-20)
+
+Provenance (identical for both EP-on runs unless noted):
+
+| Field | Value |
+|-------|-------|
+| Image | `vllm-spark:v023-step3p7-fixed-kv-profile-skip-candidate` |
+| Git commit | `d6c9ec3` |
+| Template | `.local/env/step37/bt-matrix-base.env` (Series B) |
+| Model | `stepfun-ai/Step-3.7-Flash-NVFP4` |
+| TP / EP | 2 / **2 (on)** — `expert_parallel_observed=enabled`, `--enable-expert-parallel` present in entrypoint |
+| Distributed backend | mp |
+| MoE / attention | MARLIN / TRITON_ATTN (both confirmed from startup log) |
+| CUDA graph | disabled (mode=0, cudagraph_mode=NONE) |
+| MTP | disabled |
+| max_model_len / max_num_seqs | 32768 / 1 |
+| gpu_util / KV | 0.79 / fixed 2 GiB |
+| Benchmark | llama-benchy 0.3.7, latency mode, concurrency=1, runs=3 |
+
+Clean single-variable comparisons (EP held constant within each series):
+
+- **EP-on, bt=2048 → bt=8192**: pp2048 1051.40 → 1069.84 (+1.8%); pp@d16384 1028.13 → 1088.93
+  (+5.9%); pp2048-context decode 12.47 → 10.01 (−19.7%).
+- **EP-off, bt=2048 → bt=8192**: pp2048 1034.86 → 1027.97 (−0.7%, within noise); pp@d16384
+  1050.69 → 1084.02 (+3.2%); pp2048-context decode 10.06 → 11.24 (+11.7%).
+
+> **Decode-vs-bt is not consistent across series**: bt=8192 lowered pp2048-context decode in
+> the EP-on series but raised it in the EP-off series. The decode effect of bt is therefore
+> not established as a clean function of bt; it is confounded with EP state and run-to-run
+> variance (n=3, only mean ± sd persisted by llama-benchy). The deep-context prefill edge of
+> bt=8192 (small, positive in both series) is the more robust signal.
+
+llama-benchy persists only mean ± sd per case (3 internal runs); individual run values,
+median, min, and max are not recoverable from the saved artifacts. Coefficient of variation
+(sd/mean) for pp2048 is ≈4.9% (EP-on bt=2048) and ≈5.1% (EP-on bt=8192).
 
 ---
 
