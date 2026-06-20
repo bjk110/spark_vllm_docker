@@ -15,6 +15,8 @@ Network: 200 Gbps RoCE (enp1s0f0np0 / rocep1s0f0), 10.10.10.0/24
 
 ## Image
 
+### Validation image (Stages A–D)
+
 | Field | Value |
 |---|---|
 | Tag | `vllm-spark:v022-d568-step3p7-memcheck-bypass` |
@@ -24,13 +26,26 @@ Network: 200 Gbps RoCE (enp1s0f0np0 / rocep1s0f0), 10.10.10.0/24
 | vLLM | 0.22.1 |
 | CUDA toolkit | 13.2 (NGC 26.05) |
 
-### Bypass patches applied in this image
+### Operational image (adds prompt-token admission control)
 
-| Patch | Effect |
+| Field | Value |
 |---|---|
-| `patch_envs_register_skip_memcheck.py` | Registers `VLLM_SKIP_INIT_MEMORY_CHECK` env var |
-| `patch_skip_init_memory_check.py` | Bypasses pre-init `request_memory()` assertion when var=1 |
-| `patch_relax_profile_assertion.py` | Relaxes post-profile free-memory assertion |
+| Tag | `vllm-spark:v022-d568-step3p7-memcheck-bypass-prompt-cap` |
+| Base | `vllm-spark:v022-d568-step3p7-memcheck-bypass` |
+| Dockerfile | `dockerfiles/active/Dockerfile.step3p7-memcheck-bypass-prompt-cap` |
+| spark01 ID | `a73ea6723649` |
+| spark02 ID | `12040e465cdb` |
+| Built | 2026-06-20 |
+
+### Patches applied
+
+| # | Patch | Effect |
+|---|---|---|
+| 1 | `patch_envs_register_skip_memcheck.py` | Registers `VLLM_SKIP_INIT_MEMORY_CHECK` env var |
+| 2 | `patch_skip_init_memory_check.py` | Bypasses pre-init `request_memory()` assertion when var=1 |
+| 3 | `patch_relax_profile_assertion.py` | Relaxes post-profile free-memory assertion |
+| 4 | `patch_envs_register_prompt_cap.py` | Registers `VLLM_SPARK_MAX_PROMPT_TOKENS` env var |
+| 5 | `patch_prompt_token_admission.py` | Adds per-request prompt-token admission control (HTTP 400 if exceeded) |
 
 **Safety caveat**: The bypass does not recover memory. It only skips the guard
 check. If `MemAvailable` is below 110 GiB before starting, profiling will still
@@ -585,3 +600,62 @@ Use only when:
 
 **For validated production serving**: `presets/step37-flash-nvfp4-v023-tp2-latency.env`
 (vLLM 0.23.0, MARLIN MoE, TRITON_ATTN — see `vllm023_step37_garble_fix.md`).
+
+## Prompt-Token Admission Control
+
+### Motivation
+
+Stage D established a validated context ceiling of 245,009 prompt tokens and a
+reproducible infrastructure hang at 257,891 tokens. The engine limit
+(`MAX_MODEL_LEN=262,144`) is higher than either value and does not prevent requests
+that fall between them. Without an additional gate, a request between 245,009 and
+257,891 tokens could reach the engine unpredictably.
+
+### Implementation
+
+`VLLM_SPARK_MAX_PROMPT_TOKENS` is a server-side admission control env var added to
+the vLLM 0.22 serving layer by `patch_prompt_token_admission.py`. It:
+
+- Is read once at server startup and stored as an instance attribute on `OpenAIServing`
+- Applies after chat-template rendering and tokenization, before engine enqueue
+- Covers both `/v1/chat/completions` and `/v1/completions`
+- Returns HTTP 400 with the actual token count and configured limit if exceeded
+- Logs `[spark-prompt-cap] rejected request <id>: prompt_tokens=<N> limit=<L>` at WARNING
+
+**Default: 0 (disabled).** Enabling requires the `prompt-cap` image layer.
+
+### Image
+
+`vllm-spark:v022-d568-step3p7-memcheck-bypass-prompt-cap` adds patches 4 and 5 on
+top of `v022-d568-step3p7-memcheck-bypass`. See the [Image section](#image) above.
+
+### Preset configuration
+
+`presets/step37-flash-nvfp4-tp2.env` sets:
+
+```
+VLLM_SPARK_MAX_PROMPT_TOKENS=245009
+```
+
+This rejects any request whose tokenized prompt exceeds 245,009 tokens (the Stage D
+validated ceiling) with HTTP 400, before the request reaches prefill. The engine limit
+(`MAX_MODEL_LEN=262,144`) remains the hard ceiling; the prompt cap is an operational
+policy layer above it.
+
+### Validation (2026-06-20)
+
+Unit tests: `tests/test_patch_prompt_token_admission.py` — 22 tests, all pass (homeserver, inside image).
+
+Runtime integration test (cap=32,000, dual-Spark GB10, `v022-d568-step3p7-memcheck-bypass-prompt-cap`):
+
+| Test | Prompt tokens (server-reported) | Expected | Result |
+|---|---|---|---|
+| Accepted (`/v1/chat/completions`, short) | ~10 | HTTP 200 | ✅ |
+| Rejected (`/v1/chat/completions`, 33k words) | 33,013 | HTTP 400 | ✅ |
+| Rejected (`/v1/completions`, 33k words) | 33,002 | HTTP 400 | ✅ |
+
+- Startup log (7× APIServer workers): `[spark-prompt-cap] admission control active: max_prompt_tokens=32000` ✅
+- Rejection log: `[spark-prompt-cap] rejected request chatcmpl-bd501b077cf51b4f: prompt_tokens=33013 limit=32000` ✅
+- Rejection response body: `"Prompt token count 33013 exceeds the configured VLLM_SPARK_MAX_PROMPT_TOKENS limit of 32000. Reduce your prompt to at most 32000 tokens."` ✅
+- No request above 64k was sent during the integration test
+- Post-stop UMA: spark01 19.2 GiB, spark02 19.4 GiB (expected GB10 retention)
