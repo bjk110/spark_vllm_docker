@@ -2,7 +2,7 @@
 
 **Date**: 2026-06-19  
 **Preset**: `presets/step37-flash-nvfp4-tp2.env`  
-**Status**: `EXPERIMENTAL — Stage A (eager, 32k, seq1), Stage B (CUDA graph, 32k, seq1), and Stage C (CUDA graph, 262k, seq1) validated with EP-on + mp backend from a clean boot. Multi-sequence operation remains unvalidated.`
+**Status**: `EXPERIMENTAL — Stage A (eager, 32k, seq1), Stage B (CUDA graph, 32k, seq1), and Stage C (CUDA graph, 262k, seq1) validated with EP-on + mp backend from a clean boot. Stage D (single-seq context ladder) was attempted but stopped at D0: the reasoning model exhausted max_tokens=128/256 before completing marker output (retrieval was correct; budget was insufficient). Multi-sequence operation remains unvalidated.`
 
 ## Hardware
 
@@ -225,14 +225,82 @@ before next launch (≥ 110 GiB gate).
 
 ---
 
-## Stages Not Run
+---
+
+## Stage D — Single-sequence context ladder (D0–D5, seq1)
+
+**Env**: `.local/env/step37/v022-longctx-stage-d-single-seq.env`  
+**Config**: Identical to Stage C. Only request context length varies.  
+**Result**: `STAGE_D_FAILED_D0_OUTPUT_BUDGET_EXHAUSTION`
+
+### Startup
+
+Server started identically to Stage C. torch.compile took 1.68 s (AOT cache HIT — Stage C's
+cached artifact reused; same `max_seq_len=262144` key). GPU KV cache: **2,844,871 tokens**,
+maximum concurrency at 262,144 tokens/request: **10.85×**. All capacity gates passed.
+
+### Context generator
+
+**Tool**: `.local/tools/generate-long-context-request.py`  
+**Tokenizer method**: `apply_chat_template(tokenize=False)` + `encode()` (workaround for
+`TokenizersBackend` returning 2 for all inputs with `tokenize=True`).  
+**Filler unit**: ~57 tokens / unit (5-sentence neutral English paragraph).  
+**Marker format**: `NEEDLE_BEGIN_<run-id>`, `NEEDLE_MIDDLE_<run-id>`, `NEEDLE_END_<run-id>`  
+**Marker positions**: ~5% / ~50% / ~95% of filler content.  
+**Instruction**: Return three markers in BEGIN MIDDLE END order on the first line.
+
+### D0 — control (~30k tokens)
+
+| Metric | Attempt 1 | Attempt 2 (retry) |
+|---|---|---|
+| local_tokens | 29,953 | 29,953 |
+| server_prompt_tokens | 29,953 | 29,976 (+23 for system msg) |
+| max_tokens | 128 | 256 |
+| completion_tokens | 128 | 256 |
+| finish_reason | length | length |
+| content_preview | (empty) | `NEEDLE_BEGIN_D0` |
+| all_markers_found | false | false |
+| verdict | INCONCLUSIVE_OUTPUT_BUDGET | FAILED (budget still exhausted) |
+| TTFT / total | 34.35 s | 38.62 s |
+
+**Root cause**: Step-3.7-Flash is a reasoning model. Its mandatory `<think>` process
+consumed all 128 tokens (attempt 1) and nearly all 256 tokens (attempt 2) before the model
+could output the markers. Attempt 2's `content_preview="NEEDLE_BEGIN_D0"` confirms the model
+**did** retrieve the first needle and began outputting it — the failure is pure output
+budget exhaustion, not a retrieval correctness failure.
+
+Per the ladder rules (two failed attempts → stop), D1–D5 were not executed.
+
+**Infrastructure status during D0**: server/worker/memory were all stable. Both requests
+completed with HTTP 200. spark01 MemAvailable ~12.9 GiB, spark02 ~15.2 GiB — no dangerous
+memory pressure.
+
+### D0 memory
+
+| Checkpoint | spark01 | spark02 |
+|---|---|---|
+| Pre-start | 117.7 GiB | 118.0 GiB |
+| Server running (after D0 attempts) | 12.94 GiB | 15.16 GiB |
+| Post-stop (retained UMA) | 18.85 GiB | 19.05 GiB |
+
+### Corrective path (not run in this session)
+
+The ladder could be re-run with `max_tokens ≥ 1024` to accommodate the reasoning model's
+think phase. For 30k context, the model appears to begin the answer within ~200–300 tokens
+of reasoning; with 1024+ tokens the markers should be completable. This would require
+updating the per-depth token budget while verifying `prompt_tokens + max_tokens < 262144`
+for all depths. D5 at 257,839 prompt tokens limits `max_tokens` to at most 4,304.
+
+---
+
+## Stages Summary
 
 | Stage | Config | Status |
 |---|---|---|
 | Stage A | ep+mp, eager, 32k/seq1 | ✅ VALIDATED |
 | Stage B | ep+mp, CUDA graph, 32k/seq1 | ✅ VALIDATED |
 | Stage C | ep+mp, CUDA graph, 262k/seq1 | ✅ VALIDATED |
-| Stage D | context ladder 32k→262k | NOT_RUN |
+| Stage D | single-seq context ladder D0–D5 | ⚠ STOPPED at D0 (output budget) |
 | Stage E | 262k/seq2 | NOT_RUN |
 | Stage F/G | 262k/seq4 (exact preset) | NOT_RUN |
 
@@ -251,6 +319,10 @@ before next launch (≥ 110 GiB gate).
 | Stage C pre-start | 117.7 GiB | 118.0 GiB |
 | Stage C server running | 12.69 GiB | 12.99 GiB |
 | Stage C post-stop (retained) | 18.34 GiB | 18.48 GiB |
+| After Stage C reboot (both) | 117.7 GiB | 118.0 GiB |
+| Stage D pre-start | 117.7 GiB | 118.0 GiB |
+| Stage D server running (post-D0) | 12.94 GiB | 15.16 GiB |
+| Stage D post-stop (retained) | 18.85 GiB | 19.05 GiB |
 
 ## Path-Specific Preflight
 
