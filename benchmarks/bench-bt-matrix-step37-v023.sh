@@ -297,7 +297,7 @@ container_running() {
 
 # Wait for API readiness (polls /health on spark01)
 wait_for_api() {
-    local timeout_s=600
+    local timeout_s=${API_READY_TIMEOUT:-600}
     local elapsed=0
     local interval=10
     log "Waiting for API readiness (timeout=${timeout_s}s)..."
@@ -1567,6 +1567,7 @@ run_bt() {
         echo "bench_tg=${BENCH_TG}"
         echo "bench_depths=${BENCH_DEPTHS}"
         echo "bench_runs=${BENCH_RUNS}"
+        echo "api_ready_timeout=${API_READY_TIMEOUT:-600}"
         echo "decode_context_mode=pp${BENCH_PP}"
         # Boot ID and uptime — use to verify both nodes were rebooted since prior run.
         # Compare head_boot_id / worker_boot_id against prior run's metadata to confirm
@@ -1879,6 +1880,18 @@ main() {
     ${SERVER_ONLY_MODE} && log "SERVER-ONLY MODE: start bt=${BT_VALUES[0]:-?} server, validate, keep running."
     ${SUPPLEMENT_MODE}  && log "SUPPLEMENT MODE: bt=${BT_VALUES[0]:-?}, extended correctness + decode-only bench."
     echo ""
+
+    # --- Validate API_READY_TIMEOUT early (before any container/SSH work) ---
+    # Default 600s preserves prior behavior when unset. bt=8192 startup measured
+    # ~610s on dual GB10, exceeding the former hard-coded 600s readiness limit, so
+    # API_READY_TIMEOUT makes only the readiness wait configurable (it does not
+    # affect benchmark request timeouts). Reject non-positive / non-integer values
+    # here so a bad value fails fast instead of after starting containers.
+    local _api_timeout="${API_READY_TIMEOUT:-600}"
+    if ! [[ "${_api_timeout}" =~ ^[1-9][0-9]*$ ]]; then
+        die "Invalid API_READY_TIMEOUT='${_api_timeout}': must be a positive integer (seconds)."
+    fi
+    log "API readiness timeout: ${_api_timeout}s (default 600; override via API_READY_TIMEOUT)."
 
     mkdir -p "${RESULT_DIR}/logs"
 
