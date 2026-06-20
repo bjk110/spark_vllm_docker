@@ -579,7 +579,7 @@ Use this preset for:
 - Normal production serving
 - Validated single-user latency operation up to the approximately 29–32k prompt-token
   range validated during development
-- Lower operational risk (no memory-check bypass patches; preflight bar is lower than v0.22 — >50 GiB vs ≥110 GiB — but host UMA state may still require a reboot if memory has not recovered)
+- Lower operational risk (the v0.23 candidate image includes the init-memory-check bypass and the preset enables it, but this path does not require the v0.22-specific 110 GiB clean-memory gate; preflight bar is lower — host UMA state may still require a reboot if memory has not recovered)
 - EP-off path with MARLIN MoE and TRITON_ATTN backends (required for correctness on
   SM_121 in v0.23)
 
