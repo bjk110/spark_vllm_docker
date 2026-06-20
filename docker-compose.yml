@@ -51,6 +51,10 @@ services:
       # GB10 UMA: skip profile_run() in fixed-KV branch (patch_dgx_spark_fixed_kv_profile_skip.py).
       # 1 = skip. Requires --kv-cache-memory-bytes > 0 (fail-closed otherwise).
       - VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN=${VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN:-0}
+      # Prompt-token admission control (patch_prompt_token_admission.py).
+      # 0 = disabled (default). N = reject requests with prompt_tokens > N (HTTP 400).
+      # Applied after chat-template/tokenizer, before engine enqueue.
+      - VLLM_SPARK_MAX_PROMPT_TOKENS=${VLLM_SPARK_MAX_PROMPT_TOKENS:-0}
       # ---- Multi-node networking (200Gbps RoCE) ----
       # All RDMA vars use empty defaults so single-Spark users do not need
       # to set them. entrypoint.sh normalizes for CLUSTER_MODE=single by
@@ -233,6 +237,10 @@ services:
       # GB10 UMA: skip profile_run() in fixed-KV branch (patch_dgx_spark_fixed_kv_profile_skip.py).
       # 1 = skip. Requires --kv-cache-memory-bytes > 0 (fail-closed otherwise).
       - VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN=${VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN:-0}
+      # Prompt-token admission control (patch_prompt_token_admission.py).
+      # 0 = disabled (default). N = reject requests with prompt_tokens > N (HTTP 400).
+      # Applied after chat-template/tokenizer, before engine enqueue.
+      - VLLM_SPARK_MAX_PROMPT_TOKENS=${VLLM_SPARK_MAX_PROMPT_TOKENS:-0}
       # ---- unholy-fusion: NCCL / RoCE tuning ----
       - NCCL_NET=${NCCL_NET:-}
       - NCCL_CUMEM_ENABLE=${NCCL_CUMEM_ENABLE:-}
