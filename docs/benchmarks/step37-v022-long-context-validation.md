@@ -2,7 +2,7 @@
 
 **Date**: 2026-06-19 / 2026-06-20  
 **Preset**: `presets/step37-flash-nvfp4-tp2.env`  
-**Status**: `EXPERIMENTAL — STAGE_D_PARTIALLY_VALIDATED_TO_245009. Stages A through C and Stage D single-sequence requests through 245,009 prompt tokens are runtime-validated from a clean-memory precondition. A near-258k single request reproducibly caused an infrastructure hang under the tested EP-on/multiprocessing/CUDA-graph configuration. Retrieval correctness at that depth was not evaluated. Multi-sequence operation remains unvalidated.`
+**Status**: `EXPERIMENTAL — STAGE_D_PARTIALLY_VALIDATED_TO_245009. Stages A through C and Stage D single-sequence requests through 245,009 prompt tokens are runtime-validated from a clean-memory precondition. A 257,891-token prompt reproducibly caused an infrastructure hang under the tested EP-on/multiprocessing/CUDA-graph configuration. Retrieval correctness at that depth was not evaluated. Multi-sequence operation remains unvalidated.`
 
 ## Hardware
 
@@ -223,6 +223,13 @@ were sent during Stage C validation.
 Post-stop retention ~103 GiB per node — standard GB10 UMA behaviour. Reboot required
 before next launch (≥ 110 GiB gate).
 
+**Stage C scope note**: Stage C validated that a server configured with
+`MAX_MODEL_LEN=262,144` starts successfully, warmup completes without thrash, CUDA
+graphs are captured, the KV cache allocates correctly, and short inference requests
+succeed. Stage C did **not** send any request approaching 262,144 tokens; all needle
+tests were ≤ 29,039 tokens. The actual long-context request boundary was measured in
+Stage D.
+
 ---
 
 ---
@@ -243,12 +250,15 @@ Stage D ran in three sub-phases across 2026-06-19/20:
    exhausted at D0 before markers could be emitted. Classified
    `STAGE_D_NOT_EVALUATED_D0_OUTPUT_BUDGET_EXHAUSTED`. Not a retrieval failure.
 2. **Rerun (max_tokens=2048)** — D0–D4 all passed. D5 caused spark01 to become
-   operationally unresponsive during prefill on the first attempt (spark02 had retained
-   UMA). Classified as an unsafe-precondition attempt; excluded from the primary
-   boundary conclusion.
-3. **D5 clean-condition reproduction** — both nodes rebooted and passed the ≥110 GiB
-   preflight. D5 again caused spark01 to become operationally unresponsive. This is the
-   primary reproducibility evidence.
+   operationally unresponsive on the first attempt. That attempt occurred within a server
+   session that had started cleanly from a passed pre-start preflight; approximately
+   13 GiB available on spark02 at the time of the D5 request was the normal
+   serving-state value (the same range observed in Stages B, C, and during D0–D4 in
+   this run). This is valid D5 hang evidence.
+3. **D5 independent reproduction** — both nodes were rebooted and passed the ≥110 GiB
+   pre-start gate again. A fresh server session was started. D5 again caused spark01 to
+   become operationally unresponsive. Together, the two D5 attempts establish that the
+   hang is reproducible and is not explained by serving-state memory alone.
 
 No third D5 attempt was performed. Stage E–G were not run. Multi-sequence was not tested.
 
@@ -323,15 +333,19 @@ became unresponsive before a response was returned.
 
 #### D5 attempt 1 (first occurrence)
 
-- Precondition: server was running after the clean D4 validation (spark02 retained UMA
-  from active worker container: ~13 GiB MemAvailable)
+This attempt occurred within the same server session that successfully completed D0–D4.
+That session had started from a clean pre-start condition (both nodes passed the ≥110 GiB
+pre-start gate before startup; see D0–D4 startup entry in the timeline). Approximately
+13 GiB MemAvailable on spark02 at the time of the D5 request is the normal serving-state
+floor — the same range observed at the end of Stages B and C and throughout the D0–D4
+sequence in this run. It does not indicate a failed or unsafe startup precondition.
+
+- Server state: loaded and serving (clean-start session, post-D0–D4 sequence)
+- spark02 serving-state memory: ~13 GiB MemAvailable (normal for a loaded server)
 - D5 request initiated
 - spark01 became operationally unresponsive (ping: unreachable, SSH: no route to host)
 - spark02 worker container remained running
 - Recovery: power-cycle of spark01; spark02 rebooted thereafter
-
-This attempt had a non-clean precondition on spark02 and cannot alone establish whether
-the failure was caused by stale worker UMA or by the request itself.
 
 #### D5 attempt 2 — clean-condition reproduction (primary evidence)
 
@@ -403,12 +417,13 @@ infrastructure hang of unknown precise cause.
 
 **Correct interpretation**:
 
-> Approximately 245k prompt tokens are runtime-validated for this exact dual-DGX-Spark
-> configuration. A near-258k prompt reproducibly caused an infrastructure hang under
-> clean-start conditions, establishing an observed operational stability boundary between
-> the validated D4 depth and the failing D5 depth. The failure mechanism is consistent
-> with transient UMA pressure during very large prefill but was not confirmed by direct
-> log evidence.
+> A 245,009-token prompt is runtime-validated for this exact dual-DGX-Spark
+> configuration. A 257,891-token prompt reproducibly caused an infrastructure hang. This
+> establishes an observed operational stability boundary between the validated D4 depth
+> and the failing D5 depth for the tested configuration. The failure mechanism is
+> consistent with transient UMA pressure during very large prefill but was not confirmed
+> by direct log evidence. Reboot or power-cycle erased the kernel ring buffer, so no
+> kernel OOM, UVM fault, Xid, or hung-task cause was conclusively captured.
 
 ---
 
@@ -472,20 +487,62 @@ All times are UTC 2026-06-19/20.
 | Stage D server running (post-D0) | ~12 GiB | ~13 GiB |
 | D4 first attempt — spark02 dirty precondition | 117 GiB (clean) | ~13–18 GiB (retained UMA) |
 | D4 second attempt (clean) — both nodes pre-start | 117.7 GiB | 118.0 GiB |
-| D5 first attempt — spark02 dirty precondition | ~117 GiB (clean) | ~13 GiB (worker running) |
+| D5 first attempt — loaded serving state (normal) | ~117 GiB | ~13 GiB (serving-state floor, not a startup failure) |
 | D5 second attempt — both nodes pre-start (clean) | 117.7 GiB | 118.0 GiB |
 | Post Stage D recovery (both rebooted) | 117 GiB | 117 GiB |
+
+## Memory Thresholds
+
+This path uses two separate memory thresholds that serve different purposes:
+
+| Threshold | Value | Purpose | When it applies |
+|---|---|---|---|
+| Pre-start gate | **110 GiB** MemAvailable | Required headroom before startup to safely survive weight load + profiling peak (~107 GiB) | Before `docker compose up` — must pass `preflight-110gib-check.sh` |
+| Live-serving floor | **2 GiB** MemAvailable | Emergency watchdog lower bound during inference | After startup, while serving requests |
+
+The 110 GiB requirement does **not** apply after the server has started. Once the model
+is loaded, approximately 12–15 GiB remaining was the observed normal serving-state floor
+across Stages B, C, and D. A serving-state value below 110 GiB is expected and does not
+indicate a precondition failure.
+
+`VLLM_SKIP_INIT_MEMORY_CHECK=1` bypasses a startup guard check. It does **not** reclaim
+or create memory. If the node does not have ≥110 GiB free before startup, enabling the
+bypass will allow the server to start but the subsequent profiling spike will exhaust UMA
+and may cause the node to become unresponsive. A reboot is the only confirmed recovery
+after a GB10 UMA thrash event — model shutdown alone does not return all retained UMA.
 
 ## Path-Specific Preflight
 
 Before starting any container on this path:
 
 ```bash
-scripts/diag/preflight-110gib-check.sh   # must exit 0
+scripts/diag/preflight-110gib-check.sh   # must exit 0 before docker compose up
 ```
 
 Threshold: 110 GiB per node (derived: 0.88 × 121.63 GiB = 107 GiB peak + 3 GiB margin).
-If either node fails, reboot it — this is the only confirmed recovery for GB10 UMA retention.
+If either node fails, reboot it — this is the only confirmed recovery for GB10 UMA
+retention. Do not run this check while the model server is loaded; the loaded serving
+state will show ~12–15 GiB and will fail the pre-start gate even though the server is
+healthy.
+
+## Validated Context Ceiling
+
+| Parameter | Value |
+|---|---|
+| Configured model maximum (`MAX_MODEL_LEN`) | 262,144 tokens |
+| Maximum runtime-validated request depth (D4r) | **245,009 prompt tokens** |
+| Reproducible failing request depth (D5) | 257,891 locally calculated prompt tokens |
+| Exact stable boundary between D4 and D5 | not measured |
+| Server-reported D5 token count | not available (no response returned) |
+
+The 262,144 `MAX_MODEL_LEN` configures the engine's KV cache and attention window.
+Stage C validated that a server with `MAX_MODEL_LEN=262,144` can start and serve short
+requests correctly. Stage D validated actual long-context requests up to 245,009 tokens.
+No request approaching 262,144 tokens was successfully completed.
+
+Requests at or below 245,009 tokens are validated under the exact Stage D workload
+configuration. This does not guarantee that every possible prompt up to that length is
+universally safe — it establishes the maximum tested successful depth.
 
 ## Preset Status
 
@@ -493,10 +550,38 @@ If either node fails, reboot it — this is the only confirmed recovery for GB10
 
 `STAGE_D_PARTIALLY_VALIDATED_TO_245009`: Stages A through C and Stage D
 single-sequence requests through 245,009 prompt tokens are runtime-validated from a
-clean-memory precondition. A near-258k single request
+clean-memory precondition. A 257,891-token prompt
 (`D5_INFRASTRUCTURE_HANG_AT_257891`) reproducibly caused an infrastructure hang under
-the tested EP-on/multiprocessing/CUDA-graph configuration. Retrieval correctness at that
+the tested EP-on/multiprocessing/CUDA-graph configuration; retrieval correctness at that
 depth was not evaluated. Multi-sequence operation remains unvalidated. Stage E–G not run.
+
+## Operator Preset Selection
+
+### Recommended production path
+
+**`presets/step37-flash-nvfp4-v023-tp2-latency.env`** (vLLM 0.23.0)
+
+Use this preset for:
+- Normal production serving
+- Validated single-user latency operation up to the approximately 29–32k prompt-token
+  range validated during development
+- Lower operational risk (no bypass patches, no UMA preflight dependency)
+- EP-off path with MARLIN MoE and TRITON_ATTN backends (required for correctness on
+  SM_121 in v0.23)
+
+### Experimental long-context path
+
+**`presets/step37-flash-nvfp4-tp2.env`** (this preset, vLLM 0.22.1)
+
+Use only when:
+- Context above the v0.23 latency preset's validated range is required
+- The operator accepts experimental status and the manual reboot/preflight requirement
+- Both nodes pass `scripts/diag/preflight-110gib-check.sh` (≥110 GiB) before each startup
+- `MAX_NUM_SEQS=1` is maintained (the only validated concurrency level)
+- Requests remain at or below the validated 245,009-token depth
+- The operator understands that a 257,891-token prompt caused a reproducible
+  infrastructure hang and that the exact safe boundary above 245,009 tokens has not been
+  measured
 
 **For validated production serving**: `presets/step37-flash-nvfp4-v023-tp2-latency.env`
 (vLLM 0.23.0, MARLIN MoE, TRITON_ATTN — see `vllm023_step37_garble_fix.md`).

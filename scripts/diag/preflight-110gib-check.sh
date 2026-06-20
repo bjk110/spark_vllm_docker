@@ -9,7 +9,9 @@
 #   when UMA is < 110 GiB free causes the profiling spike (~107 GiB peak) to
 #   exhaust the pool, triggering kernel page-thrash and an unresponsive node.
 #   Reboot is the only recovery.  This check must PASS before starting the
-#   server with the memcheck-bypass image on this path.
+#   server with the memcheck-bypass image on this path.  It is a pre-start
+#   gate only: do NOT run it while the server is loaded — serving-state
+#   MemAvailable of ~12–15 GiB is normal and expected after model load.
 #
 #   Threshold derivation:
 #     GPU_MEMORY_UTILIZATION=0.88 × 121.63 GiB = 107.03 GiB desired
