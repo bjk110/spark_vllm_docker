@@ -1,0 +1,54 @@
+# =============================================================================
+# Prompt-token admission control layer on top of step3p7-memcheck-bypass
+#
+# Adds two patches that implement VLLM_SPARK_MAX_PROMPT_TOKENS: a server-side
+# per-request gate that rejects prompts exceeding the configured limit with
+# HTTP 400 before they reach the engine. Covers both /v1/chat/completions and
+# /v1/completions.
+#
+# Why this exists
+# ---------------
+# The Step-3.7-Flash-NVFP4 v0.22 EP-on/mp/CUDA-graph path on dual GB10 Spark
+# has a validated ceiling of 245,009 prompt tokens (Stage D, 2026-06-20). A
+# 257,891-token prompt reproducibly caused an infrastructure hang (reboot
+# required). MAX_MODEL_LEN=262,144 is the engine limit, not the operational
+# ceiling. This patch adds a policy layer above the engine limit.
+#
+# Patches applied (in addition to the three from memcheck-bypass):
+#   4. patch_envs_register_prompt_cap.py     — register VLLM_SPARK_MAX_PROMPT_TOKENS
+#      in vllm/envs.py (suppress Unknown-var warning)
+#   5. patch_prompt_token_admission.py       — read env at startup, validate,
+#      add _check_spark_prompt_cap() helper, call it in both serving paths
+#
+# Environment
+#   VLLM_SPARK_MAX_PROMPT_TOKENS=0     (default: disabled)
+#   VLLM_SPARK_MAX_PROMPT_TOKENS=N     reject prompts with token_count > N
+#
+# The cap is applied after chat-template application and tokenization, so N
+# counts actual prompt tokens seen by the engine, not user-supplied text length.
+#
+# Build tag : vllm-spark:v022-d568-step3p7-memcheck-bypass-prompt-cap
+# Base image: vllm-spark:v022-d568-step3p7-memcheck-bypass
+# Build host: spark01 or spark02 (aarch64 GB10/SM121)
+#
+# Usage:
+#   docker build \
+#     -f dockerfiles/active/Dockerfile.step3p7-memcheck-bypass-prompt-cap \
+#     -t vllm-spark:v022-d568-step3p7-memcheck-bypass-prompt-cap \
+#     .
+# =============================================================================
+
+FROM vllm-spark:v022-d568-step3p7-memcheck-bypass
+
+COPY patches/common/patch_envs_register_prompt_cap.py /tmp/patch_envs_register_prompt_cap.py
+COPY patches/common/patch_prompt_token_admission.py /tmp/patch_prompt_token_admission.py
+
+RUN python3 /tmp/patch_envs_register_prompt_cap.py && \
+    python3 /tmp/patch_prompt_token_admission.py && \
+    python3 -m py_compile \
+        /usr/local/lib/python3.12/dist-packages/vllm/envs.py \
+        /usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/engine/serving.py \
+        /usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/chat_completion/serving.py \
+        /usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/completion/serving.py && \
+    rm /tmp/patch_envs_register_prompt_cap.py \
+       /tmp/patch_prompt_token_admission.py
