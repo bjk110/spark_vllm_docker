@@ -645,16 +645,18 @@ policy layer above it.
 
 Unit tests: `tests/test_patch_prompt_token_admission.py` — 22 tests, all pass (homeserver, inside image).
 
-Runtime integration test (cap=32,000, dual-Spark GB10, `v022-d568-step3p7-memcheck-bypass-prompt-cap`):
+Runtime integration test (cap=32,000, dual-Spark GB10, canonical image `a73ea6723649` on both nodes):
 
 | Test | Prompt tokens (server-reported) | Expected | Result |
 |---|---|---|---|
-| Accepted (`/v1/chat/completions`, short) | ~10 | HTTP 200 | ✅ |
+| Accepted (`/v1/chat/completions`, short) | 19 | HTTP 200 | ✅ |
 | Rejected (`/v1/chat/completions`, 33k words) | 33,013 | HTTP 400 | ✅ |
 | Rejected (`/v1/completions`, 33k words) | 33,002 | HTTP 400 | ✅ |
 
-- Startup log (7× APIServer workers): `[spark-prompt-cap] admission control active: max_prompt_tokens=32000` ✅
-- Rejection log: `[spark-prompt-cap] rejected request chatcmpl-bd501b077cf51b4f: prompt_tokens=33013 limit=32000` ✅
+- Startup log (8× APIServer serving objects): `[spark-prompt-cap] admission control active: max_prompt_tokens=32000` ✅
+- Rejection log: `[spark-prompt-cap] rejected request chatcmpl-96beb8fae54173d1: prompt_tokens=33013 limit=32000` ✅
+- Rejection log: `[spark-prompt-cap] rejected request cmpl-838f39949b7443c1-0: prompt_tokens=33002 limit=32000` ✅
 - Rejection response body: `"Prompt token count 33013 exceeds the configured VLLM_SPARK_MAX_PROMPT_TOKENS limit of 32000. Reduce your prompt to at most 32000 tokens."` ✅
 - No request above 64k was sent during the integration test
-- Post-stop UMA: spark01 19.2 GiB, spark02 19.4 GiB (expected GB10 retention)
+- Post-stop UMA: spark01 19 GiB, spark02 20 GiB (expected GB10 retention)
+- Image provenance: both nodes confirmed identical (ID `a73ea6723649`) before this test run
