@@ -143,7 +143,15 @@ This image is additive and isolated:
 
 ## Provenance (immutable publication)
 
-- Git commit: _to be recorded after commit (see follow-up provenance commit)_
-- GHCR immutable tag: _to be recorded after push_
-- GHCR manifest digest: _to be recorded after push_
-- Local validated image ID: `sha256:6db9acfd86965f13fb8cdb407b6c8264bc58a9c933ffe1a981c161af9eb84430`
+- Implementation commit: `a5eb527c3312680dc3cc0a6748c607249119b7f7`
+  (`fix: make Prometheus route handling reproducible`)
+- GHCR immutable tag:
+  `ghcr.io/bjk110/vllm-spark:v023-step37-promfix-exp-a5eb527`
+- GHCR manifest digest:
+  `sha256:81653ff7e16ca29afc9c6fa057c5216b8c9e14fa9a09430d6ed58b88d9115b0a`
+- Image config digest / local image ID (manifest `config.digest`):
+  `sha256:6db9acfd86965f13fb8cdb407b6c8264bc58a9c933ffe1a981c161af9eb84430`
+- Platform: `arm64/linux`; 109 layers; in-image `routing.py` SHA256 `a3addfd9…`.
+- Verified 2026-06-20: pulling the digest reference resolves to the exact
+  validated image ID on both Spark nodes; remote labels and patched source hash
+  match; `validate_prometheus_routing_path.py` passes from the remote reference.
