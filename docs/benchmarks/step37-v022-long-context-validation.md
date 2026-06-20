@@ -33,8 +33,7 @@ Network: 200 Gbps RoCE (enp1s0f0np0 / rocep1s0f0), 10.10.10.0/24
 | Tag | `vllm-spark:v022-d568-step3p7-memcheck-bypass-prompt-cap` |
 | Base | `vllm-spark:v022-d568-step3p7-memcheck-bypass` |
 | Dockerfile | `dockerfiles/active/Dockerfile.step3p7-memcheck-bypass-prompt-cap` |
-| spark01 ID | `a73ea6723649` |
-| spark02 ID | `12040e465cdb` |
+| Both nodes | identical (ID `a73ea6723649`) — spark01 built; spark02 synchronized via `docker save` transfer 2026-06-20 |
 | Built | 2026-06-20 |
 
 ### Patches applied
