@@ -1,0 +1,45 @@
+# =============================================================================
+# EXPERIMENTAL image — prometheus routing.py `.path` guard baked in.
+#
+# Purpose: replace the ephemeral runtime sed of prometheus-fastapi-instrumentator
+# 8.0.0 routing.py (previously applied to the running head container by
+# benchmarks/bench-bt-matrix-step37-v023.sh::apply_prometheus_patch) with a
+# deterministic, guarded, build-time patch so the fix survives container
+# recreation.
+#
+# Base: the VALIDATED FP8/NVFP4 runtime image (NOT modified, NOT retagged):
+#   vllm-spark:v023-d568-ngc2605-tx5102-vllm023-step3p7-relax  (sha256:c272907c3761…)
+# This image changes EXACTLY ONE file relative to the base:
+#   /usr/local/lib/python3.12/dist-packages/prometheus_fastapi_instrumentator/routing.py
+#   b90d08f6…b7  ->  a3addfd9…8c   (two `route_name = route.path` -> getattr guard)
+# Everything else (vLLM 0.23.0, torch, FlashInfer, model loading, step3p7
+# support, GB10 UMA patches) is inherited byte-for-byte.
+#
+# Status: EXPERIMENTAL. Not production, not promoted.
+# Build tag: vllm-spark:v023-d568-ngc2605-tx5102-vllm023-step3p7-relax-promfix-exp
+# Build host: spark01 or spark02 (aarch64 GB10/SM121).
+# Root cause / provenance: docs/prometheus-routing-path-fix.md
+# =============================================================================
+
+FROM vllm-spark:v023-d568-ngc2605-tx5102-vllm023-step3p7-relax
+
+COPY patches/common/patch_prometheus_routing_path.py /tmp/patch_prometheus_routing_path.py
+COPY patches/common/validate_prometheus_routing_path.py /usr/local/bin/validate_prometheus_routing_path.py
+
+# Apply the guarded patch (all preconditions + post-image SHA256 verified inside
+# the script; the build fails non-zero on any mismatch), then run the offline
+# regression validation. Keep the validation script in the image so it can be
+# re-run as an inspection command later.
+RUN python3 /tmp/patch_prometheus_routing_path.py \
+ && python3 /usr/local/bin/validate_prometheus_routing_path.py \
+ && rm /tmp/patch_prometheus_routing_path.py
+
+LABEL org.vllm-spark.experimental="true" \
+      org.vllm-spark.base-image="vllm-spark:v023-d568-ngc2605-tx5102-vllm023-step3p7-relax" \
+      org.vllm-spark.base-image-id="sha256:c272907c3761af8d37da4dfeabfde6993d2665da57690e7a5e4bf9727f1d37b7" \
+      org.vllm-spark.patch="prometheus-fastapi-instrumentator-8.0.0-routing-path-guard" \
+      org.vllm-spark.patch-file="prometheus_fastapi_instrumentator/routing.py" \
+      org.vllm-spark.patch-sha256-original="b90d08f601c5ec82245630667c0cbc031f00df038284b4e61f46945d182c85fb" \
+      org.vllm-spark.patch-sha256-patched="a3addfd90d1132a5ab5dca54c788f4743fe180b9607a662bf34ef0453750848c" \
+      org.vllm-spark.fp8-model="stepfun-ai/Step-3.7-Flash-FP8" \
+      org.vllm-spark.fp8-model-revision="b3d7916fccac844cca050d7520f2aaa513f9a84f"
