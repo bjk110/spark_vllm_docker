@@ -591,7 +591,7 @@ Use only when:
 - Context above the v0.23 latency preset's validated range is required
 - The operator accepts experimental status and the manual reboot/preflight requirement
 - Both nodes pass `scripts/diag/preflight-110gib-check.sh` (≥110 GiB) before each startup
-- `MAX_NUM_SEQS=1` is maintained (the only validated concurrency level)
+- `MAX_NUM_SEQS=1` for near-ceiling long-context requests (the only validated concurrency level); the shipped preset sets `MAX_NUM_SEQS=4` — multi-sequence long-context operation is unvalidated on this path
 - Requests remain at or below the validated 245,009-token depth
 - The operator understands that a 257,891-token prompt caused a reproducible
   infrastructure hang and that the exact safe boundary above 245,009 tokens has not been
