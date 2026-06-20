@@ -7,6 +7,11 @@ __pycache__/
 # Local maintainer notes
 .local/
 
+# Claude Code
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+
 # Benchmark run artifacts (raw outputs, per-run logs, generated CSVs)
 # Committed files under benchmarks/llama-benchy/ and benchmarks/results/*.md summaries
 # are explicitly tracked; the per-run subdirectory tree is not.
