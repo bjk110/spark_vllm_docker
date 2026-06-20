@@ -1,8 +1,8 @@
 # Step-3.7-Flash-NVFP4 v0.22 Long-Context Validation
 
-**Date**: 2026-06-19  
+**Date**: 2026-06-19 / 2026-06-20  
 **Preset**: `presets/step37-flash-nvfp4-tp2.env`  
-**Status**: `EXPERIMENTAL — Stage A (eager, 32k, seq1), Stage B (CUDA graph, 32k, seq1), and Stage C (CUDA graph, 262k, seq1) validated with EP-on + mp backend from a clean boot. Stage D (single-seq context ladder) was attempted but stopped at D0: the reasoning model exhausted max_tokens=128/256 before completing marker output (retrieval was correct; budget was insufficient). Multi-sequence operation remains unvalidated.`
+**Status**: `EXPERIMENTAL — STAGE_D_PARTIALLY_VALIDATED_TO_245009. Stages A through C and Stage D single-sequence requests through 245,009 prompt tokens are runtime-validated from a clean-memory precondition. A near-258k single request reproducibly caused an infrastructure hang under the tested EP-on/multiprocessing/CUDA-graph configuration. Retrieval correctness at that depth was not evaluated. Multi-sequence operation remains unvalidated.`
 
 ## Hardware
 
@@ -230,79 +230,227 @@ before next launch (≥ 110 GiB gate).
 ## Stage D — Single-sequence context ladder (D0–D5, seq1)
 
 **Env**: `.local/env/step37/v022-longctx-stage-d-single-seq.env`  
-**Config**: Identical to Stage C. Only request context length varies.  
-**Result**: `STAGE_D_FAILED_D0_OUTPUT_BUDGET_EXHAUSTION`
+**Config**: Identical to Stage C env (zero server-setting differences). Only request context length varies.  
+**Image**: `vllm-spark:v022-d568-step3p7-memcheck-bypass` ID `0bac1cfc9fd2` (both nodes)  
+**Final classification**: `STAGE_D_PARTIALLY_VALIDATED_TO_245009`  
+**D5 sub-classification**: `D5_INFRASTRUCTURE_HANG_AT_257891; RETRIEVAL_NOT_EVALUATED`
 
-### Startup
+### Stage D — Overview
 
-Server started identically to Stage C. torch.compile took 1.68 s (AOT cache HIT — Stage C's
-cached artifact reused; same `max_seq_len=262144` key). GPU KV cache: **2,844,871 tokens**,
-maximum concurrency at 262,144 tokens/request: **10.85×**. All capacity gates passed.
+Stage D ran in three sub-phases across 2026-06-19/20:
 
-### Context generator
+1. **Preliminary attempt** (max_tokens=128/256) — infrastructure healthy, output budget
+   exhausted at D0 before markers could be emitted. Classified
+   `STAGE_D_NOT_EVALUATED_D0_OUTPUT_BUDGET_EXHAUSTED`. Not a retrieval failure.
+2. **Rerun (max_tokens=2048)** — D0–D4 all passed. D5 caused spark01 to become
+   operationally unresponsive during prefill on the first attempt (spark02 had retained
+   UMA). Classified as an unsafe-precondition attempt; excluded from the primary
+   boundary conclusion.
+3. **D5 clean-condition reproduction** — both nodes rebooted and passed the ≥110 GiB
+   preflight. D5 again caused spark01 to become operationally unresponsive. This is the
+   primary reproducibility evidence.
 
-**Tool**: `.local/tools/generate-long-context-request.py`  
-**Tokenizer method**: `apply_chat_template(tokenize=False)` + `encode()` (workaround for
-`TokenizersBackend` returning 2 for all inputs with `tokenize=True`).  
-**Filler unit**: ~57 tokens / unit (5-sentence neutral English paragraph).  
-**Marker format**: `NEEDLE_BEGIN_<run-id>`, `NEEDLE_MIDDLE_<run-id>`, `NEEDLE_END_<run-id>`  
-**Marker positions**: ~5% / ~50% / ~95% of filler content.  
-**Instruction**: Return three markers in BEGIN MIDDLE END order on the first line.
-
-### D0 — control (~30k tokens)
-
-| Metric | Attempt 1 | Attempt 2 (retry) |
-|---|---|---|
-| local_tokens | 29,953 | 29,953 |
-| server_prompt_tokens | 29,953 | 29,976 (+23 for system msg) |
-| max_tokens | 128 | 256 |
-| completion_tokens | 128 | 256 |
-| finish_reason | length | length |
-| content_preview | (empty) | `NEEDLE_BEGIN_D0` |
-| all_markers_found | false | false |
-| verdict | INCONCLUSIVE_OUTPUT_BUDGET | FAILED (budget still exhausted) |
-| TTFT / total | 34.35 s | 38.62 s |
-
-**Root cause**: Step-3.7-Flash is a reasoning model. Its mandatory `<think>` process
-consumed all 128 tokens (attempt 1) and nearly all 256 tokens (attempt 2) before the model
-could output the markers. Attempt 2's `content_preview="NEEDLE_BEGIN_D0"` confirms the model
-**did** retrieve the first needle and began outputting it — the failure is pure output
-budget exhaustion, not a retrieval correctness failure.
-
-Per the ladder rules (two failed attempts → stop), D1–D5 were not executed.
-
-**Infrastructure status during D0**: server/worker/memory were all stable. Both requests
-completed with HTTP 200. spark01 MemAvailable ~12.9 GiB, spark02 ~15.2 GiB — no dangerous
-memory pressure.
-
-### D0 memory
-
-| Checkpoint | spark01 | spark02 |
-|---|---|---|
-| Pre-start | 117.7 GiB | 118.0 GiB |
-| Server running (after D0 attempts) | 12.94 GiB | 15.16 GiB |
-| Post-stop (retained UMA) | 18.85 GiB | 19.05 GiB |
-
-### Corrective path (not run in this session)
-
-The ladder could be re-run with `max_tokens ≥ 1024` to accommodate the reasoning model's
-think phase. For 30k context, the model appears to begin the answer within ~200–300 tokens
-of reasoning; with 1024+ tokens the markers should be completable. This would require
-updating the per-depth token budget while verifying `prompt_tokens + max_tokens < 262144`
-for all depths. D5 at 257,839 prompt tokens limits `max_tokens` to at most 4,304.
+No third D5 attempt was performed. Stage E–G were not run. Multi-sequence was not tested.
 
 ---
 
-## Stages Summary
+### Preliminary Stage D attempt (2026-06-20, max_tokens=128/256)
 
-| Stage | Config | Status |
+**Classification**: `STAGE_D_NOT_EVALUATED_D0_OUTPUT_BUDGET_EXHAUSTED`
+
+| Metric | Attempt 1 | Attempt 2 |
 |---|---|---|
-| Stage A | ep+mp, eager, 32k/seq1 | ✅ VALIDATED |
-| Stage B | ep+mp, CUDA graph, 32k/seq1 | ✅ VALIDATED |
-| Stage C | ep+mp, CUDA graph, 262k/seq1 | ✅ VALIDATED |
-| Stage D | single-seq context ladder D0–D5 | ⚠ STOPPED at D0 (output budget) |
-| Stage E | 262k/seq2 | NOT_RUN |
-| Stage F/G | 262k/seq4 (exact preset) | NOT_RUN |
+| server_prompt_tokens | 29,953 | 29,976 |
+| max_tokens | 128 | 256 |
+| completion_tokens | 128 | 256 |
+| finish_reason | length | length |
+| content_preview | (empty) | `NEEDLE_BEGIN_D0` (partial) |
+| infrastructure | PASS | PASS |
+| retrieval verdict | NOT EVALUATED — output budget exhausted |
+
+Infrastructure was healthy in both attempts. The model's `<think>` reasoning phase
+consumed the entire output budget before markers could be emitted. This is not a
+retrieval correctness failure; the model began outputting the first marker in attempt 2.
+
+---
+
+### Stage D rerun — D0–D4 results (max_tokens=2048)
+
+**Server startup** (rerun, after clean reboot of both nodes):
+- torch.compile: 1.19 s (AOT cache HIT — same `max_seq_len=262144` key as Stage C)
+- profiling/warmup: 8.92 s (no thrash)
+- GPU KV cache: 2,863,987 tokens
+- Maximum concurrency at 262,144 tokens: 10.93×
+- CUDA graph: FULL_AND_PIECEWISE, sizes=[1,2], pool 0.15 GiB
+- API readiness: `Application startup complete`
+
+#### D0 through D4 — PASS
+
+| Depth | Target tokens | Local tokens | Server prompt tokens | Completion tokens | Finish reason | All markers | Order OK | Garble | TTFT (s) | Verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| D0r | 30,000 | 30,005 | 30,005 | 239 | stop | ✅ | ✅ | ✅ | 39.18 | **PASS** |
+| D1r | 64,000 | 63,977 | 63,977 | 351 | stop | ✅ | ✅ | ✅ | 77.19 | **PASS** |
+| D2r | 128,000 | 127,817 | 127,817 | 301 | stop | ✅ | ✅ | ✅ | 134.93 | **PASS** |
+| D3r | 192,000 | 191,999 | 191,999 | 235 | stop | ✅ | ✅ | ✅ | 217.60 | **PASS** |
+| D4r | 245,000 | 245,009 | **245,009** | 253 | stop | ✅ | ✅ | ✅ | 295.61 | **PASS** |
+
+Each depth: HTTP 200, three markers (BEGIN/MIDDLE/END) retrieved in correct order,
+`finish_reason=stop`, no garble. Server-reported prompt tokens match local tokenizer
+counts (delta = 0 for all depths).
+
+**Maximum validated prompt length: 245,009 server-reported prompt tokens (D4r)**
+
+Marker strings: `NEEDLE_BEGIN_D4r-20260620`, `NEEDLE_MIDDLE_D4r-20260620`,
+`NEEDLE_END_D4r-20260620`. Payload SHA256: `535cd9fedc72d2ad...`
+
+---
+
+### D4 first attempt — unsafe precondition (excluded from boundary conclusion)
+
+Before the clean D4 pass above, an earlier D4 request was sent while spark02 had
+retained UMA from a previous session (~13–18 GiB MemAvailable vs. the required ≥110 GiB
+threshold). spark01 became operationally unresponsive during that attempt and required
+a power-cycle. This is excluded from the primary boundary conclusion because the
+precondition was not met.
+
+---
+
+### D5 infrastructure hang — characterization
+
+**D5 payload**: local_token_count = 257,891 (delta −109 from 258,000 target).
+SHA256: `1d8cc1b7236af887...`. No server-reported token count is available — spark01
+became unresponsive before a response was returned.
+
+#### D5 attempt 1 (first occurrence)
+
+- Precondition: server was running after the clean D4 validation (spark02 retained UMA
+  from active worker container: ~13 GiB MemAvailable)
+- D5 request initiated
+- spark01 became operationally unresponsive (ping: unreachable, SSH: no route to host)
+- spark02 worker container remained running
+- Recovery: power-cycle of spark01; spark02 rebooted thereafter
+
+This attempt had a non-clean precondition on spark02 and cannot alone establish whether
+the failure was caused by stale worker UMA or by the request itself.
+
+#### D5 attempt 2 — clean-condition reproduction (primary evidence)
+
+- Precondition: both nodes rebooted; both passed the ≥110 GiB preflight
+  (spark01: 117.7 GiB, spark02: 118.0 GiB)
+- Server started cleanly; `Application startup complete` confirmed; API healthy
+- D5 request initiated
+- spark01 again became operationally unresponsive
+- Recovery: power-cycle of spark01; spark02 rebooted thereafter
+
+**Post-recovery diagnostics (both nodes, post power-cycle):**
+
+| Observation | spark01 | spark02 |
+|---|---|---|
+| Kernel OOM message | not present | not present |
+| Kernel hung-task message | not present | not collected (rebooted) |
+| NVIDIA Xid error | not present (driver load only) | not collected (rebooted) |
+| Memory PSI (post-reboot) | 0.00 all windows | 0.00 all windows |
+| Swap in use | 0 | 0 |
+| vLLM container OOMKilled flag | not available (reboot cleared state) | not available |
+| Last spark02 container state | not available (rebooted) | not available |
+
+Kernel OOM and Xid messages were absent in post-recovery `dmesg`. This reflects the
+post-reboot kernel ring buffer — messages from the failure window are not preserved.
+
+#### Observed facts (D5)
+
+- The D5 request was initiated twice from a healthy API endpoint
+- spark01 became operationally unresponsive (ping unreachable, SSH unreachable) during
+  or shortly after both D5 requests
+- The same behavior occurred under a clean-start configuration (attempt 2) where both
+  nodes had ≥110 GiB MemAvailable before startup
+- No kernel OOM message was collected from the failure window (logs not preserved across
+  reboot)
+- No watchdog trigger occurred (watchdog was not running during validation)
+- No garble or partial response was returned; no HTTP response was received
+
+#### Hypotheses (unconfirmed)
+
+The following are consistent with the observations but were not confirmed by direct log
+evidence:
+
+- Transient UMA pressure during very large prefill at 257,891 tokens
+- KV cache population growth during prefill
+- Prefill workspace or intermediate activation memory growth
+- Expert Parallel routing or dispatch-buffer pressure
+- CUDA allocator fragmentation under sustained pressure
+- Distributed synchronization failure secondary to head-side memory pressure
+
+No individual component was proven to be the root cause. The failure is classified as an
+infrastructure hang of unknown precise cause.
+
+---
+
+### Stage D — Final decision
+
+**Primary classification**: `STAGE_D_PARTIALLY_VALIDATED_TO_245009`  
+**D5 sub-classification**: `D5_INFRASTRUCTURE_HANG_AT_257891; RETRIEVAL_NOT_EVALUATED`
+
+- D0–D4 passed with correct needle retrieval at all depths up to 245,009 prompt tokens
+- D5 did not produce a retrieval correctness result
+- D5 failed at the infrastructure level (spark01 operationally unresponsive)
+- The failure was reproducible under a clean-start configuration
+- The exact stable boundary between D4 (245,009 tokens, PASS) and D5 (257,891 tokens,
+  HANG) was not narrowed — no intermediate tests were performed
+- No third D5 attempt was performed
+- Stage E–G were not run
+- Multi-sequence was not tested
+
+**Correct interpretation**:
+
+> Approximately 245k prompt tokens are runtime-validated for this exact dual-DGX-Spark
+> configuration. A near-258k prompt reproducibly caused an infrastructure hang under
+> clean-start conditions, establishing an observed operational stability boundary between
+> the validated D4 depth and the failing D5 depth. The failure mechanism is consistent
+> with transient UMA pressure during very large prefill but was not confirmed by direct
+> log evidence.
+
+---
+
+### Stage D timeline
+
+All times are UTC 2026-06-19/20.
+
+| Time (approx.) | Event |
+|---|---|
+| ~22:00 | Preliminary D0 attempt 1 (max_tokens=128) — finish_reason=length |
+| ~22:05 | Preliminary D0 attempt 2 (max_tokens=256) — finish_reason=length |
+| ~00:23 | Stage D rerun diag directory created (T002349) |
+| ~00:35 | Payloads generated (D0r–D5r, max_tokens=2048) |
+| ~01:15 | Both nodes rebooted (first clean boot for rerun) |
+| ~01:15 | Preflight PASS: spark01 117.7 GiB, spark02 118.0 GiB |
+| ~01:20 | Server started (AOT compile 1.19 s, profiling 8.92 s) |
+| ~01:36 | Application startup complete |
+| ~01:36 | D0r submitted (30,005 tokens) → PASS 39.18 s |
+| ~01:37 | D1r submitted (63,977 tokens) → PASS 77.19 s |
+| ~01:38 | D2r submitted (127,817 tokens) → PASS 134.93 s |
+| ~01:41 | D3r submitted (191,999 tokens) → PASS 217.60 s |
+| ~01:45 | D4r first attempt submitted (245,009 tokens, spark02 dirty UMA ~13 GiB) |
+| ~01:50 | spark01 unresponsive — power-cycle; spark02 rebooted |
+| ~02:15 | Both nodes rebooted (second clean boot) |
+| ~02:15 | Preflight PASS: spark01 117.7 GiB, spark02 118.0 GiB |
+| ~02:20 | Server restarted |
+| ~02:36 | Application startup complete |
+| ~02:36 | D4r submitted (245,009 tokens, both nodes clean) → PASS 295.61 s |
+| ~02:41 | D5r first attempt submitted (257,891 tokens, spark02 had running worker) |
+| ~02:46 | spark01 unresponsive — power-cycle (D5 first occurrence) |
+| ~03:00 | spark02 rebooted |
+| ~03:10 | Both nodes rebooted (third clean boot) |
+| ~03:10 | Preflight PASS: spark01 117.7 GiB, spark02 118.0 GiB |
+| ~03:15 | Server restarted |
+| ~03:30 | Application startup complete |
+| ~03:45 | D5r second attempt submitted (257,891 tokens, both nodes clean) |
+| ~03:50 | spark01 unresponsive — power-cycle (D5 second occurrence, primary evidence) |
+| ~04:00 | spark02 rebooted |
+| ~04:15 | Both nodes back online; post-recovery diagnostics collected |
+| ~04:20 | Stage D closed; no further D5 retry |
+
+---
 
 ## Memory Checkpoints
 
@@ -320,9 +468,13 @@ for all depths. D5 at 257,839 prompt tokens limits `max_tokens` to at most 4,304
 | Stage C server running | 12.69 GiB | 12.99 GiB |
 | Stage C post-stop (retained) | 18.34 GiB | 18.48 GiB |
 | After Stage C reboot (both) | 117.7 GiB | 118.0 GiB |
-| Stage D pre-start | 117.7 GiB | 118.0 GiB |
-| Stage D server running (post-D0) | 12.94 GiB | 15.16 GiB |
-| Stage D post-stop (retained) | 18.85 GiB | 19.05 GiB |
+| Stage D rerun pre-start (D0–D4 run) | 117.7 GiB | 118.0 GiB |
+| Stage D server running (post-D0) | ~12 GiB | ~13 GiB |
+| D4 first attempt — spark02 dirty precondition | 117 GiB (clean) | ~13–18 GiB (retained UMA) |
+| D4 second attempt (clean) — both nodes pre-start | 117.7 GiB | 118.0 GiB |
+| D5 first attempt — spark02 dirty precondition | ~117 GiB (clean) | ~13 GiB (worker running) |
+| D5 second attempt — both nodes pre-start (clean) | 117.7 GiB | 118.0 GiB |
+| Post Stage D recovery (both rebooted) | 117 GiB | 117 GiB |
 
 ## Path-Specific Preflight
 
@@ -338,9 +490,13 @@ If either node fails, reboot it — this is the only confirmed recovery for GB10
 ## Preset Status
 
 `presets/step37-flash-nvfp4-tp2.env` remains `EXPERIMENTAL`.
-Stage A (eager, 32k, seq1), Stage B (CUDA graph, 32k, seq1), and Stage C (CUDA graph,
-262k, seq1) validated with bypass image from clean boot. Multi-sequence operation
-remains unvalidated.
+
+`STAGE_D_PARTIALLY_VALIDATED_TO_245009`: Stages A through C and Stage D
+single-sequence requests through 245,009 prompt tokens are runtime-validated from a
+clean-memory precondition. A near-258k single request
+(`D5_INFRASTRUCTURE_HANG_AT_257891`) reproducibly caused an infrastructure hang under
+the tested EP-on/multiprocessing/CUDA-graph configuration. Retrieval correctness at that
+depth was not evaluated. Multi-sequence operation remains unvalidated. Stage E–G not run.
 
 **For validated production serving**: `presets/step37-flash-nvfp4-v023-tp2-latency.env`
 (vLLM 0.23.0, MARLIN MoE, TRITON_ATTN — see `vllm023_step37_garble_fix.md`).
