@@ -1027,5 +1027,5 @@ After a production bt value is selected and validated, run MTP sweep:
 | `benchmarks/tests/test_correctness_checker.py` | Checker unit tests (40 tests) |
 | `benchmarks/results/bt-matrix/` | Per-run results (gitignored) |
 | `presets/step37-flash-nvfp4-v023-tp2-latency.env` | v0.23 Series A latency preset (bt=2048, EP-off, MARLIN, TRITON_ATTN) |
-| `presets/step37-flash-nvfp4-tp2.env` | v0.22 general-purpose serving preset (EP-on, MAX_NUM_SEQS=4) |
+| `presets/step37-flash-nvfp4-tp2.env` | v0.22 long-context experimental preset (EP-on, MAX_NUM_SEQS=1; multi-sequence operation unvalidated) |
 | `.local/env/step37/v023-nomtp-fixed-kv-profile-skip.env` | Original bt=256 disposable env |

@@ -27,7 +27,7 @@ digest `sha256:08ae8f2ab5597afd577977ce2700eff2cc024c3e6e781f6c8df6e1115963bf1b`
 | Quantization | FP8 block (e4m3, 128×128, dynamic activation — DeepSeek-V3 style) | NVFP4 (modelopt) + FP8 KV cache |
 | Weight size | ~97.2-97.3 GB/GPU (TP=2) | ~50 GB/GPU (TP=2) |
 | `MAX_MODEL_LEN` | 32,768 | 8,192 (preset default; the benchmarked session ran with a larger value, see §4) |
-| `MAX_NUM_SEQS` | **1** (memory ceiling, see §3) | 4 |
+| `MAX_NUM_SEQS` | **1** (memory ceiling, see §3) | **1** (shipped; concurrency sweep at 4 — see §5.3) |
 | `GPU_MEMORY_UTILIZATION` | 0.87 | 0.88 |
 | `MAX_NUM_BATCHED_TOKENS` | 2,048 | 8,192 |
 | `--enforce-eager` | required (to preserve memory headroom) | required |
@@ -151,8 +151,9 @@ FP8 weights (~97GB/GPU) leave almost no headroom against the idle free ceiling
   2.45x headroom can't be used for concurrency (it's only meaningful for a
   single very long sequence).
 - **Conclusion**: on a 121GiB GB10 UMA, FP8 TP=2 is structurally tight on
-  concurrency. If concurrency matters, NVFP4 (~50GB/GPU, `MAX_NUM_SEQS=4`
-  verified) is the better choice.
+  concurrency. NVFP4 (~50GB/GPU) has substantially lower memory footprint
+  and more KV-cache headroom, but both shipped Step-3.7-Flash presets run
+  at `MAX_NUM_SEQS=1` on GB10.
 
 ## 4. NVFP4 NaN Bug (resolved)
 
@@ -256,8 +257,10 @@ Results file: [`benchmarks/llama-benchy/results_step37-flash-nvfp4-tp2-c1to4.md`
 | c2 | 1196.81 ± 42.81 | 22.85 ± 5.05 | 28.00 ± 0.00 |
 | c4 | 1230.07 ± 2.61 | 21.18 ± 0.28 | 45.33 ± 1.89 |
 
-`MAX_NUM_SEQS=4` was confirmed to handle up to c=4 concurrent requests (FP8
-can't be swept for concurrency since `MAX_NUM_SEQS=1`, see §3).
+A sweep at `MAX_NUM_SEQS=4` confirmed handling up to c=4 concurrent requests
+(FP8 can't be swept for concurrency since `MAX_NUM_SEQS=1`, see §3). The
+preset has since been updated to ship at `MAX_NUM_SEQS=1` (see §6); this
+sweep reflects an earlier validated concurrency configuration.
 
 ### 5.4. FP8 vs NVFP4 comparison (c=1, d0)
 
@@ -265,7 +268,7 @@ can't be swept for concurrency since `MAX_NUM_SEQS=1`, see §3).
 |---|---:|---:|---|
 | Prefill (pp2048) | 1084.4 | 1251.4 | NVFP4 +15% |
 | Decode (tg32) | 13.32 | 13.35 | roughly equal |
-| Max concurrency | 1 (structural limit) | 4 (verified) | NVFP4 ahead |
+| Max concurrency | 1 (structural limit) | 1 (shipped; 4 measured in §5.3) | NVFP4 smaller footprint |
 | Weights/GPU | ~97GB | ~50GB | NVFP4 has much more memory headroom |
 
 At c=1 single-stream, the two variants perform similarly. If concurrent users
@@ -276,7 +279,7 @@ At c=1 single-stream, the two variants perform similarly. If concurrent users
 | Scenario | Recommendation |
 |---|---|
 | Single user, long context (up to 32K) priority | FP8 (`MAX_NUM_SEQS=1`, KV pool 80,308 tokens) |
-| Multiple concurrent users (2-4) | **NVFP4** (`MAX_NUM_SEQS=4`, FP8 KV cache) |
+| Multiple concurrent users (2-4) | **NVFP4** (lower memory footprint; both shipped presets run at `MAX_NUM_SEQS=1`; multi-sequence operation has not been validated on GB10 for this model) |
 | Memory headroom priority | NVFP4 (~50GB/GPU vs FP8 ~97GB/GPU) |
 
 ## 7. Known Issue: Korean / Non-ASCII Output Garbling (resolved)

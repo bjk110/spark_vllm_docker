@@ -579,7 +579,7 @@ Use this preset for:
 - Normal production serving
 - Validated single-user latency operation up to the approximately 29–32k prompt-token
   range validated during development
-- Lower operational risk (no bypass patches, no UMA preflight dependency)
+- Lower operational risk (no memory-check bypass patches; preflight bar is lower than v0.22 — >50 GiB vs ≥110 GiB — but host UMA state may still require a reboot if memory has not recovered)
 - EP-off path with MARLIN MoE and TRITON_ATTN backends (required for correctness on
   SM_121 in v0.23)
 
@@ -591,7 +591,7 @@ Use only when:
 - Context above the v0.23 latency preset's validated range is required
 - The operator accepts experimental status and the manual reboot/preflight requirement
 - Both nodes pass `scripts/diag/preflight-110gib-check.sh` (≥110 GiB) before each startup
-- `MAX_NUM_SEQS=1` for near-ceiling long-context requests (the only validated concurrency level); the shipped preset sets `MAX_NUM_SEQS=4` — multi-sequence long-context operation is unvalidated on this path
+- The preset ships at `MAX_NUM_SEQS=1`, the only validated concurrency level for this path. Multi-sequence long-context operation is unvalidated and requires a separate preset and validation effort.
 - Requests remain at or below the validated 245,009-token depth
 - The operator understands that a 257,891-token prompt caused a reproducible
   infrastructure hang and that the exact safe boundary above 245,009 tokens has not been
