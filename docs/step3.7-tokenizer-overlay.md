@@ -199,6 +199,69 @@ hashes, Prometheus patched-source hash `a3addfd9…`, and the tokenizer
 source/overlay label hashes all matched, with no model load. Pull by immutable
 digest (or the immutable tag above), never `latest`.
 
+## Current main Step-3.7 FP8 path (tracked preset)
+
+This configuration is the **current validated Step-3.7 FP8 baseline** — the main
+Step-3.7 *FP8* serving path on vLLM 0.23. It is **not** a global production
+default for all models, and it does **not** supersede the Step-3.7 NVFP4 path
+(NVFP4 remains a separate, unchanged preset; FP8 is not claimed to beat NVFP4 on
+memory efficiency, long context, throughput, production suitability, or
+correctness outside the validated test scope below).
+
+| Item | Value |
+|---|---|
+| Preset | [`presets/step37-flash-fp8-v023-tp2.env`](../presets/step37-flash-fp8-v023-tp2.env) |
+| Image | `ghcr.io/bjk110/vllm-spark:v023-step37-tokenizer-overlay-exp-07a2722` |
+| Manifest digest | `sha256:1c987173177a69d58d2ce61babf874f1a7c6c9a2830dcd33b180f2d81c9fde1e` |
+| Config / image ID | `sha256:f195d6e15041743c6b8bb95dfbf47305fa3c11b60d1272c4001baf877ab6e1fa` |
+| vLLM | 0.23.0 |
+| TP / EP | 2 / off |
+| Context | 8192 (validated; larger is unvalidated) |
+| Concurrency | 1 (validated; higher is unvalidated) |
+| Tokenizer overlay | enabled (required) |
+| Status | current validated baseline |
+
+The NVFP4 preset (`presets/step37-flash-nvfp4-v023-tp2-latency.env`) and the
+historical v0.22 FP8 preset (`presets/step37-flash-fp8-tp2.env`) are unchanged.
+
+## Canonical validation results
+
+Correctness (6/6 PASS): no Korean loss, no Unicode corruption, no `Ġ`/`Ċ`
+artifacts, no empty output, no repetition loop. Completion-token counts
+61/85/126/171/288/315.
+
+llama-benchy 0.3.7, concurrency 1, server `MAX_MODEL_LEN=8192`. With `pp2048`/`tg32`
+only depth 0 and 4096 are valid. **API and generation latency modes are not
+directly interchangeable; pp1 and pp2048 decode are not directly interchangeable.**
+
+API-mode (default) depth sweep:
+
+| depth | prefill (t/s) | decode (t/s) | TTFT (ms) |
+|---|---|---|---|
+| 0 | 979.78 ± 46.51 | 10.32 ± 0.25 | 2097.4 ± 102.6 |
+| 4096 | 1031.80 ± 4.35 | 10.25 ± 0.15 | 5957.0 ± 25.0 |
+
+Generation-mode decode supplements:
+
+| case | decode (t/s) |
+|---|---|
+| pp1 / tg32 / d0 | 10.18 ± 0.13 |
+| pp2048 / tg32 / d0 | 11.76 ± 0.54 |
+| pp2048 / tg32 / d4096 | 11.95 ± 1.07 |
+
+## Operational notes
+
+**Clean-memory preflight (required before model startup):** check both nodes for
+clean CUDA-free memory; the validated clean range is ~116–117 GiB per node. A
+large-model shutdown can leave substantial UVM/driver-retained memory, and
+`drop_caches` does **not** resolve non-page-cache retention. **Request explicit
+approval before rebooting nodes.**
+
+**Model metadata (must stay upstream-like):** the active `tokenizer_config.json`
+on homeserver, spark01, and spark02 must remain upstream-like (source SHA256
+`78202af4…`). The runtime image generates a non-mutating overlay; do **not** edit
+`tokenizer_config.json` in the synchronized model directories.
+
 ## Local-only evidence (not part of this repository)
 
 Full validation artifacts (logs, manifests, correctness/perf JSON, memory gates)

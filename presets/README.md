@@ -5,6 +5,13 @@ configurations.
 
 It does **not** contain actual Hugging Face model weights.
 
+> **Current main Step-3.7 FP8 path:** `step37-flash-fp8-v023-tp2.env` (vLLM 0.23,
+> TP=2, EP off, `MAX_MODEL_LEN=8192`, tokenizer overlay enabled; image
+> `ghcr.io/bjk110/vllm-spark:v023-step37-tokenizer-overlay-exp-07a2722`). This is
+> the validated FP8 baseline, not a global default. The Step-3.7 NVFP4 preset and
+> the historical v0.22 FP8 preset are unchanged. See
+> [`docs/step3.7-tokenizer-overlay.md`](../docs/step3.7-tokenizer-overlay.md).
+
 ## What these files are
 
 Each `.env` file in this directory defines model-specific runtime settings passed to

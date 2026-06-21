@@ -19,6 +19,15 @@ GHCR immutable tag (validated 2026-06-14):
 `ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release`
 digest `sha256:08ae8f2ab5597afd577977ce2700eff2cc024c3e6e781f6c8df6e1115963bf1b`
 
+> **Current main Step-3.7 FP8 path (2026-06-21):** the validated FP8 baseline has
+> moved to vLLM 0.23 with a non-mutating tokenizer overlay. Use
+> [`presets/step37-flash-fp8-v023-tp2.env`](../presets/step37-flash-fp8-v023-tp2.env)
+> (image `ghcr.io/bjk110/vllm-spark:v023-step37-tokenizer-overlay-exp-07a2722`,
+> mp backend, TP=2, EP off, `MAX_MODEL_LEN=8192`); see
+> [`docs/step3.7-tokenizer-overlay.md`](step3.7-tokenizer-overlay.md). The v0.22
+> FP8 details below are retained as historical reference. The NVFP4 path is
+> unchanged.
+
 ## 0. Configuration Summary
 
 | Item | FP8 | NVFP4 |
