@@ -1,0 +1,53 @@
+# =============================================================================
+# EXPERIMENTAL image — Step-3.7 FP8 tokenizer overlay (non-mutating) on top of
+# the validated Prometheus-fix image.
+#
+# Base (by IMMUTABLE digest, not a mutable tag):
+#   ghcr.io/bjk110/vllm-spark@sha256:81653ff7e16ca29afc9c6fa057c5216b8c9e14fa9a09430d6ed58b88d9115b0a
+#   (= local image id sha256:6db9acfd…, the promfix-exp image; Prometheus
+#    routing.py guard a3addfd9… retained unchanged.)
+#
+# Adds ONLY:
+#   - gen_tokenizer_overlay.py    : builds an ephemeral tokenizer overlay with
+#                                   tokenizer_class LlamaTokenizerFast ->
+#                                   PreTrainedTokenizerFast, leaving the model
+#                                   mount read-only/unchanged.
+#   - validate_tokenizer_overlay.py : offline guard/unit tests (run at build)
+#                                   + a --behavior mode for runtime checks.
+#   - /opt/vllm-spark/entrypoint-base.sh : baked copy of the standard entrypoint
+#                                   that the overlay wrapper entrypoint exec()s.
+#
+# The overlay wrapper entrypoint (entrypoints/entrypoint-tokenizer-overlay.sh)
+# is selected at run time via ENTRYPOINT_FILE in the disposable env, not baked,
+# so it stays a normal reviewable repo file.
+#
+# Strategy: Option A (runtime overlay + --tokenizer). Verified in vLLM 0.23 that
+# both the serving tokenizer and the Step-3.7 VLM processor
+# (Step3VLProcessor(tokenizer=self.get_tokenizer()), step3p7 inherits step3_vl)
+# resolve from the explicit --tokenizer path.
+#
+# Status: EXPERIMENTAL. Not production, not promoted.
+# Build tag: vllm-spark:v023-step37-promfix-tokenizer-overlay-exp
+# Build host: spark01 or spark02 (aarch64 GB10/SM121).
+# Docs: docs/step3.7-tokenizer-overlay.md
+# =============================================================================
+
+FROM ghcr.io/bjk110/vllm-spark@sha256:81653ff7e16ca29afc9c6fa057c5216b8c9e14fa9a09430d6ed58b88d9115b0a
+
+COPY entrypoints/entrypoint.sh /opt/vllm-spark/entrypoint-base.sh
+COPY patches/common/gen_tokenizer_overlay.py /usr/local/bin/gen_tokenizer_overlay.py
+COPY patches/common/validate_tokenizer_overlay.py /usr/local/bin/validate_tokenizer_overlay.py
+
+# Build-time offline static tests (no GPU, no model weights). Fails the build on
+# any guard regression.
+RUN python3 /usr/local/bin/validate_tokenizer_overlay.py --unit
+
+LABEL org.vllm-spark.experimental="true" \
+      org.vllm-spark.base-image-digest="sha256:81653ff7e16ca29afc9c6fa057c5216b8c9e14fa9a09430d6ed58b88d9115b0a" \
+      org.vllm-spark.base-image-id="sha256:6db9acfd86965f13fb8cdb407b6c8264bc58a9c933ffe1a981c161af9eb84430" \
+      org.vllm-spark.prometheus-patch-sha256="a3addfd90d1132a5ab5dca54c788f4743fe180b9607a662bf34ef0453750848c" \
+      org.vllm-spark.tokenizer-overlay-strategy="runtime-overlay-explicit-tokenizer-arg" \
+      org.vllm-spark.tokenizer-src-sha256="78202af487f4d4360e8d15cb0506d60718f8599770599c6f28f7f1fa045a591f" \
+      org.vllm-spark.tokenizer-overlay-sha256="e4bec1b1841cdb9da779f34c2260604ed27800252a445e7ad2811e3b37acc4ea" \
+      org.vllm-spark.fp8-model="stepfun-ai/Step-3.7-Flash-FP8" \
+      org.vllm-spark.fp8-model-revision="b3d7916fccac844cca050d7520f2aaa513f9a84f"

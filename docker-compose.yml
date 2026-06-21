@@ -15,6 +15,11 @@ services:
       - MASTER_PORT=${MASTER_PORT:-29501}
       # ---- Model ----
       - MODEL_CONTAINER_PATH=${MODEL_CONTAINER_PATH}
+      # ---- Tokenizer overlay enablement (non-mutating; read by the overlay
+      #      wrapper entrypoint inside the container). Default off / unset, so
+      #      this passthrough has no effect unless the disposable env sets it. ----
+      - TOKENIZER_OVERLAY_ENABLE=${TOKENIZER_OVERLAY_ENABLE:-0}
+      - TOKENIZER_OVERLAY_DIR=${TOKENIZER_OVERLAY_DIR:-}
       - SERVED_MODEL_NAME=${SERVED_MODEL_NAME}
       # ---- vLLM Serving ----
       - HOST_PORT=${HOST_PORT}
@@ -172,6 +177,10 @@ services:
       - NODE_RANK=${WORKER_NODE_RANK:-1}
       # ---- Model + serve params (needed for mp mode where worker also runs `vllm serve`) ----
       - MODEL_CONTAINER_PATH=${MODEL_CONTAINER_PATH}
+      # ---- Tokenizer overlay enablement (worker builds its own ephemeral
+      #      overlay; default off / unset so no effect unless the env sets it). ----
+      - TOKENIZER_OVERLAY_ENABLE=${TOKENIZER_OVERLAY_ENABLE:-0}
+      - TOKENIZER_OVERLAY_DIR=${TOKENIZER_OVERLAY_DIR:-}
       - SERVED_MODEL_NAME=${SERVED_MODEL_NAME}
       - HOST_PORT=${HOST_PORT:-8000}
       - MAX_MODEL_LEN=${MAX_MODEL_LEN}
