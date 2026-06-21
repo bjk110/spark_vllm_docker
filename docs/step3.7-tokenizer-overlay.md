@@ -178,6 +178,27 @@ disable the overlay. The Compose passthrough has no effect while disabled.
 - GB10 unified memory: a large FP8 load requires a clean memory state (reboot if
   UVM is retained from a prior run).
 
+## Published image provenance (immutable)
+
+The exact dual-node-validated local image was published to GHCR without rebuild
+(the local image ID was tagged directly). The remote manifest's config digest
+equals the validated local image ID, proving content identity (matching tags
+alone were not relied upon).
+
+| Item | Value |
+|---|---|
+| implementation commit | `07a2722b093b1e9e8750b6f664826f0e39a25218` |
+| immutable GHCR tag | `ghcr.io/bjk110/vllm-spark:v023-step37-tokenizer-overlay-exp-07a2722` |
+| remote manifest digest | `sha256:1c987173177a69d58d2ce61babf874f1a7c6c9a2830dcd33b180f2d81c9fde1e` |
+| config / image ID | `sha256:f195d6e15041743c6b8bb95dfbf47305fa3c11b60d1272c4001baf877ab6e1fa` |
+| platform | `linux/arm64` |
+
+Verification: pulling `ghcr.io/bjk110/vllm-spark@sha256:1c987173…` on a Spark
+node resolved to image ID `f195d6e1…`; embedded generator/validator/wrapper-base
+hashes, Prometheus patched-source hash `a3addfd9…`, and the tokenizer
+source/overlay label hashes all matched, with no model load. Pull by immutable
+digest (or the immutable tag above), never `latest`.
+
 ## Local-only evidence (not part of this repository)
 
 Full validation artifacts (logs, manifests, correctness/perf JSON, memory gates)
