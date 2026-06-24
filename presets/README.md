@@ -12,6 +12,18 @@ It does **not** contain actual Hugging Face model weights.
 > the historical v0.22 FP8 preset are unchanged. See
 > [`docs/step3.7-tokenizer-overlay.md`](../docs/step3.7-tokenizer-overlay.md).
 
+> **DeepSeek-V4-Flash MTP n=1 + FULL_DECODE_ONLY (validated candidate):**
+> `deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-validated-tp2.env` (vLLM PR #41834,
+> dual-Spark TP=2 mp, NET/IB, MTP n=1, FULL decode graph capture `[2]`). Status =
+> `VALIDATED_PRESET_CANDIDATE`, **not** production and **not** a replacement for the
+> frozen primary DSV4 baseline `dsv4-d568`. Passed safety, performance, a 4-hour soak,
+> and an independent cold-start reproduction. Rollback levels: L1 graph-only
+> `deepseek-v4-v023-stack-pr41834-fullgraph-validated-rollback-tp2.env` (~27.2 t/s);
+> L2 eager U0-RDMA `deepseek-v4-v023-stack-pr41834-eager-u0-rollback-tp2.env` (~7.4 t/s).
+> Provenance + operational gates:
+> [`docs/deepseek-v4-mtp1-fullgraph-validated-preset.md`](../docs/deepseek-v4-mtp1-fullgraph-validated-preset.md).
+> Requires a clean-boot + dedicated-cache-clear startup gate (not automated by the preset).
+
 ## What these files are
 
 Each `.env` file in this directory defines model-specific runtime settings passed to
