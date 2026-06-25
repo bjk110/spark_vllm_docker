@@ -35,6 +35,25 @@ It does **not** contain actual Hugging Face model weights.
 > or context. See
 > [`docs/deepseek-v4-prefill8192-validated-candidate.md`](../docs/deepseek-v4-prefill8192-validated-candidate.md).
 
+> **DeepSeek-V4-Flash — prefill8192 PRODUCTION (repository status only; runtime NOT auto-activated):**
+> `deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env`. Status =
+> `PRODUCTION`. Repository production status does **not** activate the serving runtime; live
+> activation requires the separate maintenance-window procedure in the production runbook. Runtime
+> lines are byte-identical to the validated candidate. Approved envelope: concurrency 1 only,
+> prompts up to 131,072 tokens, typical output allowance 128 tokens, fixed 4 GiB fp8 KV, prefix
+> cache disabled, MTP n=1, FULL_DECODE_ONLY capture `[2]`, TP=2 multiprocessing, NET/IB over RoCE.
+> Requires a clean-boot + dedicated-cache-clear startup gate (not automated by the preset),
+> OpenWebUI backend timeout `AIOHTTP_CLIENT_TIMEOUT >= 180` (confirmed effective 240), and healthy
+> Prometheus + both Spark node-exporters. Monitoring status is
+> `VLLM_MONITORING_CONFIGURED_WITH_LOG_GAPS`: graph fallback, graph recapture, per-rank health,
+> NCCL, and CUDA remain operator log checks; Spark cAdvisor/DCGM and homeserver cAdvisor are
+> deferred and not active. Activation, acceptance, shutdown, and rollback procedure:
+> [`docs/deepseek-v4-prefill8192-production-runbook.md`](../docs/deepseek-v4-prefill8192-production-runbook.md).
+> Rollback chain: (1) validated baseline
+> `deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-validated-tp2.env`; (2) graph-only L1
+> `deepseek-v4-v023-stack-pr41834-fullgraph-validated-rollback-tp2.env`; (3) eager U0-RDMA L2
+> `deepseek-v4-v023-stack-pr41834-eager-u0-rollback-tp2.env`.
+
 ## What these files are
 
 Each `.env` file in this directory defines model-specific runtime settings passed to
