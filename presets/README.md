@@ -24,6 +24,17 @@ It does **not** contain actual Hugging Face model weights.
 > [`docs/deepseek-v4-mtp1-fullgraph-validated-preset.md`](../docs/deepseek-v4-mtp1-fullgraph-validated-preset.md).
 > Requires a clean-boot + dedicated-cache-clear startup gate (not automated by the preset).
 
+> **DeepSeek-V4-Flash — prefill-optimized (validated candidate, concurrency 1, up to 131K):**
+> `deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-validated-candidate-tp2.env`.
+> Status = `VALIDATED_CANDIDATE`, **not** production and **not** current/default serving. The
+> only deltas from the validated baseline are `MAX_MODEL_LEN=135168`, fixed KV 4 GiB, and
+> `MAX_NUM_BATCHED_TOKENS=8192`. Validated envelope: concurrency 1 only, prompts up to 131,072
+> tokens, typical output 128 tokens, prefix cache disabled, MTP n=1, FULL_DECODE_ONLY, capture
+> `[2]`, NET/IB over RoCE. Passed an independent harness-corrected cold-start reproduction and a
+> 60-minute stability run. Runtime KV headroom must be revalidated before increasing concurrency
+> or context. See
+> [`docs/deepseek-v4-prefill8192-validated-candidate.md`](../docs/deepseek-v4-prefill8192-validated-candidate.md).
+
 ## What these files are
 
 Each `.env` file in this directory defines model-specific runtime settings passed to
