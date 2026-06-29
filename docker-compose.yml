@@ -28,6 +28,9 @@ services:
       - GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION}
       - MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS}
       - VLLM_EXTRA_ARGS=${VLLM_EXTRA_ARGS:-}
+      # ---- DeepGEMM indexer/dense/MoE guards (default 1 = upstream default; preset may override to 0) ----
+      - VLLM_USE_DEEP_GEMM_E8M0=${VLLM_USE_DEEP_GEMM_E8M0:-1}
+      - VLLM_MOE_USE_DEEP_GEMM=${VLLM_MOE_USE_DEEP_GEMM:-1}
       # ---- Runtime ----
       - NVIDIA_VISIBLE_DEVICES=all
       - VLLM_USAGE_SOURCE=production
@@ -188,6 +191,9 @@ services:
       - GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION}
       - MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS}
       - VLLM_EXTRA_ARGS=${VLLM_EXTRA_ARGS:-}
+      # ---- DeepGEMM indexer/dense/MoE guards (default 1 = upstream default; preset may override to 0) ----
+      - VLLM_USE_DEEP_GEMM_E8M0=${VLLM_USE_DEEP_GEMM_E8M0:-1}
+      - VLLM_MOE_USE_DEEP_GEMM=${VLLM_MOE_USE_DEEP_GEMM:-1}
       # ---- Multi-node networking (200Gbps RoCE) ----
       # Worker is only meaningful with CLUSTER_MODE=dual-rdma; entrypoint.sh
       # validates the RDMA vars are present.
