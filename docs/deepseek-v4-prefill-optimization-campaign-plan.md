@@ -1,5 +1,18 @@
 # DeepSeek-V4-Flash Prefill-Optimization Campaign Plan
 
+| Field | Value |
+|---|---|
+| Status | `Historical` |
+| Scope | Completed prefill-optimization campaign plan (max-num-batched-tokens sweep) |
+| Current replacement | [`deepseek-v4-sm121-indexer-production.md`](deepseek-v4-sm121-indexer-production.md) (current production) |
+| Last validated | 2026-06-25 (campaign concluded; prefill8192 adopted, later superseded) |
+| Runtime or image identity | Not applicable (planning document) |
+| Historical relevance | Records the completed campaign that produced the prefill8192 baseline; the planned actions are not current operational instructions |
+
+> **Status note:** this campaign is **complete**. The planned actions below must not
+> be treated as current operational instructions; the current production baseline is
+> the SM121 indexer (see current replacement above).
+
 **Status:** EXPERIMENTAL / DISPOSABLE / untracked. NOT a production plan.
 
 ## Objective

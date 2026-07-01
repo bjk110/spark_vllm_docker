@@ -1,5 +1,18 @@
 # DeepSeek-V4-Flash prefill8192 — Production Activation Runbook
 
+| Field | Value |
+|---|---|
+| Status | `Rollback baseline` |
+| Scope | Activation / shutdown / rollback operations for the prefill8192 (`4c41950c`) baseline |
+| Current replacement | [`deepseek-v4-sm121-indexer-production.md`](deepseek-v4-sm121-indexer-production.md) (current production) |
+| Last validated | 2026-06-25 (prefill8192 production activation) |
+| Runtime or image identity | image config `4c41950c`; preset `../presets/deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env` (SHA `593ba898`) |
+| Historical relevance | The immediate rollback target for the current SM121-indexer production baseline; superseded as the active serving path on 2026-07-01 |
+
+> **Scope note:** the operational commands in this runbook are for **rollback
+> activation or historical reproduction of the prefill8192 baseline**, not the
+> normal current serving path (see the current-production document above).
+
 > **This document prepares production operations only. It does not activate the
 > runtime.** The repository production package exists; live activation is a
 > separate, explicitly-approved maintenance-window procedure described below.

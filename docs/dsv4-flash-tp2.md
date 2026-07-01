@@ -1,5 +1,18 @@
 # DeepSeek-V4-Flash (Official FP8) — Dual-Spark TP=2 가이드
 
+| Field | Value |
+|---|---|
+| Status | `Historical` |
+| Scope | Legacy JASL-era DeepSeek-V4-Flash TP=2 model guide and reproduction reference (`dsv4-d568`) |
+| Current replacement | [`deepseek-v4-sm121-indexer-production.md`](deepseek-v4-sm121-indexer-production.md) (current production) |
+| Last validated | Not recorded (legacy `dsv4-d568` baseline, intentionally frozen) |
+| Runtime or image identity | image `ghcr.io/bjk110/vllm-spark:dsv4-d568` (frozen legacy baseline) |
+| Historical relevance | Not the default production path. Preserved for the historical configuration, JASL recipe, and 9-way benchmark sweep. |
+
+> **Status note:** this is the **legacy/frozen** `dsv4-d568` DeepSeek-V4-Flash guide,
+> not the current production path. The current production baseline is the SM121
+> indexer (see current replacement above).
+
 `deepseek-ai/DeepSeek-V4-Flash` (공식 FP8 체크포인트) 를 DGX Spark 두 대
 (`<head_node>`, `<worker_node>`) 위에서 TP=2 로 서빙하는 절차와 성능 측정 결과 정리.
 
@@ -115,7 +128,7 @@ sudo sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
 
 ### 3.2. Ray 모드 (운영 권장)
 
-기동 명령은 [`README`](../README.md#dual-spark--tp2-ray--roce) 의 일반 패턴과 동일:
+기동 명령은 [`README`](../README.md#3-start-services) 의 일반 패턴과 동일:
 
 1. spark head 노드에서 `docker compose ... --profile head up -d`
 2. head 의 Ray runtime 이 뜨면 spark worker 노드에서 `docker compose ... --profile worker up -d`

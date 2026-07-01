@@ -1,5 +1,18 @@
 # DeepSeek-V4-Flash `max-num-batched-tokens=8192` — Validated Candidate
 
+| Field | Value |
+|---|---|
+| Status | `Superseded` |
+| Scope | Historical validation evidence for the configuration that became the current immediate rollback baseline |
+| Current replacement | [`deepseek-v4-sm121-indexer-production.md`](deepseek-v4-sm121-indexer-production.md) (current production) |
+| Last validated | 2026-06-25 (harness-corrected cold-start reproduction + 60-minute stability run) |
+| Runtime or image identity | image config `4c41950c` (prefill8192 baseline, now the rollback target) |
+| Historical relevance | Provenance for the prefill8192 rollback baseline; all validation evidence below is preserved unchanged |
+
+> **Status note:** this is preserved historical validation evidence. The prefill8192
+> configuration it validated is now the **immediate rollback baseline**, not the
+> current serving path. The wording below reflects the state at original validation.
+
 **Status: VALIDATED_CANDIDATE (not production).** Production promotion remains a separate,
 explicitly-authorized step and has not occurred.
 
