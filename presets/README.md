@@ -35,11 +35,30 @@ It does **not** contain actual Hugging Face model weights.
 > or context. See
 > [`docs/deepseek-v4-prefill8192-validated-candidate.md`](../docs/deepseek-v4-prefill8192-validated-candidate.md).
 
-> **DeepSeek-V4-Flash — prefill8192 PRODUCTION (repository status only; runtime NOT auto-activated):**
+> **DeepSeek-V4-Flash — SM121 DeepGEMM indexer PRODUCTION (current baseline; digest-pinned):**
+> `deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env`. Status = **`Current production baseline`**
+> (`H1Z_B1AE_PROMOTION_CUTOVER_PASS`, 2026-07-01). This is the recommended DeepSeek-V4-Flash serving
+> path. It runs the promoted image by its **immutable GHCR manifest digest**
+> `ghcr.io/bjk110/vllm-spark@sha256:ade810fd637e30922a30d09f0fcf128fbeb2a757a27a64f8a77e3646fae223a7`
+> (config `fa83457d`). The mutable alias `dsv4-sm121-indexer-production` resolves to the same digest
+> but is **provenance only** — the runtime must stay pinned to the digest, not the alias. Runtime
+> envelope is identical to the prefill8192 rollback baseline (concurrency 1, prompts up to 131K, MTP
+> n=1, FULL_DECODE_ONLY `[2]`, fixed 4 GiB fp8 KV, prefix cache disabled, TP=2 mp, NET/IB over RoCE),
+> with the DeepGEMM SM121 FP8-Q prefill indexer active (MARLIN MoE + production Triton dense/sparse-MLA
+> retained; `VLLM_MOE_USE_DEEP_GEMM=0`, `VLLM_USE_DEEP_GEMM_E8M0=0`, explicit `--moe-backend marlin`).
+> Validated by H1Z-B1AB/B1AC/B1AD/B1AE; prefill within ~1.5% of the B1AB reference (recovers ~48–55%
+> of the H1C indexer uplift over the rollback baseline). Immediate rollback target = the prefill8192
+> baseline below. SM121 source clones carry a maintenance guard (valid only while SM120 sources
+> `cedcce47`/`b3a5d236` hold). Full identity, evidence, rollback, clone guard, and the ABI-hash
+> provenance correction: [`docs/deepseek-v4-sm121-indexer-production.md`](../docs/deepseek-v4-sm121-indexer-production.md)
+> and [`docs/deepseek-v4-sm121-indexer-promotion-manifest.md`](../docs/deepseek-v4-sm121-indexer-promotion-manifest.md).
+
+> **DeepSeek-V4-Flash — prefill8192 (ROLLBACK BASELINE; prior production, runtime NOT auto-activated):**
 > `deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env`. Status =
-> `PRODUCTION`. Repository production status does **not** activate the serving runtime; live
-> activation requires the separate maintenance-window procedure in the production runbook. Runtime
-> lines are byte-identical to the validated candidate. Approved envelope: concurrency 1 only,
+> **`Rollback baseline`** (prior production `4c41950c`, superseded by `dsv4-sm121-indexer` on
+> 2026-07-01; preserved unchanged as the immediate rollback target). Repository status does **not**
+> activate the serving runtime; live activation requires the separate maintenance-window procedure in
+> the production runbook. Runtime lines are byte-identical to the validated candidate. Approved envelope: concurrency 1 only,
 > prompts up to 131,072 tokens, typical output allowance 128 tokens, fixed 4 GiB fp8 KV, prefix
 > cache disabled, MTP n=1, FULL_DECODE_ONLY capture `[2]`, TP=2 multiprocessing, NET/IB over RoCE.
 > Requires a clean-boot + dedicated-cache-clear startup gate (not automated by the preset),

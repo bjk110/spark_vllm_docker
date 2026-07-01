@@ -18,7 +18,8 @@ For release-by-release detail and patch-by-patch status, see
 
 | Path | Status | Image | Backend | Use case |
 |---|---|---|---|---|
-| `dsv4-prefill8192` | **Current DSV4 production** (`PRODUCTION_RUNTIME_ACTIVE_ACCEPTED`) | `vllm-spark:v023-stack-dsv4-sm12x-pr41834-exp-72261a7-tvmfam019` | `mp` | **Current accepted DeepSeek-V4-Flash production serving path** — dual-node TP=2, concurrency 1, prompts up to 131K, typical output 128, MTP n=1, FULL_DECODE_ONLY capture `[2]`, fixed 4 GiB fp8 KV, prefix cache disabled. Preset [`presets/deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env`](presets/deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env). See [`docs/deepseek-v4-prefill8192-production-activation.md`](docs/deepseek-v4-prefill8192-production-activation.md) and [`docs/deepseek-v4-prefill8192-production-runbook.md`](docs/deepseek-v4-prefill8192-production-runbook.md). |
+| `dsv4-sm121-indexer` | **Current DSV4 production baseline** (`H1Z_B1AE_PROMOTION_CUTOVER_PASS`) | `ghcr.io/bjk110/vllm-spark@sha256:ade810fd637e30922a30d09f0fcf128fbeb2a757a27a64f8a77e3646fae223a7` (config `fa83457d`; immutable tag `v023-dsv4-72261a7-sm121-deepgemm-indexer-prod-fa83457d`) | `mp` | **Current accepted DeepSeek-V4-Flash production serving path** — same runtime envelope as `dsv4-prefill8192` (dual-node TP=2, concurrency 1, prompts up to 131K, MTP n=1, FULL_DECODE_ONLY capture `[2]`, fixed 4 GiB fp8 KV, prefix cache disabled) **plus** the DeepGEMM SM121 FP8-Q prefill indexer (MARLIN MoE + production Triton dense/sparse-MLA retained). Digest-pinned runtime (the mutable alias `dsv4-sm121-indexer-production` is provenance only, not the runtime pin). Preset [`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env`](presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env). See [`docs/deepseek-v4-sm121-indexer-production.md`](docs/deepseek-v4-sm121-indexer-production.md). |
+| `dsv4-prefill8192` | **Rollback baseline** (prior production; `PRODUCTION_RUNTIME_ACTIVE_ACCEPTED` superseded 2026-07-01) | `vllm-spark:v023-stack-dsv4-sm12x-pr41834-exp-72261a7-tvmfam019` (config `4c41950c`) | `mp` | **Immediate rollback target for `dsv4-sm121-indexer`** — identical runtime envelope without the SM121 indexer (MARLIN MoE + Triton dense/sparse-MLA/indexer-fallback). Preset [`presets/deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env`](presets/deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env). See [`docs/deepseek-v4-prefill8192-production-runbook.md`](docs/deepseek-v4-prefill8192-production-runbook.md) and the rollback procedure in [`docs/deepseek-v4-sm121-indexer-production.md`](docs/deepseek-v4-sm121-indexer-production.md). |
 | `dsv4-d568` | **Frozen** legacy/historical DSV4 baseline | `ghcr.io/bjk110/vllm-spark:dsv4-d568` | `ray` (default) or `mp` | Historical decode-optimized DeepSeek-V4-Flash baseline (reproduction/reference) — see [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md) |
 | `unholy-fusion` | Experimental (mp-only, DSV4 only) | `aidendle94/sparkrun-vllm-ds4-gb10:production-ready` (mirror: `ghcr.io/bjk110/vllm-spark:unholy-fusion-prod-ready`) | `mp` (hardcoded) | Higher-prefill DSV4 alternative — see [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md) |
 | `v022-d568-ngc2605-tx5102-vllm022` | Active forward-stack (NGC 26.05, vLLM 0.22.1) | `ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022` | `ray` | Qwen3.5-122B-FP8 and other forward-stack models |
@@ -50,8 +51,8 @@ Image tag → Git-ref mapping → [`docs/images.md`](docs/images.md).
 
 > **Backend note**: `dual-rdma` deployments support two coordination backends,
 > selected via `DISTRIBUTED_BACKEND=ray` (default) or `DISTRIBUTED_BACKEND=mp`
-> (SPMD, no Ray). The current `dsv4-prefill8192` production path uses `mp`; the
-> legacy `dsv4-d568` path uses `ray`; the experimental
+> (SPMD, no Ray). The current `dsv4-sm121-indexer` production path uses `mp` (as does
+> its `dsv4-prefill8192` rollback baseline); the legacy `dsv4-d568` path uses `ray`; the experimental
 > `unholy-fusion` path hardcodes `mp` (its image ships no Ray binary). See
 > [Quick Start § Backend selection](#backend-selection--distributed_backendray--mp)
 > for the full comparison and switching steps.
@@ -75,7 +76,10 @@ Select the path matching your model and use case from the
 - **Non-DSV4 models** on the legacy stable base: use `v021-ngc2603` (or `v021-tq`
   for TurboQuant KV presets)
 - **DeepSeek-V4-Flash** (current accepted production, concurrency 1, prompts up to
-  131K): use `dsv4-prefill8192` (preset
+  131K): use `dsv4-sm121-indexer` (digest-pinned preset
+  `presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env`)
+- **DeepSeek-V4-Flash** (rollback baseline / prior production without the SM121
+  indexer): use `dsv4-prefill8192` (preset
   `presets/deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env`)
 - **DeepSeek-V4-Flash** (legacy decode-optimized baseline, historical/reference):
   use `dsv4-d568`
@@ -429,7 +433,9 @@ echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
 | Document | Covers |
 |---|---|
 | [`docs/software-stack.md`](docs/software-stack.md) | Full image/stack lineage: `v022-d568-ngc2605-tx5102-vllm022`, `dsv4-d568`, `v022-d568`, `v021` series, and legacy stacks, with component versions and digests |
-| [`docs/deepseek-v4-prefill8192-production-activation.md`](docs/deepseek-v4-prefill8192-production-activation.md) | DeepSeek-V4-Flash prefill8192 **current production** activation/acceptance record (`PRODUCTION_RUNTIME_ACTIVE_ACCEPTED`) |
+| [`docs/deepseek-v4-sm121-indexer-production.md`](docs/deepseek-v4-sm121-indexer-production.md) | DeepSeek-V4-Flash **current production baseline** — SM121 DeepGEMM FP8-Q indexer, digest-pinned (`H1Z_B1AE_PROMOTION_CUTOVER_PASS`); identity, evidence, rollback, clone guard, ABI correction |
+| [`docs/deepseek-v4-sm121-indexer-promotion-manifest.md`](docs/deepseek-v4-sm121-indexer-promotion-manifest.md) | SM121 indexer production promotion manifest (digests, source/ABI SHAs, validation outcomes, rollback) |
+| [`docs/deepseek-v4-prefill8192-production-activation.md`](docs/deepseek-v4-prefill8192-production-activation.md) | DeepSeek-V4-Flash prefill8192 activation/acceptance record (prior production, now the `dsv4-sm121-indexer` rollback baseline; `PRODUCTION_RUNTIME_ACTIVE_ACCEPTED` superseded 2026-07-01) |
 | [`docs/deepseek-v4-prefill8192-production-runbook.md`](docs/deepseek-v4-prefill8192-production-runbook.md) | DeepSeek-V4-Flash prefill8192 production activation, acceptance, shutdown, and rollback runbook |
 | [`docs/deepseek-v4-prefill8192-validated-candidate.md`](docs/deepseek-v4-prefill8192-validated-candidate.md) | DeepSeek-V4-Flash prefill8192 validated-candidate testing record (provenance for the production path) |
 | [`docs/dsv4-flash-tp2.md`](docs/dsv4-flash-tp2.md) | DeepSeek-V4-Flash (`dsv4-d568`, legacy/historical) build, deployment recipe, and 9-way benchmark sweep |

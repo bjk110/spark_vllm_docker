@@ -122,6 +122,15 @@ deferred and are not active.
 
 ## Final declaration
 
+> **Status update (2026-07-01): SUPERSEDED — now the rollback baseline.** This
+> activation record is preserved as the historical acceptance of the prefill8192
+> baseline (config `4c41950c`). The current accepted DeepSeek-V4-Flash production
+> serving path is now `dsv4-sm121-indexer` (digest `ade810fd`, config `fa83457d`;
+> `H1Z_B1AE_PROMOTION_CUTOVER_PASS`), for which this prefill8192 baseline is the
+> immediate rollback target. See
+> [`deepseek-v4-sm121-indexer-production.md`](deepseek-v4-sm121-indexer-production.md).
+> The present-tense wording below reflects the state at original activation.
+
 The prefill8192 configuration is the **current accepted DeepSeek V4 production
 serving path** within the validated envelope (concurrency 1; prompts up to 131,072
 tokens; typical output 128 tokens; fixed 4 GiB fp8 KV; prefix cache disabled; MTP
