@@ -49,6 +49,12 @@ Rollback procedure: [`docs/deepseek-v4-prefill8192-production-runbook.md`](docs/
 > upgrades are a separate parallel path for non-DSV4 models. `dsv4-d568` (JASL-era) and
 > `unholy-fusion` are historical/experimental references, not generally recommended production paths.
 
+> **DeepSeek-V4 B3 sparse-attention investigation is CLOSED (2026-07-03).** Backporting the
+> experimental FlashInfer CUDA sparse-MLA *prefill-only* kernel was found **performance-neutral**
+> (64K c1 prefill parity, −0.91% vs the MARLIN + SM121-indexer baseline) and is **not promoted**.
+> The production baseline above is unchanged. Full record:
+> [`docs/dsv4-sparse-mla-b3-investigation-closure.md`](docs/dsv4-sparse-mla-b3-investigation-closure.md).
+
 Component versions, stack lineage, and digests → [`docs/software-stack.md`](docs/software-stack.md).
 Image tag → Git-ref mapping → [`docs/images.md`](docs/images.md). Optional FlashInfer-AOT drop-in
 for `v022-d568` → [`docs/flashinfer-aot-prebake.md`](docs/flashinfer-aot-prebake.md).
