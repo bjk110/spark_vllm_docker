@@ -1,8 +1,8 @@
 # Agent Playbook - Fix `EngineDeadError` at long context on GB10/SM121 (rowwise indexer CUDA-graph crash)
 
 > **How to use this file**: hand it to Claude Code (or any coding agent with shell access to your
-> DGX Spark) and say *"apply this playbook"*. It is self-contained: detection, patch, deployment,
-> validation, rollback. A human can also follow it step by step.
+> DGX Spark) and say *"apply this playbook"*. It covers detection, patch, deployment, validation,
+> rollback. A human can also follow it step by step.
 >
 > **Scope**: vLLM images from this repo serving DeepSeek-V4-Flash on DGX Spark (GB10, SM 12.1),
 > single- or dual-node. Known affected: `dsv4-sm121-indexer-production`
@@ -11,31 +11,44 @@
 
 ## What this fixes
 
-First decode step at a *novel* context-length shape (typically >256K tokens) can trigger a Triton
+The first decode step at a context-length shape *novel to the engine process* can trigger a Triton
 JIT `cuModuleLoad` **inside a CUDA graph capture** → `RuntimeError: Triton Error [CUDA]: operation
-not permitted` → `EngineDeadError` → all requests 500. The fix de-constexprifies the 19
-runtime-variant parameters of `_fp8_paged_mqa_logits_rowwise_kernel` so the specialization space
-collapses to a handful of variants, all loaded at warmup. Decode stays fully CUDA-graph captured
-(`FULL_DECODE_ONLY` unchanged) - no eager fallback, no measured throughput change.
+not permitted` → `EngineDeadError` → all requests 500. In the reported production reproduction this
+fired at >256K prompt tokens on a 512K deployment; that is the *observed* territory, not an
+intrinsic threshold - the dispatch decision is logits bytes vs. the SM12x sparse-indexer threshold,
+and small-batch decode stays below that threshold at any context length. The fix de-constexprifies
+the 19 runtime-variant parameters of `_fp8_paged_mqa_logits_rowwise_kernel` so the specialization
+space collapses to a handful of variants, all loaded at warmup. Decode stays fully CUDA-graph
+captured (`FULL_DECODE_ONLY` unchanged) - no eager fallback, no measured throughput change.
 
 ## Conventions
 
 - `$CONTAINER` = your vLLM container name (this repo's runbooks use `vllm_ds4`).
 - `$MODELS_MOUNT` = a host directory already bind-mounted into the container (the runbooks mount
   `~/models` at `/models`; adjust if yours differs).
+- `$SM12X` = `/usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/ops/sm12x_mqa.py`
+  (path inside the container).
 - On multi-node (TP over 2 Sparks): **repeat steps 2-4 on every node**.
 
 ---
 
-## Step 1 - Detect whether you are affected
+## Step 1 - Check the target file exists
 
 ```bash
-docker exec $CONTAINER grep -c "num_rows: tl.constexpr" \
-  /usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/ops/sm12x_mqa.py
+docker exec $CONTAINER test -f $SM12X && echo present || echo MISSING
 ```
 
-- Output `1` (or more) → **affected**, continue.
-- Output `0` or file missing → this image is not affected (already fixed or different layout). Stop.
+- `MISSING` → this image has a different layout (different vLLM build); **stop and report** -
+  this playbook does not apply as-is.
+- `present` → continue. A quick (non-authoritative) signal of the pre-patch state:
+
+```bash
+docker exec $CONTAINER grep -c "num_rows: tl.constexpr" $SM12X
+```
+
+`1` strongly suggests you are affected. **Do not treat `0` as "safe/already fixed"** - `0` also
+happens if the kernel was renamed, the signature layout changed, or the file is in a partial
+state. The authoritative check is the state detection built into the apply script in Step 2.
 
 Optional confirmation that your past crashes match this bug - look for this pair in your serve logs:
 
@@ -44,33 +57,34 @@ File ".../ops/sm12x_mqa.py", line 464, in fp8_paged_mqa_logits_rowwise_triton
 RuntimeError: Triton Error [CUDA]: operation not permitted
 ```
 
-## Step 2 - Generate the patched file (idempotent, self-verifying)
+## Step 2 - Extract the stock file and generate the patched copy
+
+The patch is applied by `patches/sm121/apply_sm121_rowwise_mqa_graph_safe.py` from this repo
+(fetch it from the repo if you only have this playbook file). The script carries an **explicit
+allowlist of the 19 target parameters** and distinguishes three states:
+
+- all 19 still `tl.constexpr` → patches (atomic replace, `ast.parse` + `py_compile` validated);
+- all 19 already runtime arguments → prints `already applied`, exits 0, writes nothing;
+- anything else (missing/renamed parameters, unexpected annotations, kernel not found, layout
+  drift) → **refuses with a nonzero exit**. Report the message; do not improvise.
 
 ```bash
 mkdir -p $MODELS_MOUNT/patches
-docker exec $CONTAINER cat \
-  /usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/ops/sm12x_mqa.py \
-  > $MODELS_MOUNT/patches/sm12x_mqa.py.orig
-
-python3 - <<'EOF'
-import re, os
-base = os.path.expanduser(os.environ.get("MODELS_MOUNT", "~/models")) + "/patches"
-src = open(f"{base}/sm12x_mqa.py.orig").read()
-m = re.search(r"def _fp8_paged_mqa_logits_rowwise_kernel\((.*?)\):\n", src, re.S)
-assert m, "rowwise kernel signature not found - layout differs, do not proceed"
-new_sig, n = re.subn(r"\b(num_rows|logits_width|stride_\w+): tl\.constexpr", r"\1", m.group(1))
-assert n == 19, f"expected exactly 19 replacements, got {n} - layout differs, do not proceed"
-open(f"{base}/sm12x_mqa.py", "w").write(src[:m.start(1)] + new_sig + src[m.end(1):])
-print("patched file written, 19 replacements")
-EOF
-
-python3 -m py_compile $MODELS_MOUNT/patches/sm12x_mqa.py && echo "syntax OK"
+docker exec $CONTAINER cat $SM12X > $MODELS_MOUNT/patches/sm12x_mqa.py.orig
+cp $MODELS_MOUNT/patches/sm12x_mqa.py.orig $MODELS_MOUNT/patches/sm12x_mqa.py
+python3 apply_sm121_rowwise_mqa_graph_safe.py $MODELS_MOUNT/patches/sm12x_mqa.py
 ```
 
-**Safety properties**: the script only touches the *signature* of one kernel; it aborts (assert)
-if the file doesn't match the expected layout, so it cannot half-apply on a future fixed image.
+Interpret the outcome:
+
+- `patched - 19 params de-constexpr'd` → you were affected; the patched copy is ready, continue.
+- `already applied` → the image already carries the fix; remove
+  `$MODELS_MOUNT/patches/sm12x_mqa.py` and stop - nothing to deploy.
+- nonzero exit → the image layout changed; report the exact message to the maintainer instead of
+  forcing anything. The maintainer may have fixed the kernel differently.
+
 `tl.constexpr` is kept on model constants (`next_n`, `num_heads`, `head_dim`, `block_size`) and
-tile sizes (`BLOCK_N/D/H`).
+tile sizes (`BLOCK_N/D/H`); only the signature of one kernel is touched.
 
 ## Step 3 - Auto-apply at serve time (survives container recreation)
 
@@ -79,8 +93,7 @@ stock one *before* `vllm serve` starts. In your serve entry script (this repo's 
 `serve.sh` that is `docker cp`'d into the container), insert **before the `exec vllm serve` line**:
 
 ```bash
-# --- long-context CUDA-graph crash fix (rowwise indexer, see community report) ---
-# Rollback: delete /models/patches/sm12x_mqa.py - the stock image is never modified.
+# --- long-context CUDA-graph crash fix (rowwise indexer, see companion report) ---
 OPS=/usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/ops
 if [ -f /models/patches/sm12x_mqa.py ] && [ -d "$OPS" ]; then
   cp /models/patches/sm12x_mqa.py "$OPS/sm12x_mqa.py"
@@ -95,7 +108,25 @@ log line `sm12x_mqa.py patch applied` appears in each node's serve log.
 
 1. **Sanity**: a short chat completion returns 200 with coherent output.
 2. **The regression test** (the shape class that used to kill the engine): send one request whose
-   prompt exceeds 262,144 tokens (any filler text ≈ 1.1 MB), `max_tokens: 48`, `temperature: 0`.
+   prompt **exceeds 262,144 tokens as counted by the real model tokenizer** - do not assume a
+   byte size maps to a token count (tokens-per-byte varies wildly with content and tokenizer).
+   Count with the server's own tokenizer via the `/tokenize` endpoint before sending:
+
+   ```bash
+   python3 - <<'EOF'
+   import json, urllib.request
+   base = "http://YOUR_HEAD_NODE:PORT"      # the vLLM OpenAI endpoint
+   prompt = open("prompt.txt").read()        # your filler prompt
+   req = urllib.request.Request(
+       base + "/tokenize",
+       data=json.dumps({"model": "YOUR_SERVED_MODEL_NAME", "prompt": prompt}).encode(),
+       headers={"Content-Type": "application/json"})
+   print("prompt tokens:", json.load(urllib.request.urlopen(req))["count"])
+   EOF
+   ```
+
+   Grow/trim the prompt until the count exceeds the target, then send it with `max_tokens: 48`,
+   `temperature: 0`.
    - Expected: HTTP 200 after the prefill (several minutes on GB10), **no** `ERROR` in serve logs.
    - Pre-patch, this class of request could return 500 with the `operation not permitted` trace.
 3. Optional: repeat near your `--max-model-len` (e.g. ~460K prompt tokens at 512K max) and run a
@@ -107,13 +138,29 @@ log line `sm12x_mqa.py patch applied` appears in each node's serve log.
 
 ```bash
 rm $MODELS_MOUNT/patches/sm12x_mqa.py   # on every node
-# relaunch - containers come back on the stock image file
+# relaunch - containers are recreated from the stock image
 ```
+
+Semantics, to be precise: the **image layers are immutable and are never modified** by this flow.
+What the serve-time `cp` modifies is the **container's writable layer**. If your launch flow
+recreates containers on every start (as this repo's runbooks do), removing the patched file from
+the mount fully reverts to stock at the next launch. If you instead copied the file into a
+long-lived container with `docker exec`/`docker cp`, that container's writable layer remains
+modified until the container itself is recreated - rollback then requires recreating the
+container, not just deleting the file from the mount.
+
+## Workaround without patching (with a caveat)
+
+`VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=1` forces the graph-safe direct top-k path for long contexts.
+**Warning**: this threshold is not decode-only - it also participates in prefill-side logits
+chunk sizing, so it may change prefill behavior/performance. Do **not** leave it set while
+running prefill-performance attribution experiments, and do not set it to `0`.
 
 ## Notes for agents applying this
 
 - Do not run destructive commands beyond what is listed; the stock image is never modified.
-- If Step 1 returns `0`, report "not affected" and stop - do not force-apply.
-- If the Step 2 asserts fail, the image layout changed: report the mismatch instead of improvising;
-  the maintainer may have fixed the kernel differently.
+- If Step 1 reports the file missing, or the Step 2 script exits nonzero, report the exact
+  output and stop - do not force-apply and do not improvise a different patch.
+- A `grep` count of `0` in Step 1 is **not** proof the image is fixed; only the Step 2 state
+  detection (explicit 19-parameter allowlist, three-state) is authoritative.
 - Multi-node: verify the patched file's checksum is identical on all nodes before relaunching.

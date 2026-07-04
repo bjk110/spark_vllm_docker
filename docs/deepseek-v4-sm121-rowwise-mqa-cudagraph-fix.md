@@ -1,6 +1,6 @@
-# EngineDeadError at long context (>256K) on DGX Spark (GB10/SM121): Triton JIT load during CUDA graph capture in `_fp8_paged_mqa_logits_rowwise_kernel` - root cause + validated fix
+# EngineDeadError at long context (observed at >256K) on DGX Spark (GB10/SM121): Triton JIT load during CUDA graph capture in `_fp8_paged_mqa_logits_rowwise_kernel` - root cause + validated fix
 
-**TL;DR** - On the current production image (`ghcr.io/bjk110/vllm-spark:dsv4-sm121-indexer-production`, digest `sha256:ade810fd…`, same manifest as `v023-dsv4-72261a7-sm121-deepgemm-indexer-prod-fa83457d`), serving DeepSeek-V4-Flash in dual-node TP=2 with `--max-model-len 524288` dies with `EngineDeadError` the first time a decode step encounters a *novel* context-length shape (in practice: agent workloads crossing ~256K tokens), even though stress tests up to 256K pass. The root cause is a Triton kernel in the SM12x fallback path whose **sizes and strides are all `tl.constexpr`**, forcing a new cubin per novel shape; when the first launch of a new specialization happens during CUDA graph capture, `cuModuleLoad` is issued mid-capture → `CUDA_ERROR_NOT_PERMITTED` → dead engine. A 19-line signature-only patch (de-constexprify the runtime-variant parameters) removes the crash class entirely while keeping decode fully CUDA-graph captured. Validated with decode at **462,529 prompt tokens** and multi-hour 3-way concurrency stress, zero errors.
+**TL;DR** - On the current production image (`ghcr.io/bjk110/vllm-spark:dsv4-sm121-indexer-production`, digest `sha256:ade810fd…`, same manifest as `v023-dsv4-72261a7-sm121-deepgemm-indexer-prod-fa83457d`), serving DeepSeek-V4-Flash in dual-node TP=2 with `--max-model-len 524288` dies with `EngineDeadError` the first time a decode step encounters a *novel* context-length shape. In our reproduction this fired on agent workloads crossing ~256K tokens, but that figure is the **observed reproduction territory, not an intrinsic threshold**: the path decision is `logits_bytes` vs. the SM12x sparse-indexer threshold (256 MB default), and small-batch decode stays below it at any context length - shorter shapes simply tend to be compiled earlier in the process lifetime. The root cause is a Triton kernel in the SM12x fallback path whose **sizes and strides are all `tl.constexpr`**, forcing a new cubin per novel shape; when the first launch of a new specialization happens during CUDA graph capture, `cuModuleLoad` is issued mid-capture → `CUDA_ERROR_NOT_PERMITTED` → dead engine. A 19-line signature-only patch (de-constexprify the runtime-variant parameters) removes the crash class entirely while keeping decode fully CUDA-graph captured. Validated with decode at **462,529 prompt tokens** and multi-hour 3-way concurrency stress, zero errors.
 
 ---
 
@@ -45,13 +45,13 @@ Key confusing property: **a stress test up to 256K tokens (incl. 2-way concurren
 
 ## Root cause chain (all file references are paths inside the image)
 
-1. **Decode-side sparse indexer dispatch** - `vllm/model_executor/layers/sparse_attn_indexer.py:391`: the graph-safe *direct top-k* path (the one hardened by the `72261a7` "graph-safe topk padding" fix) is only taken when `logits_bytes > sparse_indexer_max_logits_bytes()`. That threshold defaults to **256 MB on SM12x** (`vllm/v1/attention/backends/mla/indexer.py:36`, override: `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB`). With small decode batches (`num_padded_tokens = batch × next_n ≤ 8` and `logits_width ≤ 524288`), `logits_bytes ≤ ~16 MB` - the threshold is **never crossed**, so decode always uses the fallback:
+1. **Decode-side sparse indexer dispatch** - `vllm/model_executor/layers/sparse_attn_indexer.py:391`: the graph-safe *direct top-k* path (the one carrying the "graph-safe topk padding" hardening present in the pinned vLLM source tree - `72261a7` here refers to the pinned tree this image is built from, not necessarily the exact commit that introduced that hardening) is only taken when `logits_bytes > sparse_indexer_max_logits_bytes()`. That threshold defaults to **256 MB on SM12x** (`vllm/v1/attention/backends/mla/indexer.py:36`, override: `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB`). With small decode batches (`num_padded_tokens = batch × next_n ≤ 8` and `logits_width ≤ 524288`), `logits_bytes ≤ ~16 MB` - the threshold is **never crossed**, so decode always uses the fallback:
 
 2. **The fallback materializes full logits via a Triton kernel** - `sm12x_mqa.py::fp8_paged_mqa_logits_rowwise_triton` (selected for any model with `head_dim % 64 == 0 and num_heads % 4 == 0`, i.e. always for DSv4-Flash). Its kernel declares **`num_rows`, `logits_width`, and all 17 stride parameters as `tl.constexpr`**:
 
 3. **`logits_width` varies with context** - `sparse_attn_indexer.py::_decode_logits_width` returns `min(max_model_len, max_seq_len_of_batch)` with **no bucketing**. Every novel `(logits_width, num_rows, strides)` combination ⇒ a brand-new Triton specialization ⇒ compile + **`cuModuleLoad`** at first launch *in that process*.
 
-4. **First launch during capture = death** - under `FULL_DECODE_ONLY`, decode batches are CUDA-graph captured (`AttentionCGSupport.UNIFORM_BATCH` lazy capture per batch descriptor). If the first launch of a new kernel specialization lands inside a capture, `cuModuleLoad` is illegal (`CUDA_ERROR_NOT_PERMITTED`, error 800) and the worker dies. This is the *same* failure class that `72261a7` fixed for the direct top-k kernel (`_fp8_(paged_)mqa_logits_kernel` constexpr specialization) - the rowwise variant simply wasn't covered.
+4. **First launch during capture = death** - under `FULL_DECODE_ONLY`, decode batches are CUDA-graph captured (`AttentionCGSupport.UNIFORM_BATCH` lazy capture per batch descriptor). If the first launch of a new kernel specialization lands inside a capture, `cuModuleLoad` is illegal (`CUDA_ERROR_NOT_PERMITTED`, error 800) and the worker dies. This is the *same* failure class as the one already hardened for the direct top-k kernel (`_fp8_(paged_)mqa_logits_kernel` constexpr specialization) in the pinned tree - the rowwise variant simply wasn't covered.
 
 Empirical confirmation: after the crash, the persistent Triton cache contained **zero** compiled variants of the rowwise kernel - its first-ever compilation in that process was the fatal one. This also explains the "mostly stable" feel: the more your workload explores novel context lengths (long documents, agents), the more often you roll the dice.
 
@@ -117,27 +117,34 @@ No body changes needed: `logits_width`/`num_rows` are only used in masking compa
 
 ### Applying it without rebuilding the image
 
-Generate the patched file from the stock one (idempotent, asserts exactly 19 replacements):
+Extract the stock file, then run the repo's apply script on the extracted copy
+(`patches/sm121/apply_sm121_rowwise_mqa_graph_safe.py`). The script uses an explicit
+allowlist of the 19 target parameters and distinguishes three states: all 19 still
+`tl.constexpr` → patch; all 19 already runtime arguments → no-op "already applied";
+anything else (missing/mixed/renamed, wrong file, layout drift) → refuse with a nonzero
+exit. Replacement is atomic (`ast.parse` + `py_compile` on a temp file, original mode
+preserved, `os.replace()`):
 
 ```bash
-docker exec <container> cat /usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/ops/sm12x_mqa.py > sm12x_mqa.py.orig
-python3 - <<'EOF'
-import re
-src = open("sm12x_mqa.py.orig").read()
-m = re.search(r"def _fp8_paged_mqa_logits_rowwise_kernel\((.*?)\):\n", src, re.S)
-new_sig, n = re.subn(r"\b(num_rows|logits_width|stride_\w+): tl\.constexpr", r"\1", m.group(1))
-assert n == 19, n
-open("sm12x_mqa.py", "w").write(src[:m.start(1)] + new_sig + src[m.end(1):])
-EOF
+docker exec <container> cat /usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/ops/sm12x_mqa.py > sm12x_mqa.py
+python3 apply_sm121_rowwise_mqa_graph_safe.py sm12x_mqa.py
 ```
 
-Then place `sm12x_mqa.py` on a volume already mounted in the container (e.g. the models mount) and copy it over the stock file at serve time, *before* `vllm serve` starts (containers recreated per launch keep the stock image intact - rollback = stop copying):
+Then place `sm12x_mqa.py` on a volume already mounted in the container (e.g. the models
+mount) and copy it over the stock file at serve time, *before* `vllm serve` starts:
 
 ```bash
 # in the serve entry script, before exec vllm serve:
 OPS=/usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/ops
 [ -f /models/patches/sm12x_mqa.py ] && cp /models/patches/sm12x_mqa.py "$OPS/sm12x_mqa.py"
 ```
+
+Rollback semantics, to be precise: the **image layers are immutable and never modified**
+by this flow. The serve-time `cp` modifies the **container's writable layer** only. If
+your launch flow recreates containers from the stock image on every start (as this
+repo's runbooks do), removing the patched file from the mount fully reverts to stock at
+the next launch. If you instead `docker exec`-copied into a long-lived container, its
+writable layer stays modified until the container is recreated.
 
 ## Validation
 
@@ -151,14 +158,14 @@ OPS=/usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/ops
 
 ## Workarounds if you can't patch
 
-- `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=1` - forces the graph-safe direct top-k path for contexts ≳128K (the risk zone). Caveat: the same threshold participates in prefill-side logits chunk sizing (`sparse_attn_indexer.py:174`); `0` is **not** recommended.
+- `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=1` - forces the graph-safe direct top-k path for contexts ≳128K (the risk zone). Caveat: the same threshold participates in prefill-side logits chunk sizing (`sparse_attn_indexer.py:174`), so this knob is **not decode-only**: it may change prefill behavior/performance and should not be in place while running prefill-performance attribution experiments. `0` is **not** recommended.
 - `cudagraph_mode PIECEWISE` - keeps the indexer out of full-graph capture; costs decode throughput.
 - Warming up every context-length range you'll ever serve, per engine start, "works" but is impractical at 512K (multi-minute prefills per launch) and is defeated by the unbounded specialization space anyway.
 
 ## Suggested upstream fix options
 
 1. Take the signature patch above as-is (smallest diff, validated).
-2. Or mirror the `72261a7` approach: pad `logits_width` to fixed power-of-two buckets clamped at `max_model_len`, keeping constexpr but bounding the variant space, and pre-compile the buckets at init.
+2. Or mirror the direct-topk padding approach already in the pinned tree: pad `logits_width` to fixed power-of-two buckets clamped at `max_model_len`, keeping constexpr but bounding the variant space, and pre-compile the buckets at init.
 3. Or lower the SM12x direct-topk threshold so small-batch decode also uses the already-graph-safe path (needs an eye on the prefill chunk-sizing interaction).
 
 Happy to provide full logs, the exact stack trace, or run validation of a fixed image on the same dual-Spark setup.
