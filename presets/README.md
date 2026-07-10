@@ -103,6 +103,8 @@ Not promoted; tuning/bring-up/A-B and stack-bisection variants.
 | `qwen3.6-27b-prismascout-nvfp4-tp2-v022-trt37.env` | …PrismaSCOUT NVFP4 · v022 TRT 3.7 | dual-rdma TP2 | v022 stack-bisection variant |
 | `qwen3.6-27b-prismascout-nvfp4-tp2-v022-tx581.env` | …PrismaSCOUT NVFP4 · v022 Transformers 5.8.1 | dual-rdma TP2 | v022 stack-bisection variant |
 | `qwen3.6-27b-prismascout-nvfp4-tp2-v022-d568.env` | …PrismaSCOUT NVFP4 · v022-d568 | dual-rdma TP2 | v022-d568 stack variant |
+| `deepseek-v4-h1z-longout-c2-throughput-experimental-tp2.env` | DeepSeek-V4-Flash long-output c2 (H0) | dual-rdma TP2 | Experimental long-output/throughput-only (not interactive; ~4 GiB KV). See [`docs/dsv4-longout-experimental-profiles.md`](../docs/dsv4-longout-experimental-profiles.md) |
+| `deepseek-v4-h1z-longout-c4-deepbatch-experimental-tp2.env` | DeepSeek-V4-Flash long-output c4 deep-batch (H0) | dual-rdma TP2 | Experimental long-output/offline deep-batch (8 GiB KV; `llama-benchy` c4-safe PASS; high TTFT — not interactive). See [`docs/dsv4-longout-experimental-profiles.md`](../docs/dsv4-longout-experimental-profiles.md) |
 
 ## 6. Historical and reproduction presets
 

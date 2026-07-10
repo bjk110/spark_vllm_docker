@@ -55,6 +55,15 @@ Rollback procedure: [`docs/deepseek-v4-prefill8192-production-runbook.md`](docs/
 > The production baseline above is unchanged. Full record:
 > [`docs/dsv4-sparse-mla-b3-investigation-closure.md`](docs/dsv4-sparse-mla-b3-investigation-closure.md).
 
+> **P46 long-output experimental profiles.** Experimental **c2/c4** DeepSeek-V4-Flash profiles for
+> **long-output / deep-batch throughput** testing are available — these are **not** the production
+> baseline; use the digest-pinned production preset above for normal serving and restore. c4 passed
+> `llama-benchy` c4-safe validation, but short-output / interactive serving stays unsuitable
+> (prefill-stagger) — use only for long-output / throughput-oriented offline workloads. Presets:
+> [`…longout-c2-throughput…`](presets/deepseek-v4-h1z-longout-c2-throughput-experimental-tp2.env),
+> [`…longout-c4-deepbatch…`](presets/deepseek-v4-h1z-longout-c4-deepbatch-experimental-tp2.env);
+> detail: [`docs/dsv4-longout-experimental-profiles.md`](docs/dsv4-longout-experimental-profiles.md).
+
 Component versions, stack lineage, and digests → [`docs/software-stack.md`](docs/software-stack.md).
 Image tag → Git-ref mapping → [`docs/images.md`](docs/images.md). Optional FlashInfer-AOT drop-in
 for `v022-d568` → [`docs/flashinfer-aot-prebake.md`](docs/flashinfer-aot-prebake.md).

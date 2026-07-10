@@ -90,6 +90,7 @@ Not promoted. Reference/experimental only.
 | [unholy-fusion-benchmark.md](unholy-fusion-benchmark.md) | `unholy-fusion` configuration, limits, and benchmark comparison | `Experimental` | Higher-prefill DSV4 experimental alternative (not a recommended production path) |
 | [step3.7-tokenizer-overlay.md](step3.7-tokenizer-overlay.md) | Step-3.7 non-mutating runtime tokenizer overlay | `Experimental` | Tokenizer-overlay technique |
 | [prometheus-routing-path-fix.md](prometheus-routing-path-fix.md) | Prometheus `routing.py` `.path` guard (experimental image) | `Experimental` | Monitoring routing-path fix notes |
+| [dsv4-longout-experimental-profiles.md](dsv4-longout-experimental-profiles.md) | DeepSeek-V4-Flash long-output c2/c4 experimental profiles (H1Z-P46) | `Experimental` | Long-output/throughput-only c2/c4 profiles (not production; c4 `llama-benchy` c4-safe PASS; short-output/interactive unsuitable) |
 
 ## Historical and superseded records
 
