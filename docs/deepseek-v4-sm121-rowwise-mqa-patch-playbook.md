@@ -1,5 +1,7 @@
 # Agent Playbook - Fix `EngineDeadError` at long context on GB10/SM121 (rowwise indexer CUDA-graph crash)
 
+> **Standby patch only.** This patch is not wired into the production image, production preset, Dockerfiles, or entrypoints. Use it only for isolated long-context validation.
+
 > **How to use this file**: hand it to Claude Code (or any coding agent with shell access to your
 > DGX Spark) and say *"apply this playbook"*. It covers detection, patch, deployment, validation,
 > rollback. A human can also follow it step by step.
