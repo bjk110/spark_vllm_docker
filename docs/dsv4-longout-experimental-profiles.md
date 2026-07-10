@@ -67,6 +67,29 @@ Convention: 16K context (`--depth 16384 --pp 2048`), `--exact-tg`, `--tg 4096`, 
 
 Evidence: `/home/bjk110/docker-build/h1z-p48a-c4-tg4096-asymptote-probe-20260710T063305/` (SHA256 ALL_OK, 26 files).
 
+## Published metadata image tag (H1Z-P49D)
+
+A GHCR tag was published for provenance and discoverability of the validated H0 runtime paired with this
+documented long-output c4 profile. It is a **metadata-only** tag — do not read it as a new runtime.
+
+- Tag: `ghcr.io/bjk110/vllm-spark:h1z-p48-longout-c4-exp-5131a63`
+- Remote manifest digest: `sha256:04ff082e9e012924682dd95d77910b1f580a3debd0c8dda7350a82ba0e4a1077`
+- Config / local image ID: `sha256:75c7e93b0dcc`
+- Runtime delta: **NONE**. RootFS is **H0-equivalent** (106 layers, byte-identical to the production digest
+  `sha256:ade810fd…` / config `fa83457d`). The image was built `FROM` H0 with provenance `LABEL`s only
+  (no `COPY`/`RUN`/`ENV`, no filesystem change). Remote labels verified 12/12.
+- The c4 profile is a **preset** (`presets/deepseek-v4-h1z-longout-c4-deepbatch-experimental-tp2.env`, hash
+  `e49f96cb`) that runs ON this image. The P48A result (`H1Z_P48A_C4_TG4096_STRONG`, c4 tg4096 76.18 tok/s =
+  1.91x c1) is **preset/profile-driven, not caused by new image bits**.
+- Intended use: **offline / deep-batch / long-output** throughput only — not interactive, not a production
+  baseline, not a production replacement.
+- The PR #18 SM121 rowwise-MQA standby patch is **not wired / not active** in this image. **Issue #17 is not
+  fixed** by this tag and remains open.
+- Production users should keep using the digest-pinned production path
+  (`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env`, preset hash `f1b049d5`) unless they
+  explicitly want this experimental long-output c4 metadata tag.
+- Provenance evidence: `/home/bjk110/docker-build/h1z-p49d-ghcr-push-longout-c4-exp-20260710T093000/` (SHA256 ALL_OK, 16 files).
+
 ## Evidence
 Validation was run as internal H1Z-P46 tasks (16K context, disposable dual-node H0 route, port 8100):
 - H1Z-P46A — first c2 long-output evidence (tg512 neutral, tg1024 1.20x c1).

@@ -63,6 +63,13 @@ Rollback procedure: [`docs/deepseek-v4-prefill8192-production-runbook.md`](docs/
 > [`…longout-c2-throughput…`](presets/deepseek-v4-h1z-longout-c2-throughput-experimental-tp2.env),
 > [`…longout-c4-deepbatch…`](presets/deepseek-v4-h1z-longout-c4-deepbatch-experimental-tp2.env);
 > detail: [`docs/dsv4-longout-experimental-profiles.md`](docs/dsv4-longout-experimental-profiles.md).
+> A published GHCR **metadata-only** tag for the c4 profile exists for provenance/discoverability —
+> `ghcr.io/bjk110/vllm-spark:h1z-p48-longout-c4-exp-5131a63` (digest
+> `sha256:04ff082e9e012924682dd95d77910b1f580a3debd0c8dda7350a82ba0e4a1077`). Its RootFS is
+> **H0-equivalent** (byte-identical runtime to the production digest `sha256:ade810fd…`); it is **not**
+> the production baseline or a replacement, and the P48A/P46 c4 throughput is **preset/profile-driven,
+> not new image bits**. The PR #18 SM121 standby patch is **not wired** in it. For normal serving and
+> restore, keep using the digest-pinned production preset above.
 
 Component versions, stack lineage, and digests → [`docs/software-stack.md`](docs/software-stack.md).
 Image tag → Git-ref mapping → [`docs/images.md`](docs/images.md). Optional FlashInfer-AOT drop-in
