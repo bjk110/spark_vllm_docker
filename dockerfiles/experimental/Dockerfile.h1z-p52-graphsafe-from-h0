@@ -1,0 +1,49 @@
+# =============================================================================
+# H1Z-P52 — EXPERIMENTAL FROM-H0 graph-safe derivative (Issue #17 / PR #18)
+#
+# Repo-reproducible derivative of the validated production/H0 runtime that applies
+# the SM121 rowwise paged-MQA CUDA-graph-safety patch to the INSTALLED vLLM package
+# at build time (the P50/P51 method, now committed as a repo Dockerfile).
+#
+# WHY not from-source: the production from-source Dockerfile pins vLLM PR #41834
+# commit 72261a7, which upstream (jasl) force-pushed away (PR head now d71b9aaa),
+# so from-source rebuilds fail at checkout (H1Z-P52B). This derivative sidesteps
+# that by starting from the already-built, digest-pinned production image.
+#
+# NOT a production baseline or replacement. NOT wired into any production default.
+# Base = the immutable production manifest digest (config fa83457d), byte-identical
+# runtime to H0 tag vllm-spark:h1z-p38c-overlay-rebuild-h0-20260706T125127.
+# =============================================================================
+FROM ghcr.io/bjk110/vllm-spark@sha256:ade810fd637e30922a30d09f0fcf128fbeb2a757a27a64f8a77e3646fae223a7
+
+# One-file signature patch applied to the installed rowwise-MQA kernel, then
+# static-verified. Build fails if the patched state is not exactly 64 tl.constexpr
+# with valid syntax. Pure-Python Triton kernel -> patching the installed .py is
+# functionally equivalent to a from-source build for this kernel.
+COPY patches/sm121/apply_sm121_rowwise_mqa_graph_safe.py /tmp/apply_rowwise.py
+RUN set -eux; \
+    TGT=/usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia/ops/sm12x_mqa.py; \
+    python3 /tmp/apply_rowwise.py "$TGT"; \
+    find /usr/local/lib/python3.12/dist-packages/vllm/models/deepseek_v4/nvidia \
+        -name '__pycache__' -type d -prune -exec rm -rf {} + || true; \
+    test "$(grep -c tl.constexpr "$TGT")" = "64"; \
+    python3 -c "import ast,sys; ast.parse(open('$TGT').read()); print('ast.parse OK')"; \
+    python3 -m py_compile "$TGT" && echo "py_compile OK"; \
+    echo "[patch] sm121 rowwise-mqa graph-safe APPLIED to installed package (64 tl.constexpr)"
+
+LABEL org.opencontainers.image.title="vllm-spark H1Z P52 graph-safe FROM-H0 derivative" \
+      org.opencontainers.image.description="Experimental FROM-H0 derivative applying the SM121 rowwise paged-MQA graph-safe patch to the installed vLLM package. Not a production baseline replacement." \
+      org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker" \
+      org.opencontainers.image.revision="ee9b2ba" \
+      org.opencontainers.image.version="h1z-p52-graphsafe-from-h0-exp-ee9b2ba" \
+      org.opencontainers.image.ref.name="h1z-p52-graphsafe-from-h0-exp-ee9b2ba" \
+      ai.bjk110.vllm_spark.role="experimental" \
+      ai.bjk110.vllm_spark.production_baseline="false" \
+      ai.bjk110.vllm_spark.base_h0_image="vllm-spark:h1z-p38c-overlay-rebuild-h0-20260706T125127" \
+      ai.bjk110.vllm_spark.base_production_digest="sha256:ade810fd637e30922a30d09f0fcf128fbeb2a757a27a64f8a77e3646fae223a7" \
+      ai.bjk110.vllm_spark.production_preset_hash="f1b049d5" \
+      ai.bjk110.vllm_spark.c4_preset_hash="e49f96cb" \
+      ai.bjk110.vllm_spark.runtime_delta="one-file-installed-sm12x_mqa.py-signature-patch" \
+      ai.bjk110.vllm_spark.patch_mode="build-time-installed-package" \
+      ai.bjk110.vllm_spark.p50c_reference="H1Z_P50C_STRONG_ACTIVE_VALIDATION" \
+      ai.bjk110.vllm_spark.issue17_status="experimental-validated-production-pending"

@@ -186,6 +186,25 @@ Status (important):
   promote the patch into a supported build path.
 - **No performance claim.** This image is for graph-capture stability validation, not throughput.
 
+### Repo-reproducible build recipe (H1Z-P52)
+
+The graph-safe path is reproducible from the repository via a non-default experimental Dockerfile:
+
+- Path: [`dockerfiles/experimental/Dockerfile.h1z-p52-graphsafe-from-h0`](../dockerfiles/experimental/Dockerfile.h1z-p52-graphsafe-from-h0)
+- It is a **FROM-H0 derivative**: `FROM ghcr.io/bjk110/vllm-spark@sha256:ade810fd…` (the production digest, config
+  `fa83457d`) + `COPY` the patch script + a build-time `RUN` that applies it to the **installed** vLLM package
+  (`ops/sm12x_mqa.py`), invalidates `__pycache__`, and statically verifies (`64 tl.constexpr`, `ast.parse`, `py_compile`;
+  the build fails otherwise). One-file installed-package runtime delta; **no source wheel rebuild, no package install.**
+- Why FROM-H0 and not from-source: the production from-source Dockerfile pins vLLM PR #41834 commit `72261a7`, which
+  upstream force-pushed away (`fatal: reference is not a tree` at checkout, H1Z-P52B), so a source rebuild is currently
+  blocked. The FROM-H0 derivative sidesteps that by starting from the already-built production image.
+- Build (local, not pushed): `docker build -f dockerfiles/experimental/Dockerfile.h1z-p52-graphsafe-from-h0 -t vllm-spark:h1z-p52-graphsafe-from-h0-exp-ee9b2ba .`
+- Validation: **P52B2** static PASS (patched `sm12x_mqa.py` byte-identical to the P50/P51 validated file) + **P52C2**
+  active staged validation to a tokenizer-verified **256K** context (262,201 tokens), reproducing P50C with **zero**
+  `EngineDeadError` / CUDA graph failure / `cuModuleLoad` fault / OOM / freeze / preemption.
+- Status: **experimental**, **not** published to GHCR yet (that is a separate approval gate), **not** production default,
+  production baseline unchanged, **no performance claim**. Issue #17 stays production-pending.
+
 ## Workarounds if you can't patch
 
 - `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=1` - forces the graph-safe direct top-k path for contexts ≳128K (the risk zone). Caveat: the same threshold participates in prefill-side logits chunk sizing (`sparse_attn_indexer.py:174`), so this knob is **not decode-only**: it may change prefill behavior/performance and should not be in place while running prefill-performance attribution experiments. `0` is **not** recommended.

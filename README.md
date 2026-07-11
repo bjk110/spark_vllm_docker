@@ -80,8 +80,13 @@ Rollback procedure: [`docs/deepseek-v4-prefill8192-production-runbook.md`](docs/
 > (P50C) to a tokenizer-verified **256K context** with zero `EngineDeadError` / CUDA-graph fault. It is
 > **not** the production baseline or a replacement, is **not wired** into any production Dockerfile/preset/
 > entrypoint, and carries **no performance claim**. [Issue #17](https://github.com/bjk110/spark_vllm_docker/issues/17)
-> stays open as experimental-validated / production-pending. Detail:
-> [`docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md`](docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md).
+> stays open as experimental-validated / production-pending. A **repo-reproducible** build recipe for this
+> path lives at
+> [`dockerfiles/experimental/Dockerfile.h1z-p52-graphsafe-from-h0`](dockerfiles/experimental/Dockerfile.h1z-p52-graphsafe-from-h0)
+> — a non-default FROM-H0 derivative that applies the patch to the installed vLLM package at build time
+> (the from-source build path is blocked upstream, so this is a derivative, not a wheel rebuild). Its local
+> image was re-validated to 256K (H1Z-P52C2). It is **not** published to GHCR yet and **not** production default.
+> Detail: [`docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md`](docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md).
 
 Component versions, stack lineage, and digests → [`docs/software-stack.md`](docs/software-stack.md).
 Image tag → Git-ref mapping → [`docs/images.md`](docs/images.md). Optional FlashInfer-AOT drop-in
