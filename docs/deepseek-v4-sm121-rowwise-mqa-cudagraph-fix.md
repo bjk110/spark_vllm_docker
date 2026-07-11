@@ -205,6 +205,20 @@ The graph-safe path is reproducible from the repository via a non-default experi
 - Status: **experimental**, **not** published to GHCR yet (that is a separate approval gate), **not** production default,
   production baseline unchanged, **no performance claim**. Issue #17 stays production-pending.
 
+### Promoted production-candidate preset (H1Z-P53)
+
+A digest-pinned **promoted production-candidate** preset makes the graph-safe candidate selectable for serving without
+replacing the production baseline:
+
+- Preset: [`presets/deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env`](../presets/deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env)
+- Derived from the production preset (`f1b049d5`) — **identical runtime fields, only `VLLM_IMAGE` differs**, pinned to the
+  candidate manifest `ghcr.io/bjk110/vllm-spark@sha256:de69fa367137…` (config `5bb962a9`, the P52C2-validated image).
+- Production-like validation (**H1Z-P53C**): `max_num_seqs=1`, capture `[2]`, 4 GiB KV, TP=2 mp/RoCE — correctness 5/5,
+  c1 latency within ±2% of `@ade810fd`, 32K/64K/128K long-context sanity, zero `EngineDeadError`/CUDA-graph faults.
+- **Rollback** is the existing production preset `f1b049d5` / image `@ade810fd` (config `fa83457d`), unchanged. This is an
+  **opt-in promoted candidate, not an in-place production-default replacement**, and carries **no performance claim**.
+  Issue #17 stays open until the owner decides on a production default.
+
 ## Workarounds if you can't patch
 
 - `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=1` - forces the graph-safe direct top-k path for contexts ≳128K (the risk zone). Caveat: the same threshold participates in prefill-side logits chunk sizing (`sparse_attn_indexer.py:174`), so this knob is **not decode-only**: it may change prefill behavior/performance and should not be in place while running prefill-performance attribution experiments. `0` is **not** recommended.

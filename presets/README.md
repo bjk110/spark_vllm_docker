@@ -29,6 +29,7 @@ The current accepted DeepSeek-V4-Flash production serving path. Runs the promote
 | Preset | Model / stack | Topology | Status | Use |
 |---|---|---|---|---|
 | `deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env` | DeepSeek-V4-Flash · SM121 DeepGEMM FP8-Q indexer, MARLIN MoE | dual-rdma TP=2 mp | **Current production** | Recommended DSV4 serving path (concurrency 1, ≤131K, MTP n=1, FULL_DECODE_ONLY `[2]`, 4 GiB fp8 KV) |
+| `deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env` | Same as above **+ SM121 rowwise-MQA graph-safe patch** (Issue #17), digest-pinned candidate `@sha256:de69fa367137…` | dual-rdma TP=2 mp | **Promoted candidate (opt-in)** | Identical to the production preset except `VLLM_IMAGE` (graph-safe candidate). Production-like validated (P53C). The current production preset above (`@ade810fd`) remains the unchanged **rollback**. Not a baseline replacement; no performance claim |
 
 ## 2. Rollback presets
 

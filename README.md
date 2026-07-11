@@ -86,6 +86,12 @@ Rollback procedure: [`docs/deepseek-v4-prefill8192-production-runbook.md`](docs/
 > — a non-default FROM-H0 derivative that applies the patch to the installed vLLM package at build time
 > (the from-source build path is blocked upstream, so this is a derivative, not a wheel rebuild). Its local
 > image was re-validated to 256K (H1Z-P52C2). It is **not** published to GHCR yet and **not** production default.
+> A digest-pinned **promoted production-candidate** preset
+> [`presets/…-graphsafe-production-candidate-tp2.env`](presets/deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env)
+> (identical to the production preset except `VLLM_IMAGE`) is available as an **opt-in** serving path after
+> production-like validation (H1Z-P53C: `max_num_seqs=1`, capture `[2]`, 4 GiB KV, correctness + c1 latency ±2% +
+> 32K/64K/128K sanity). The existing production preset (`f1b049d5` / `@ade810fd`) is **unchanged** and remains the
+> rollback baseline; this is **not** an in-place replacement and carries no performance claim.
 > Detail: [`docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md`](docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md).
 
 Component versions, stack lineage, and digests → [`docs/software-stack.md`](docs/software-stack.md).
