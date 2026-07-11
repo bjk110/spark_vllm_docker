@@ -28,8 +28,8 @@ The current accepted DeepSeek-V4-Flash production serving path. Runs the promote
 
 | Preset | Model / stack | Topology | Status | Use |
 |---|---|---|---|---|
-| `deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env` | DeepSeek-V4-Flash · SM121 DeepGEMM FP8-Q indexer, MARLIN MoE | dual-rdma TP=2 mp | **Current production** | Recommended DSV4 serving path (concurrency 1, ≤131K, MTP n=1, FULL_DECODE_ONLY `[2]`, 4 GiB fp8 KV) |
-| `deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env` | Same as above **+ SM121 rowwise-MQA graph-safe patch** (Issue #17), digest-pinned candidate `@sha256:de69fa367137…` | dual-rdma TP=2 mp | **Promoted candidate (opt-in)** | Identical to the production preset except `VLLM_IMAGE` (graph-safe candidate). Production-like validated (P53C). The current production preset above (`@ade810fd`) remains the unchanged **rollback**. Not a baseline replacement; no performance claim |
+| `deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env` | DeepSeek-V4-Flash · SM121 DeepGEMM FP8-Q indexer, MARLIN MoE, **graph-safe** (Issue #17) | dual-rdma TP=2 mp | **Current production (default, graph-safe)** | Recommended DSV4 serving path (concurrency 1, ≤131K, MTP n=1, FULL_DECODE_ONLY `[2]`, 4 GiB fp8 KV). Digest-pinned to the graph-safe image `@sha256:de69fa367137…` (config `5bb962a9`, H1Z-P54A promotion). Legacy `@ade810fd` baseline preserved as the rollback preset below. Repo recipe-level patched image; not an upstream fix; no performance claim |
+| `deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env` | Same graph-safe patch (Issue #17), digest-pinned `@sha256:de69fa367137…` | dual-rdma TP=2 mp | **Provenance (equals default)** | The former P53 production-candidate preset. Pins the **same** graph-safe digest as the default production preset above (now promoted). Retained for provenance/traceability; new users should use the default production preset |
 
 ## 2. Rollback presets
 
@@ -39,6 +39,7 @@ not the current serving path. Runbook:
 
 | Preset | Model / stack | Topology | Status | Use |
 |---|---|---|---|---|
+| `deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env` | DeepSeek-V4-Flash · SM121 indexer, MARLIN MoE (pre-graph-safe baseline, `@ade810fd` / config `fa83457d`) | dual-rdma TP=2 mp | **Legacy rollback (graph-safe)** | Byte-identical to the pre-H1Z-P54A production preset; roll back the default graph-safe production preset to `@ade810fd` here with no rebuild |
 | `deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env` | DeepSeek-V4-Flash prefill8192 (config `4c41950c`) | dual-rdma TP=2 mp | **Immediate rollback** | Prior production; roll back here from `dsv4-sm121-indexer` |
 | `deepseek-v4-v023-stack-pr41834-fullgraph-validated-rollback-tp2.env` | DeepSeek-V4-Flash graph-only (L1) | dual-rdma TP=2 | Rollback (L1) | Graph-only fallback (~27.2 t/s) |
 | `deepseek-v4-v023-stack-pr41834-eager-u0-rollback-tp2.env` | DeepSeek-V4-Flash eager U0-RDMA (L2) | dual-rdma TP=2 | Rollback (L2) | Eager fallback (~7.4 t/s) |

@@ -29,7 +29,7 @@ diagrams, and the backend comparison are in [`docs/architecture.md`](docs/archit
 
 | Path | Status | Backend | Use case |
 |---|---|---|---|
-| `dsv4-sm121-indexer` | **Current DeepSeek-V4-Flash production baseline** | `mp` | Recommended DSV4 path — SM121 DeepGEMM FP8-Q prefill indexer, MARLIN MoE, production Triton dense/sparse-MLA, dual-node TP=2. Digest-pinned. |
+| `dsv4-sm121-indexer` | **Current DeepSeek-V4-Flash production baseline** (graph-safe, H1Z-P54A) | `mp` | Recommended DSV4 path — SM121 DeepGEMM FP8-Q prefill indexer, MARLIN MoE, production Triton dense/sparse-MLA, dual-node TP=2. Digest-pinned to the graph-safe image (`@de69fa367137`); previous `@ade810fd` baseline kept as the legacy rollback preset. |
 | `dsv4-prefill8192` | **Immediate rollback baseline** (prior production) | `mp` | Rollback target for `dsv4-sm121-indexer` — same envelope without the SM121 indexer. |
 | `dsv4-d568` | Frozen legacy/historical DSV4 baseline | `ray` or `mp` | Historical decode-optimized reproduction/reference only. |
 | `unholy-fusion` | Experimental (DSV4 only) | `mp` | Higher-prefill DSV4 experimental alternative — not a recommended production path. |
@@ -37,9 +37,19 @@ diagrams, and the backend comparison are in [`docs/architecture.md`](docs/archit
 | `v022-d568` | Stable general base (NGC 26.04, vLLM 0.21.0) | `ray` or direct | Qwen3.6, Gemma 4 31B, abliterix NVFP4 presets. |
 | `v021-ngc2603` / `v021-tq` | Stable base for most existing presets | `ray` or direct | Most non-DSV4 presets. |
 
-**Current DeepSeek-V4 production** runs the promoted image by its **immutable GHCR manifest digest**
-(`sha256:ade810fd…`, config `fa83457d`) via the digest-pinned preset
+**Current DeepSeek-V4 production (default recommended recipe)** runs the validated **graph-safe**
+image by its **immutable GHCR manifest digest**
+(`sha256:de69fa367137…`, config `sha256:5bb962a9055d…`) via the digest-pinned preset
 [`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env`](presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env).
+This preset was promoted from the previous `@ade810fd` baseline (H1Z-P54A) by changing **only**
+`VLLM_IMAGE` to the graph-safe digest; all serving settings (`max_num_seqs=1`, capture `[2]`, 4 GiB
+KV, TP=2 mp/RoCE, MTP n=1, MARLIN) are unchanged. The graph-safe delta is a **one-file installed
+`ops/sm12x_mqa.py` signature patch** (PR #18, `tl.constexpr` 83→64) — a repository recipe-level
+patched image, **not** an upstream vLLM fix, with **no performance-improvement claim** and **no**
+GHCR `latest`/`stable`/`production` tag movement. Prefer this digest-pinned preset over floating tags.
+The previous baseline is preserved as an explicit **legacy rollback** preset
+[`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env`](presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env)
+(`@ade810fd`, config `fa83457d`) — use it to return to the pre-graph-safe image without a rebuild.
 The mutable alias `dsv4-sm121-indexer-production` is provenance only — not a runtime pin. Full
 identity, routing, evidence, rollback, clone guard, and ABI provenance:
 [`docs/deepseek-v4-sm121-indexer-production.md`](docs/deepseek-v4-sm121-indexer-production.md).
@@ -78,20 +88,37 @@ Rollback procedure: [`docs/deepseek-v4-prefill8192-production-runbook.md`](docs/
 > this is a **real one-file runtime delta** (installed `ops/sm12x_mqa.py` signature patch, `tl.constexpr`
 > 83→64) over the H0/production-equivalent runtime. It passed static (P50B) + active staged validation
 > (P50C) to a tokenizer-verified **256K context** with zero `EngineDeadError` / CUDA-graph fault. It is
-> **not** the production baseline or a replacement, is **not wired** into any production Dockerfile/preset/
-> entrypoint, and carries **no performance claim**. [Issue #17](https://github.com/bjk110/spark_vllm_docker/issues/17)
-> stays open as experimental-validated / production-pending. A **repo-reproducible** build recipe for this
+> **not** itself the digest pinned by the default production preset (that is the equivalent `@de69fa367137`
+> graph-safe image, see below), and carries **no performance claim**. [Issue #17](https://github.com/bjk110/spark_vllm_docker/issues/17)
+> is **closed** (resolved at the repository recipe level — the graph-safe image is now the default recommended
+> preset; see the promotion note below). A **repo-reproducible** build recipe for this
 > path lives at
 > [`dockerfiles/experimental/Dockerfile.h1z-p52-graphsafe-from-h0`](dockerfiles/experimental/Dockerfile.h1z-p52-graphsafe-from-h0)
 > — a non-default FROM-H0 derivative that applies the patch to the installed vLLM package at build time
 > (the from-source build path is blocked upstream, so this is a derivative, not a wheel rebuild). Its local
 > image was re-validated to 256K (H1Z-P52C2). It is **not** published to GHCR yet and **not** production default.
-> A digest-pinned **promoted production-candidate** preset
-> [`presets/…-graphsafe-production-candidate-tp2.env`](presets/deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env)
-> (identical to the production preset except `VLLM_IMAGE`) is available as an **opt-in** serving path after
-> production-like validation (H1Z-P53C: `max_num_seqs=1`, capture `[2]`, 4 GiB KV, correctness + c1 latency ±2% +
-> 32K/64K/128K sanity). The existing production preset (`f1b049d5` / `@ade810fd`) is **unchanged** and remains the
-> rollback baseline; this is **not** an in-place replacement and carries no performance claim.
+> **This graph-safe image is now the default recommended production recipe (H1Z-P54A).** The default
+> production preset
+> [`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env`](presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env)
+> was updated in place to pin the validated graph-safe digest
+> `ghcr.io/bjk110/vllm-spark@sha256:de69fa367137…` (config `sha256:5bb962a9055d…`) — the P53
+> production-candidate image, promoted after P50C/P52C2 256K validation, a P52 full 24-row
+> `llama-benchy` bench (24/24, incl. c8), a **performance-neutral** P52Bench-Baseline vs `@ade810fd`
+> on the same disposable route, and P53C production-like validation (`max_num_seqs=1`, capture `[2]`,
+> 4 GiB KV; correctness 5/5, c1 latency ~±2%, 32K/64K/128K sanity, zero `EngineDeadError`/CUDA/
+> `cuModuleLoad`/OOM/preemption). The previous baseline is preserved verbatim as the **legacy rollback**
+> preset
+> [`presets/…-production-legacy-ade810fd-tp2.env`](presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env)
+> (`@ade810fd` / config `fa83457d`). The earlier
+> [`…-graphsafe-production-candidate-tp2.env`](presets/deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env)
+> preset is retained for provenance and pins the **same** digest as the default preset — new users should
+> use the default production preset; use the legacy preset only to roll back. This is a **repository
+> recipe-level** promotion of a validated **patched** image — **not** an upstream vLLM fix, **no**
+> performance-improvement claim, and **no** GHCR `latest`/`stable`/`production` tag was moved. The
+> from-source build path remains blocked upstream (pinned source unavailable), so the reproducible
+> recipe stays the FROM-H0 derivative Dockerfile above.
+> [Issue #17](https://github.com/bjk110/spark_vllm_docker/issues/17) is **closed** as resolved at the
+> repository recipe level (graph-safe image is now the default recommended preset).
 > Detail: [`docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md`](docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md).
 
 Component versions, stack lineage, and digests → [`docs/software-stack.md`](docs/software-stack.md).

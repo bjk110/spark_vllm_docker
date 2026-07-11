@@ -1,6 +1,6 @@
 # EngineDeadError at long context (observed at >256K) on DGX Spark (GB10/SM121): Triton JIT load during CUDA graph capture in `_fp8_paged_mqa_logits_rowwise_kernel` - root cause + validated fix
 
-> **Standby patch only.** This patch is not wired into the production image, production preset, Dockerfiles, or entrypoints. Use it only for isolated long-context validation.
+> **Promoted (H1Z-P54A).** The default production preset now pins the validated graph-safe image (`@de69fa367137`, the P52C2/P53C-validated FROM-H0 derivative that applies this patch to the installed `ops/sm12x_mqa.py`); Issue #17 is **closed** at the repository recipe level. The previous `@ade810fd` baseline is preserved as the legacy rollback preset. The standalone patch *script* remains **Standby** (not wired into the active Dockerfiles/entrypoints); the promotion was done at the image layer via the FROM-H0 derivative recipe, not by editing the active build. Details: "Promoted to default recommended production recipe" below.
 
 **TL;DR** - On the current production image (`ghcr.io/bjk110/vllm-spark:dsv4-sm121-indexer-production`, digest `sha256:ade810fd…`, same manifest as `v023-dsv4-72261a7-sm121-deepgemm-indexer-prod-fa83457d`), serving DeepSeek-V4-Flash in dual-node TP=2 with `--max-model-len 524288` dies with `EngineDeadError` the first time a decode step encounters a *novel* context-length shape. In our reproduction this fired on agent workloads crossing ~256K tokens, but that figure is the **observed reproduction territory, not an intrinsic threshold**: the path decision is `logits_bytes` vs. the SM12x sparse-indexer threshold (256 MB default), and small-batch decode stays below it at any context length - shorter shapes simply tend to be compiled earlier in the process lifetime. The root cause is a Triton kernel in the SM12x fallback path whose **sizes and strides are all `tl.constexpr`**, forcing a new cubin per novel shape; when the first launch of a new specialization happens during CUDA graph capture, `cuModuleLoad` is issued mid-capture → `CUDA_ERROR_NOT_PERMITTED` → dead engine. A 19-line signature-only patch (de-constexprify the runtime-variant parameters) removes the crash class entirely while keeping decode fully CUDA-graph captured. Validated with decode at **462,529 prompt tokens** and multi-hour 3-way concurrency stress, zero errors.
 
@@ -182,8 +182,9 @@ Status (important):
 - This is **not** a production baseline and **not** a production replacement. The production image
   (`sha256:ade810fd…` / config `fa83457d`) and production preset (`f1b049d5`) are **unchanged**, and this patch is
   **not wired** into any production Dockerfile, preset, or entrypoint.
-- Issue #17 remains **experimental-validated / production-pending** — it stays open unless the project owner decides to
-  promote the patch into a supported build path.
+- Issue #17 is now **closed** (H1Z-P54A) — the graph-safe image was promoted to the default recommended production
+  recipe (see "Promoted to default recommended production recipe" below). This published P50/P51 tag is a separate
+  provenance image; the default production preset pins the equivalent `@de69fa367137` graph-safe digest.
 - **No performance claim.** This image is for graph-capture stability validation, not throughput.
 
 ### Repo-reproducible build recipe (H1Z-P52)
@@ -202,8 +203,8 @@ The graph-safe path is reproducible from the repository via a non-default experi
 - Validation: **P52B2** static PASS (patched `sm12x_mqa.py` byte-identical to the P50/P51 validated file) + **P52C2**
   active staged validation to a tokenizer-verified **256K** context (262,201 tokens), reproducing P50C with **zero**
   `EngineDeadError` / CUDA graph failure / `cuModuleLoad` fault / OOM / freeze / preemption.
-- Status: **experimental**, **not** published to GHCR yet (that is a separate approval gate), **not** production default,
-  production baseline unchanged, **no performance claim**. Issue #17 stays production-pending.
+- Status: repository-reproducible recipe for the graph-safe image. The equivalent built image (config `5bb962a9`) is
+  what the default production preset now pins (H1Z-P54A) via its GHCR manifest `@de69fa367137`; **no performance claim**.
 
 ### Promoted production-candidate preset (H1Z-P53)
 
@@ -215,9 +216,27 @@ replacing the production baseline:
   candidate manifest `ghcr.io/bjk110/vllm-spark@sha256:de69fa367137…` (config `5bb962a9`, the P52C2-validated image).
 - Production-like validation (**H1Z-P53C**): `max_num_seqs=1`, capture `[2]`, 4 GiB KV, TP=2 mp/RoCE — correctness 5/5,
   c1 latency within ±2% of `@ade810fd`, 32K/64K/128K long-context sanity, zero `EngineDeadError`/CUDA-graph faults.
-- **Rollback** is the existing production preset `f1b049d5` / image `@ade810fd` (config `fa83457d`), unchanged. This is an
-  **opt-in promoted candidate, not an in-place production-default replacement**, and carries **no performance claim**.
-  Issue #17 stays open until the owner decides on a production default.
+- **Rollback** is the previous baseline `@ade810fd` (config `fa83457d`), now preserved as the legacy rollback preset
+  (see below). This preset is retained for provenance and pins the **same** digest as the promoted default preset.
+
+### Promoted to default recommended production recipe (H1Z-P54A)
+
+The graph-safe candidate was promoted to the **default recommended production recipe**. This is a repository
+recipe-level promotion of a validated **patched** image — **not** an upstream vLLM fix, with **no** performance claim,
+and **no** GHCR `latest`/`stable`/`production` tag movement.
+
+- Default production preset (updated in place): [`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env`](../presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env)
+  — the **only** functional change is `VLLM_IMAGE` (`@ade810fd` → `@de69fa367137…`, config `5bb962a9`); every serving
+  field (`max_num_seqs=1`, capture `[2]`, 4 GiB fp8 KV, TP=2 mp/RoCE, MTP n=1, MARLIN) is unchanged.
+- Legacy rollback preset (previous baseline, preserved verbatim): [`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env`](../presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env)
+  — `@ade810fd` / config `fa83457d`; use it to return to the pre-graph-safe image with no rebuild.
+- The earlier candidate preset (`…-graphsafe-production-candidate-tp2.env`) is retained for provenance and pins the
+  **same** graph-safe digest as the default preset; new users should use the default production preset.
+- Promotion evidence: P50C/P52C2 256K PASS; P52 full 24-row `llama-benchy` (24/24, incl. c8); P52Bench-Baseline
+  **performance-neutral** vs `@ade810fd`; P53C production-like (`max_num_seqs=1`) correctness 5/5, c1 latency ~±2%,
+  32K/64K/128K sanity, zero `EngineDeadError`/CUDA/`cuModuleLoad`/OOM/preemption.
+- Issue #17 is **closed** as resolved at the repository recipe level. The from-source build path remains blocked
+  upstream (pinned source unavailable), so the reproducible recipe stays the FROM-H0 derivative Dockerfile above.
 
 ## Workarounds if you can't patch
 
