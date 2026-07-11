@@ -158,6 +158,34 @@ writable layer stays modified until the container is recreated.
   - multi-hour stress with 3 concurrent requests: **0 ERROR** lines on both nodes;
   - prefill ~1.3-1.6K tok/s and decode ~40-47 tok/s unchanged vs. pre-patch benchmarks.
 
+## Published experimental image (H1Z-P50 / P51)
+
+An **experimental** active-build image carrying this patch has been published for validation and discoverability:
+
+- Tag: `ghcr.io/bjk110/vllm-spark:h1z-p50-sm121-rowwise-mqa-graphsafe-exp-41d211f`
+- Remote manifest digest: `sha256:4b8f650aa96e3af5f30d50b2f98890d6d4a04e0cac6acf800d8b08e30deabba8`
+- Image type: **experimental** — a **one-file runtime delta** over the production-equivalent H0 runtime. Only the
+  installed `sm12x_mqa.py` is patched (`tl.constexpr` count 83→64; 19 runtime params, 7 keep-constexpr layout guards);
+  the vLLM `.py` manifest differs from H0 in **exactly one file**. Everything else is the H0 route.
+- Unlike the P49 `h1z-p48-longout-c4-exp` image (which is *metadata-only*, RootFS-identical to H0), this image has a
+  **real one-file runtime patch**.
+
+Validation:
+
+- **P50B** static validation PASS (`ast.parse`, `py_compile`, idempotence; exactly-one-file delta).
+- **P50C** active staged validation PASS to a **tokenizer-verified 256K context** (262,201 tokens) on the dual-DGX
+  Spark H0 TP=2 mp/RoCE route (`FULL_DECODE_ONLY` + MTP n=1): contexts 32K / 64K / 128K / 192K / 256K, `max_tokens=32`,
+  with **0** `EngineDeadError`, **0** CUDA graph failures, **0** `cuModuleLoad` faults, **0** OOM / freeze / preemption.
+
+Status (important):
+
+- This is **not** a production baseline and **not** a production replacement. The production image
+  (`sha256:ade810fd…` / config `fa83457d`) and production preset (`f1b049d5`) are **unchanged**, and this patch is
+  **not wired** into any production Dockerfile, preset, or entrypoint.
+- Issue #17 remains **experimental-validated / production-pending** — it stays open unless the project owner decides to
+  promote the patch into a supported build path.
+- **No performance claim.** This image is for graph-capture stability validation, not throughput.
+
 ## Workarounds if you can't patch
 
 - `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=1` - forces the graph-safe direct top-k path for contexts ≳128K (the risk zone). Caveat: the same threshold participates in prefill-side logits chunk sizing (`sparse_attn_indexer.py:174`), so this knob is **not decode-only**: it may change prefill behavior/performance and should not be in place while running prefill-performance attribution experiments. `0` is **not** recommended.

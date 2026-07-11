@@ -71,6 +71,18 @@ Rollback procedure: [`docs/deepseek-v4-prefill8192-production-runbook.md`](docs/
 > not new image bits**. The PR #18 SM121 standby patch is **not wired** in it. For normal serving and
 > restore, keep using the digest-pinned production preset above.
 
+> **SM121 rowwise-MQA graph-safe experimental image (Issue #17).** A separate **experimental** image
+> carrying the active PR #18 rowwise paged-MQA CUDA-graph-safety patch is published:
+> `ghcr.io/bjk110/vllm-spark:h1z-p50-sm121-rowwise-mqa-graphsafe-exp-41d211f` (digest
+> `sha256:4b8f650aa96e3af5f30d50b2f98890d6d4a04e0cac6acf800d8b08e30deabba8`). Unlike the c4 tag above,
+> this is a **real one-file runtime delta** (installed `ops/sm12x_mqa.py` signature patch, `tl.constexpr`
+> 83→64) over the H0/production-equivalent runtime. It passed static (P50B) + active staged validation
+> (P50C) to a tokenizer-verified **256K context** with zero `EngineDeadError` / CUDA-graph fault. It is
+> **not** the production baseline or a replacement, is **not wired** into any production Dockerfile/preset/
+> entrypoint, and carries **no performance claim**. [Issue #17](https://github.com/bjk110/spark_vllm_docker/issues/17)
+> stays open as experimental-validated / production-pending. Detail:
+> [`docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md`](docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md).
+
 Component versions, stack lineage, and digests → [`docs/software-stack.md`](docs/software-stack.md).
 Image tag → Git-ref mapping → [`docs/images.md`](docs/images.md). Optional FlashInfer-AOT drop-in
 for `v022-d568` → [`docs/flashinfer-aot-prebake.md`](docs/flashinfer-aot-prebake.md).
