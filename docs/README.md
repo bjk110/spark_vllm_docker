@@ -91,6 +91,7 @@ Not promoted. Reference/experimental only.
 | [step3.7-tokenizer-overlay.md](step3.7-tokenizer-overlay.md) | Step-3.7 non-mutating runtime tokenizer overlay | `Experimental` | Tokenizer-overlay technique |
 | [prometheus-routing-path-fix.md](prometheus-routing-path-fix.md) | Prometheus `routing.py` `.path` guard (experimental image) | `Experimental` | Monitoring routing-path fix notes |
 | [dsv4-longout-experimental-profiles.md](dsv4-longout-experimental-profiles.md) | DeepSeek-V4-Flash long-output c2/c4 experimental profiles (H1Z-P46) | `Experimental` | Long-output/throughput-only c2/c4 profiles (not production; c4 `llama-benchy` c4-safe PASS; short-output/interactive unsuitable; published GHCR metadata-only c4 tag, H1Z-P49D) |
+| [dsv4-dspark-speculative-decoding-72261a7-closure.md](dsv4-dspark-speculative-decoding-72261a7-closure.md) | DeepSeek-V4-Flash-DSpark speculative decoding on vLLM `72261a7` — DS2 arc closure (defects found and fixed; acceptance unmoved) | `Experimental` (investigation CLOSED, NOT VALIDATED) | DSpark experimental status: DS2D14 preferred baseline / DS2D13 fallback / DS2D12 rollback; k=3 only validated envelope; local-only images; production unaffected (speculative decoding not used) |
 
 ## Historical and superseded records
 
