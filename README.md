@@ -30,7 +30,7 @@ diagrams, and the backend comparison are in [`docs/architecture.md`](docs/archit
 | Path | Status | Backend | Use case |
 |---|---|---|---|
 | `dsv4-sm121-indexer` | **Current DeepSeek-V4-Flash production baseline** (graph-safe, H1Z-P54A) | `mp` | Recommended DSV4 path — SM121 DeepGEMM FP8-Q prefill indexer, MARLIN MoE, production Triton dense/sparse-MLA, dual-node TP=2. Digest-pinned to the graph-safe image (`@de69fa367137`); previous `@ade810fd` baseline kept as the legacy rollback preset. |
-| `dsv4-prefill8192` | **Immediate rollback baseline** (prior production) | `mp` | Rollback target for `dsv4-sm121-indexer` — same envelope without the SM121 indexer. |
+| `dsv4-prefill8192` | Prior production — provenance / deep recovery | `mp` | The baseline before the SM121 indexer promotion; superseded twice. **Not the immediate rollback** — that is the legacy `@ade810fd` preset below, which keeps the same route and changes only the image. |
 | `dsv4-d568` | Frozen legacy/historical DSV4 baseline | `ray` or `mp` | Historical decode-optimized reproduction/reference only. |
 | `unholy-fusion` | Experimental (DSV4 only) | `mp` | Higher-prefill DSV4 experimental alternative — not a recommended production path. |
 | `v022-d568-ngc2605-tx5102-vllm022` | Active forward-stack (NGC 26.05, vLLM 0.22.1) | `ray` | Qwen3.5-122B-FP8 and other forward-stack models. |
@@ -47,9 +47,12 @@ KV, TP=2 mp/RoCE, MTP n=1, MARLIN) are unchanged. The graph-safe delta is a **on
 `ops/sm12x_mqa.py` signature patch** (PR #18, `tl.constexpr` 83→64) — a repository recipe-level
 patched image, **not** an upstream vLLM fix, with **no performance-improvement claim** and **no**
 GHCR `latest`/`stable`/`production` tag movement. Prefer this digest-pinned preset over floating tags.
-The previous baseline is preserved as an explicit **legacy rollback** preset
+The previous baseline is preserved as the **immediate rollback** preset
 [`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env`](presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env)
 (`@ade810fd`, config `fa83457d`) — use it to return to the pre-graph-safe image without a rebuild.
+It is the **one** immediate rollback target: same envelope, only `VLLM_IMAGE` differs. Deeper
+recovery steps (prior production, graph-only, eager) are archived provenance — see the preset
+catalog [`presets/README.md`](presets/README.md).
 The mutable alias `dsv4-sm121-indexer-production` is provenance only — not a runtime pin. Full
 identity, routing, evidence, rollback, clone guard, and ABI provenance:
 [`docs/deepseek-v4-sm121-indexer-production.md`](docs/deepseek-v4-sm121-indexer-production.md).
