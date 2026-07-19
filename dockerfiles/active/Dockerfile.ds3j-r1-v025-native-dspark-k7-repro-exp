@@ -1,0 +1,497 @@
+# syntax=docker/dockerfile:1.6
+# =========================================================================
+# DS3J-R1 — reproducibility / promotion-readiness candidate (== DS3H behavior).
+#          Corrective revision of DS3J: the migrated DS3F Cutlass-block step-5
+#          o_proj LINEAGE assertion (which assumed the DS3E intermediate recipe)
+#          is REMOVED from the Cutlass block; the final SM121 o_proj recipe is
+#          validated by a dedicated SEMANTIC gate AFTER the patch is applied.
+#          No source pin / dependency / package / patch-content / runtime change.
+#
+# Status: EXPERIMENTAL promotion CANDIDATE. Not promoted, not production.
+#
+# Consolidated from-NGC, fully-pinned rebuild = DS3B-R2 (native DSpark base) +
+# DS3F Cutlass 4.5.2 coherence (o_proj lineage check removed) + DS3H SM121 o_proj
+# scale recipe (major==12 -> (1,1,128), tma=True) applied once via a standalone
+# patch file, then validated by scripts/verify_ds3j_oproj_recipe.py.
+#
+# MANDATORY runtime companion (numerical contract, NOT tuning): VLLM_USE_DEEP_GEMM_E8M0=1
+#
+# Build (spark01 only; cache-reuse expected):
+#   docker buildx build \
+#     -f dockerfiles/active/Dockerfile.ds3j-r1-v025-native-dspark-k7-repro-exp \
+#     -t vllm-spark:ds3j-r1-v025-native-dspark-k7-repro-exp-5cb57f7 --load .
+# =========================================================================
+ARG NGC_TAG=26.05-py3
+ARG BUILD_JOBS=16
+
+ARG VLLM_REPO_URL=https://github.com/vllm-project/vllm.git
+ARG VLLM_REF=v0.25.0
+ARG VLLM_COMMIT=702f4814fe54fabff350d43cb753ae3e47c0c276
+ARG VLLM_VERSION=0.25.0
+ARG FLASHINFER_REPO_URL=https://github.com/flashinfer-ai/flashinfer.git
+ARG FLASHINFER_REF=v0.6.15
+ARG FLASHINFER_COMMIT=8eccd0c1352165302840c0e19066bc42d36dbd7a
+ARG FLASHINFER_PR=3989
+ARG FLASHINFER_PR_HEAD=1459c5d337a13954e679ecc56566f194ecbbe85f
+ARG TRANSFORMERS_VER=5.10.2
+ARG CUTLASS_DSL_REQ=nvidia-cutlass-dsl[cu13]==4.5.2
+ARG TORCH_CUDA_ARCH="12.1a"
+
+# =========================================================================
+# STAGE 1: FlashInfer builder — v0.6.15 + PR #3989 (topk=256 DSV4 dispatch)
+# =========================================================================
+FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS flashinfer-builder
+
+ARG BUILD_JOBS
+ARG FLASHINFER_REPO_URL
+ARG FLASHINFER_REF
+ARG FLASHINFER_COMMIT
+ARG TORCH_CUDA_ARCH
+ENV MAX_JOBS=${BUILD_JOBS} \
+    CMAKE_BUILD_PARALLEL_LEVEL=${BUILD_JOBS} \
+    DEBIAN_FRONTEND=noninteractive \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    UV_SYSTEM_PYTHON=1 \
+    UV_BREAK_SYSTEM_PACKAGES=1 \
+    UV_LINK_MODE=copy \
+    TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH} \
+    FLASHINFER_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH} \
+    PATH=/usr/lib/ccache:$PATH \
+    CCACHE_DIR=/root/.ccache \
+    CCACHE_MAXSIZE=50G \
+    CCACHE_COMPRESS=1 \
+    CMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    CMAKE_CUDA_COMPILER_LAUNCHER=ccache
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ninja-build git ccache patch && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install uv && pip uninstall -y flash-attn 2>/dev/null || true
+
+RUN --mount=type=cache,id=uv-ds3a-v025,target=/root/.cache/uv \
+    uv pip install --system nvidia-nvshmem-cu13 "apache-tvm-ffi<0.2"
+
+# Clone and pin to the EXACT FlashInfer commit. Fail on any mismatch.
+RUN git clone ${FLASHINFER_REPO_URL} /workspace/flashinfer && \
+    cd /workspace/flashinfer && \
+    git checkout ${FLASHINFER_REF} && \
+    ACTUAL=$(git rev-parse HEAD^{commit}) && \
+    echo "[flashinfer] pinned to ${ACTUAL} (${FLASHINFER_REF})" && \
+    [ "${ACTUAL}" = "${FLASHINFER_COMMIT}" ] || \
+      (echo "FATAL: FlashInfer commit mismatch — expected ${FLASHINFER_COMMIT}, got ${ACTUAL}" && exit 1) && \
+    git submodule update --init --recursive
+
+# ---- PR #3989: SM120 DSV4 sparse-MLA topk=256 dispatch (REQUIRED, not optional) ----
+# This patch is mandatory for DSpark on GB10; a silent skip would produce an image
+# that looks correct and fails only at runtime. Apply strictly and verify.
+ARG FLASHINFER_PR
+ARG FLASHINFER_PR_HEAD
+COPY patches/flashinfer/pr3989-sm120-dsv4-topk256.patch /workspace/flashinfer/
+RUN cd /workspace/flashinfer && \
+    git apply --verbose pr3989-sm120-dsv4-topk256.patch && \
+    echo "[flashinfer] PR #${FLASHINFER_PR} applied (head ${FLASHINFER_PR_HEAD})" && \
+    grep -q 'DSV4_DISPATCH(32, 256)' csrc/sparse_mla_sm120_decode_dsv4.cu || \
+      (echo "FATAL: PR #3989 decode instantiation (32, 256) absent after apply" && exit 1) && \
+    grep -q '(32, 256)' flashinfer/mla/_sparse_mla_sm120.py || \
+      (echo "FATAL: PR #3989 python dispatch entry (32, 256) absent after apply" && exit 1) && \
+    echo "[flashinfer] topk=256 DSV4 dispatch verified in patched source"
+
+# House cubin-cache patch (optimization only; tolerated if not applicable to this ref).
+COPY patches/flashinfer/flashinfer_cache.patch /workspace/flashinfer/
+RUN cd /workspace/flashinfer && \
+    (patch -p1 --dry-run < flashinfer_cache.patch &>/dev/null && \
+     patch -p1 < flashinfer_cache.patch || echo "[flashinfer] cache patch not applicable")
+
+WORKDIR /workspace/flashinfer
+RUN --mount=type=cache,id=uv-ds3a-v025,target=/root/.cache/uv \
+    --mount=type=cache,id=ccache-ds3a-v025,target=/root/.ccache \
+    sed -i -e 's/license = "Apache-2.0"/license = { text = "Apache-2.0" }/' \
+           -e '/license-files/d' pyproject.toml 2>/dev/null || true && \
+    uv build --no-build-isolation --wheel . --out-dir=/workspace/wheels -v
+
+RUN --mount=type=cache,id=uv-ds3a-v025,target=/root/.cache/uv \
+    --mount=type=cache,id=ccache-ds3a-v025,target=/root/.ccache \
+    for subpkg in flashinfer-cubin flashinfer-jit-cache; do \
+        if [ -d "$subpkg" ]; then \
+            echo "[flashinfer] Building $subpkg..." && \
+            cd /workspace/flashinfer/$subpkg && \
+            uv build --no-build-isolation --wheel . --out-dir=/workspace/wheels -v || \
+            echo "[flashinfer] $subpkg build failed (optional)"; \
+        fi; \
+    done
+
+# =========================================================================
+# STAGE 2: vLLM builder — v0.25.0 @ 702f4814 (native DSpark)
+# =========================================================================
+FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS vllm-builder
+
+ARG BUILD_JOBS
+ARG VLLM_REPO_URL
+ARG VLLM_REF
+ARG VLLM_COMMIT
+ARG VLLM_VERSION
+ARG TORCH_CUDA_ARCH
+ENV MAX_JOBS=${BUILD_JOBS} \
+    DEBIAN_FRONTEND=noninteractive \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH} \
+    PATH=/usr/lib/ccache:$PATH \
+    CCACHE_DIR=/root/.ccache \
+    CCACHE_MAXSIZE=50G \
+    CCACHE_COMPRESS=1
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git ninja-build ccache && \
+    rm -rf /var/lib/apt/lists/*
+
+# Clone and pin to the EXACT vLLM release commit. Fail on any mismatch.
+RUN git clone ${VLLM_REPO_URL} /workspace/vllm-src && \
+    cd /workspace/vllm-src && \
+    git checkout ${VLLM_COMMIT} && \
+    ACTUAL=$(git rev-parse HEAD) && \
+    echo "[vllm] pinned to ${ACTUAL} (${VLLM_REF})" && \
+    [ "${ACTUAL}" = "${VLLM_COMMIT}" ] || \
+      (echo "FATAL: vLLM commit mismatch — expected ${VLLM_COMMIT}, got ${ACTUAL}" && exit 1)
+
+RUN pip install -q setuptools "setuptools-scm>=8" setuptools-rust ninja cmake wheel packaging jinja2 regex
+
+# TOOLCHAIN COMPAT (not behavioral): NGC 26.05 PyTorch 2.12.0a0 removed the
+# `hoist` kwarg from register_opaque_type(); v0.25.0 still passes hoist=True
+# (vllm/utils/torch_utils.py:904). Required, so this must succeed.
+COPY patches/common/fix_pytorch211_compat.py /tmp/fix_pytorch211_compat.py
+RUN python3 /tmp/fix_pytorch211_compat.py && \
+    if grep -q 'hoist=True' /workspace/vllm-src/vllm/utils/torch_utils.py; then \
+        echo "FATAL: hoist=True still present after compat patch"; exit 1; \
+    fi && \
+    echo "[patch] pytorch compat applied (hoist kwarg removed)"
+
+RUN --mount=type=cache,id=ccache-ds3a-v025,target=/root/.ccache \
+    cd /workspace/vllm-src && \
+    SETUPTOOLS_SCM_PRETEND_VERSION="${VLLM_VERSION}" \
+    VLLM_TARGET_DEVICE=cuda \
+    python3 setup.py bdist_wheel -d /workspace/wheels && \
+    ls -lh /workspace/wheels/*.whl && \
+    echo "[vllm] native-DSpark wheel built (${VLLM_REF} @ ${VLLM_COMMIT})"
+
+# =========================================================================
+# STAGE 3: Runner
+# =========================================================================
+FROM nvcr.io/nvidia/pytorch:${NGC_TAG} AS runner
+
+ARG VLLM_REPO_URL
+ARG VLLM_REF
+ARG VLLM_COMMIT
+ARG FLASHINFER_REF
+ARG FLASHINFER_COMMIT
+ARG FLASHINFER_PR
+ARG FLASHINFER_PR_HEAD
+LABEL org.opencontainers.image.source="https://github.com/bjk110/spark_vllm_docker"
+LABEL org.opencontainers.image.description="EXPERIMENTAL upstream-native DSpark: vLLM v0.25.0 @ 702f4814 (native DSpark, PR #46995 + #47093) + FlashInfer v0.6.15 @ 8eccd0c1 + FlashInfer PR #3989 (SM120 DSV4 topk=256) + NGC 26.05 (PyTorch 2.12.0a0, CUDA 13.2) on DGX Spark (GB10/SM121). No DS2 behavioral patches."
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+LABEL org.vllm-spark.experimental="true"
+LABEL org.vllm-spark.arc="DS3"
+LABEL org.vllm-spark.vllm-source-repo="${VLLM_REPO_URL}"
+LABEL org.vllm-spark.vllm-source-ref="${VLLM_REF}"
+LABEL org.vllm-spark.vllm-source-commit="${VLLM_COMMIT}"
+LABEL org.vllm-spark.flashinfer-source-ref="${FLASHINFER_REF}"
+LABEL org.vllm-spark.flashinfer-source-commit="${FLASHINFER_COMMIT}"
+LABEL org.vllm-spark.flashinfer-patch-pr="${FLASHINFER_PR}"
+LABEL org.vllm-spark.flashinfer-patch-head="${FLASHINFER_PR_HEAD}"
+LABEL org.vllm-spark.flashinfer-patch-status="OPEN-NOT-MERGED"
+LABEL org.vllm-spark.ds2-behavioral-patches="none"
+LABEL org.vllm-spark.revision="ds3b-r2-cutlassfix-tokenspeedpin"
+LABEL org.vllm-spark.ds3b-r1-fix="cutlass-dsl coherent family (deps + quack pin) + swallowed-exit build gates"
+LABEL org.vllm-spark.ds3b-r2-fix="pin tokenspeed-mla==0.1.2 (vLLM-declared; resolves apache-tvm-ffi 0.1.9 conflict)"
+LABEL org.vllm-spark.repo-baseline-commit="5cb57f746294b3fd97217f5f57be65b67767b073"
+LABEL org.vllm-spark.model="deepseek-ai/DeepSeek-V4-Flash-DSpark"
+
+ARG TORCH_CUDA_ARCH
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    UV_SYSTEM_PYTHON=1 \
+    UV_BREAK_SYSTEM_PACKAGES=1 \
+    UV_LINK_MODE=copy \
+    VLLM_BASE_DIR=/workspace/vllm \
+    TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH} \
+    TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl vim git libxcb1 && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install uv && pip uninstall -y flash-attn 2>/dev/null || true
+
+WORKDIR ${VLLM_BASE_DIR}
+
+RUN mkdir -p tiktoken_encodings && \
+    wget -qO tiktoken_encodings/o200k_base.tiktoken \
+      "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken" && \
+    wget -qO tiktoken_encodings/cl100k_base.tiktoken \
+      "https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken"
+ENV TIKTOKEN_ENCODINGS_BASE=${VLLM_BASE_DIR}/tiktoken_encodings
+
+# ---- FlashInfer (v0.6.15 + PR #3989) ----
+RUN --mount=type=bind,from=flashinfer-builder,source=/workspace/wheels,target=/mount/fi \
+    pip install /mount/fi/*.whl 2>/dev/null || \
+    pip install /mount/fi/flashinfer_python*.whl /mount/fi/flashinfer_cubin*.whl 2>/dev/null || \
+    (echo "FATAL: FlashInfer install failed" && exit 1)
+
+# ---- vLLM (v0.25.0 native DSpark) ----
+RUN --mount=type=bind,from=vllm-builder,source=/workspace/wheels,target=/mount/vllm \
+    pip install /mount/vllm/*.whl --no-deps && \
+    python3 -c "import vllm, vllm.version; print('[vllm]', vllm.__version__)"
+
+# ---- Runtime dependencies (source-declared, minus torch/flashinfer) ----
+RUN --mount=type=cache,id=uv-ds3a-v025,target=/root/.cache/uv \
+    DEPS=$(pip show vllm 2>/dev/null | grep ^Requires | sed 's/Requires: //' | tr ',' '\n' | \
+      sed 's/^ *//;s/ *$//' | grep -v -E '^(torch|torchvision|torchaudio|flashinfer|$)' | \
+      tr '\n' ' ') && \
+    uv pip install --system $DEPS ray[default] fastsafetensors nvidia-nvshmem-cu13 uvloop && \
+    uv pip install --system "compressed-tensors==0.15.0.1" --no-deps
+
+# ---- Cutlass DSL family (COHERENT) — DS3B-R1 corrective fix ----
+# The first DS3B candidate installed nvidia-cutlass-dsl with --no-deps, which left
+# the family incoherent: nvidia-cutlass-dsl==4.5.2 but nvidia-cutlass-dsl-libs-base
+# drifted to 4.6.0, the cu13 libs (nvidia-cutlass-dsl-libs-cu13) were never installed
+# at all, and quack-kernels drifted to 0.6.1. `import cutlass` then raised
+# ModuleNotFoundError and has_cutedsl() returned False. On the local
+# DeepSeek-V4-Flash-DSpark checkpoint head_dim==512, and
+# vllm/models/deepseek_v4/compressor.py imports sparse_attn_compress_cutedsl
+# UNCONDITIONALLY on that path (that module does `import cutlass` at import time),
+# so the drift is a deterministic runtime crash before any valid baseline.
+#
+# Fix: install the coherent family WITH its dependency closure (NOT --no-deps) and
+# pin quack-kernels, then hard-verify version coherence AND the real imports.
+# Verified in a disposable container from the first image: this install downgrades
+# nvidia-cutlass-dsl-libs-base to 4.5.2, installs nvidia-cutlass-dsl-libs-cu13==4.5.2,
+# and restores `import cutlass` and has_cutedsl()==True. (libs-core / libs-cu12 may
+# remain at 4.6.0 as unused leftovers on the cu13 path — harmless, not gated.)
+ARG CUTLASS_DSL_REQ
+ARG QUACK_KERNELS_REQ=quack-kernels==0.5.0
+RUN --mount=type=cache,id=uv-ds3a-v025,target=/root/.cache/uv \
+    uv pip install --system "${CUTLASS_DSL_REQ}" "${QUACK_KERNELS_REQ}"
+RUN python3 <<'PY'
+import importlib, importlib.metadata as md, sys
+def ver(n):
+    try: return md.version(n)
+    except Exception: return None
+dsl   = ver("nvidia-cutlass-dsl")
+base  = ver("nvidia-cutlass-dsl-libs-base")
+cu13  = ver("nvidia-cutlass-dsl-libs-cu13")
+quack = ver("quack-kernels")
+print("[verify] nvidia-cutlass-dsl           =", dsl)
+print("[verify] nvidia-cutlass-dsl-libs-base =", base)
+print("[verify] nvidia-cutlass-dsl-libs-cu13 =", cu13)
+print("[verify] quack-kernels                =", quack)
+errs = []
+if dsl   != "4.5.2": errs.append(f"nvidia-cutlass-dsl must be 4.5.2, got {dsl}")
+if base  != "4.5.2": errs.append(f"nvidia-cutlass-dsl-libs-base must be 4.5.2, got {base} (first-build drift was 4.6.0)")
+if cu13  != "4.5.2": errs.append(f"nvidia-cutlass-dsl-libs-cu13 must be 4.5.2, got {cu13} (first-build had it MISSING)")
+if quack != "0.5.0": errs.append(f"quack-kernels must be 0.5.0, got {quack} (first-build drift was 0.6.1)")
+if errs:
+    print("FATAL: cutlass DSL family incoherent after install:")
+    for e in errs: print("  -", e)
+    sys.exit(1)
+import cutlass
+print("[verify] import cutlass OK ->", getattr(cutlass, "__file__", "?"))
+from vllm.utils.import_utils import has_cutedsl
+if has_cutedsl() is not True:
+    print("FATAL: has_cutedsl() is not True after cutlass fix"); sys.exit(1)
+print("[verify] has_cutedsl() == True")
+m = importlib.import_module("vllm.models.deepseek_v4.nvidia.ops.sparse_attn_compress_cutedsl")
+if not hasattr(m, "compress_norm_rope_store_cutedsl"):
+    print("FATAL: compress_norm_rope_store_cutedsl missing"); sys.exit(1)
+print("[verify] DSV4 sparse_attn_compress_cutedsl + compress_norm_rope_store_cutedsl import OK")
+print("[verify] cutlass DSL family coherent (DS3B-R1 fix)")
+PY
+
+# ---- TVM-FFI + tokenspeed family: v0.25.0 declares apache-tvm-ffi==0.1.9,
+# tilelang==0.1.9 AND tokenspeed-mla==0.1.2 as a COORDINATED set. The name-only
+# $DEPS install resolves them to newer, mutually incoherent versions: tilelang
+# drift caused a C++ abort ("TypeAttr __ffi_repr__ is already registered") at JIT
+# time, and tokenspeed-mla resolves to 0.2.0 which requires apache-tvm-ffi==0.1.12,
+# colliding with the required 0.1.9 sparse-path pin (DS3B-R1's fail-fast gate
+# surfaced this). tokenspeed-mla==0.1.2 requires apache-tvm-ffi>=0.1.5, satisfied
+# by 0.1.9. Pin all three explicitly and verify (no name-only resolution here).
+RUN --mount=type=cache,id=uv-ds3a-v025,target=/root/.cache/uv \
+    uv pip install --system "apache-tvm-ffi==0.1.9" "tilelang==0.1.9" "tokenspeed-mla==0.1.2" && \
+    python3 -c "import importlib.metadata as md; a=md.version('apache-tvm-ffi'); t=md.version('tilelang'); k=md.version('tokenspeed-mla'); assert a=='0.1.9' and t=='0.1.9' and k=='0.1.2', f'tvm/tokenspeed family drift: apache-tvm-ffi={a} tilelang={t} tokenspeed-mla={k}'; print('[verify] apache-tvm-ffi', a, 'tilelang', t, 'tokenspeed-mla', k)" && \
+    if python3 -m pip check 2>&1 | grep -iE 'apache-tvm-ffi|tilelang|tokenspeed'; then \
+        echo 'FATAL: residual TVM/tokenspeed pip conflict'; exit 1; \
+    fi && \
+    echo '[verify] no TVM/tokenspeed pip conflict'
+
+ARG TRANSFORMERS_VER
+RUN uv pip install transformers==${TRANSFORMERS_VER} --upgrade --no-deps --system && \
+    uv pip install huggingface-hub --upgrade --no-deps --system
+
+RUN uv pip uninstall triton-kernels 2>/dev/null || true
+
+ARG TRITON_VER=3.7.0
+RUN uv pip install triton==${TRITON_VER} --upgrade --no-deps --system && \
+    python3 -c "import triton; print(f'[triton] installed {triton.__version__}')"
+
+ARG NCCL_VER=2.30.4
+RUN uv pip install nvidia-nccl-cu13==${NCCL_VER} --upgrade --no-deps --system && \
+    NCCL_LIB_DIR=$(find /usr/local/lib/python3.12/dist-packages/nvidia/nccl/lib /usr/local/lib/python3.12/dist-packages/nvidia_nccl_cu13/lib 2>/dev/null | grep -m1 'lib$') && \
+    echo "${NCCL_LIB_DIR}" > /etc/ld.so.conf.d/zz-nvidia-nccl-cu13.conf && \
+    ldconfig
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.12/dist-packages/nvidia/nccl/lib:$LD_LIBRARY_PATH
+
+# ---- Deterministic source-revision markers (prove the pinned sources) ----
+RUN printf '%s\n' "702f4814fe54fabff350d43cb753ae3e47c0c276" > /opt/vllm-source-revision && \
+    printf '%s\n' "8eccd0c1352165302840c0e19066bc42d36dbd7a" > /opt/flashinfer-source-revision && \
+    printf '%s\n' "1459c5d337a13954e679ecc56566f194ecbbe85f" > /opt/flashinfer-pr3989-head
+
+COPY scripts/verify_imports.py /opt/scripts/verify_imports.py
+COPY scripts/verify_runtime.sh /opt/scripts/verify_runtime.sh
+RUN chmod +x /opt/scripts/verify_runtime.sh
+
+# ---- Build-time gate (no GPU, no CUDA init, no model, no weight load) ----
+RUN python3 <<'PY'
+import glob, importlib, os, sys
+VREV = "702f4814fe54fabff350d43cb753ae3e47c0c276"
+FREV = "8eccd0c1352165302840c0e19066bc42d36dbd7a"
+
+import vllm
+print("[verify] vllm_version =", vllm.__version__)
+assert open("/opt/vllm-source-revision").read().strip() == VREV
+assert open("/opt/flashinfer-source-revision").read().strip() == FREV
+
+so = glob.glob(os.path.join(os.path.dirname(vllm.__file__), "_C_stable_libtorch*.so"))
+assert so, "FAIL: _C_stable_libtorch*.so not present (compilation produced no extension)"
+print("[verify] extension_so =", so[0], f"({os.path.getsize(so[0])/1e6:.1f} MB)")
+try:
+    importlib.import_module("vllm._C_stable_libtorch")
+    print("[verify] extension imported")
+except Exception as e:
+    if "libcuda.so.1" in str(e):
+        print("[verify] extension import DEFERRED (no libcuda in builder):", e)
+    else:
+        print("FAIL: unexpected extension import error:", e); sys.exit(1)
+
+# Native DSpark presence (import-only; no instantiation).
+from vllm.config.speculative import DSparkModelTypes
+import vllm.v1.worker.gpu.spec_decode.dspark.speculator as sp
+import vllm.models.deepseek_v4.nvidia.dspark as dm
+assert hasattr(sp, "DSparkSpeculator"), "FAIL: DSparkSpeculator missing"
+assert hasattr(dm, "DSparkDeepseekV4ForCausalLM"), "FAIL: DSparkDeepseekV4ForCausalLM missing"
+print("[verify] native DSpark speculator + draft model present")
+
+from vllm.model_executor.models.registry import ModelRegistry
+assert "DeepseekV4ForCausalLM" in ModelRegistry.get_supported_archs()
+print("[verify] DeepseekV4ForCausalLM registered")
+
+# FlashInfer PR #3989 must be present in the SHIPPED csrc (runtime-JIT source).
+import flashinfer
+fi = os.path.dirname(flashinfer.__file__)
+cu = os.path.join(fi, "data", "csrc", "sparse_mla_sm120_decode_dsv4.cu")
+assert os.path.exists(cu), f"FAIL: shipped csrc missing: {cu}"
+src = open(cu).read()
+assert "DSV4_DISPATCH(32, 256)" in src, "FAIL: PR #3989 (32, 256) instantiation absent from shipped csrc"
+py = open(os.path.join(fi, "mla", "_sparse_mla_sm120.py")).read()
+assert "(32, 256)" in py, "FAIL: PR #3989 (32, 256) dispatch entry absent from installed python"
+print("[verify] FlashInfer PR #3989 topk=256 present in shipped csrc + python")
+
+# No DS2 behavioral overlay may exist. Only DS2-lineage-EXCLUSIVE paths are
+# checked: v0.25.0 legitimately ships vllm/v1/spec_decode/dflash.py, so that
+# path must NOT be treated as a DS2 marker. The 72261a7 lineage's DSpark
+# proposer and Markov sampler lived at v1/spec_decode/{dspark,dspark_markov}.py,
+# which upstream never had — those are unambiguous DS2 markers.
+for stale in ("v1/spec_decode/dspark.py", "v1/spec_decode/dspark_markov.py"):
+    sp_path = os.path.join(os.path.dirname(vllm.__file__), stale)
+    assert not os.path.exists(sp_path), f"FAIL: DS2-lineage module present: {sp_path}"
+# The native proposer must live at the upstream path, not the DS2 one.
+assert sp.__file__.replace(os.sep, "/").endswith("v1/worker/gpu/spec_decode/dspark/speculator.py"), \
+    f"FAIL: DSpark speculator resolved to an unexpected path: {sp.__file__}"
+print("[verify] no DS2 behavioral overlay; native proposer path confirmed")
+print("[verify] Build-time checks passed")
+PY
+
+COPY scripts/run-cluster-node.sh ${VLLM_BASE_DIR}/
+RUN chmod +x ${VLLM_BASE_DIR}/run-cluster-node.sh
+ENV PATH=${VLLM_BASE_DIR}:$PATH
+
+# =========================================================================
+# DS3J-R1 insert 1/3 — DS3F Cutlass-dsl 4.5.2 coherence (o_proj lineage check REMOVED)
+#   Removes spurious libs-core/cu12 4.6.0, reinstalls coherent cu13 family, and
+#   hard-verifies cutlass ONLY (RECORD-match + no orphan + GPUModuleOp ABI +
+#   has_cutedsl). It NO LONGER inspects the o_proj recipe (that is gated below).
+# =========================================================================
+RUN set -eu; \
+    pip uninstall -y \
+      nvidia-cutlass-dsl \
+      nvidia-cutlass-dsl-libs-base \
+      nvidia-cutlass-dsl-libs-cu13 \
+      nvidia-cutlass-dsl-libs-core \
+      nvidia-cutlass-dsl-libs-cu12 || true; \
+    rm -rf /usr/local/lib/python3.12/dist-packages/nvidia_cutlass_dsl; \
+    pip install --no-cache-dir 'nvidia-cutlass-dsl[cu13]==4.5.2'; \
+    python3 - <<'PY'
+import os, sys, hashlib, base64, importlib.metadata as md
+def v(n):
+    try: return md.version(n)
+    except Exception: return None
+# 1) exact coherent family
+assert v("nvidia-cutlass-dsl")=="4.5.2", f"dsl={v('nvidia-cutlass-dsl')}"
+assert v("nvidia-cutlass-dsl-libs-base")=="4.5.2", f"base={v('nvidia-cutlass-dsl-libs-base')}"
+assert v("nvidia-cutlass-dsl-libs-cu13")=="4.5.2", f"cu13={v('nvidia-cutlass-dsl-libs-cu13')}"
+assert v("nvidia-cutlass-dsl-libs-core") is None, f"core present={v('nvidia-cutlass-dsl-libs-core')}"
+assert v("nvidia-cutlass-dsl-libs-cu12") is None, f"cu12 present={v('nvidia-cutlass-dsl-libs-cu12')}"
+assert v("quack-kernels")=="0.5.0", f"quack={v('quack-kernels')}"
+# 2) _cutlass_ir.so now RECORD-match (genuine 4.5.2 binary restored)
+d=[x for x in md.distributions() if (x.metadata['Name'] or '')=="nvidia-cutlass-dsl-libs-cu13"][0]
+ok=False
+for f in d.files or []:
+    if "_cutlass_ir" in str(f) and str(f).endswith(".so"):
+        p=os.path.normpath(os.path.join(str(d.locate_file('')),str(f)))
+        a=hashlib.sha256(open(p,'rb').read()).digest()
+        rb=base64.urlsafe_b64decode(f.hash.value+'='*(-len(f.hash.value)%4))
+        assert rb==a, "FATAL: _cutlass_ir.so RECORD mismatch after reinstall"
+        ok=True
+assert ok, "FATAL: _cutlass_ir.so not found"
+# 3) no orphan 4.6.0 dsl_packages/cu12 residue importable
+root="/usr/local/lib/python3.12/dist-packages/nvidia_cutlass_dsl"
+for orphan in ("cu12","dsl_packages"):
+    assert not os.path.exists(os.path.join(root,orphan)), f"FATAL: orphan {orphan} residue remains"
+# 4) GPUModuleOp construction (ABI coherent) — no GPU needed
+from cutlass._mlir import ir
+from cutlass._mlir.dialects import gpu
+with ir.Context() as ctx, ir.Location.unknown() as loc:
+    module=ir.Module.create(loc)
+    with ir.InsertionPoint(module.body):
+        gpu.GPUModuleOp(ir.StringAttr.get("kernels"), loc=loc)
+# 5) has_cutedsl (cutlass-only; o_proj recipe is validated by a dedicated gate
+#    AFTER the o_proj patch — not here, to avoid a build-order lineage assumption)
+from vllm.utils.import_utils import has_cutedsl
+assert has_cutedsl() is True, "has_cutedsl False"
+print("[DS3J-R1] coherent Cutlass DSL 4.5.2 verified: family exact (dsl/base/cu13==4.5.2, core/cu12 ABSENT), _cutlass_ir RECORD-match, no orphan residue, GPUModuleOp ABI OK, has_cutedsl True")
+PY
+
+# =========================================================================
+# DS3J-R1 insert 2/3 — SM121 FP8 o_proj scale recipe (== proven DS3H), applied once
+#   major==12 -> einsum_recipe (1,1,128), tma_aligned_scales True. SM90/SM100 preserved.
+# =========================================================================
+COPY patches/ds3/ds3j_sm121_oproj_scale_recipe.py /opt/patches/ds3j_sm121_oproj_scale_recipe.py
+RUN python3 /opt/patches/ds3j_sm121_oproj_scale_recipe.py
+
+# =========================================================================
+# DS3J-R1 insert 3/3 — FINAL o_proj SEMANTIC gate (values for major 9/10/12)
+#   Isolated function-level test with a mocked capability (no GPU / no vLLM import).
+#   Validates returned recipe values, not string counts; asserts obsolete DS3E recipe
+#   absent and the patch is applied exactly once.
+# =========================================================================
+COPY scripts/verify_ds3j_oproj_recipe.py /opt/scripts/verify_ds3j_oproj_recipe.py
+RUN python3 /opt/scripts/verify_ds3j_oproj_recipe.py
+
+# ---- DS3J-R1 provenance labels ----
+LABEL org.vllm-spark.arc="DS3" \
+      org.vllm-spark.experimental="true" \
+      org.vllm-spark.revision="ds3j-r1-native-dspark-k7-repro" \
+      org.vllm-spark.ds3j-r1-fix="remove-DS3E-oproj-lineage-assert-from-cutlass-block; add-semantic-oproj-gate" \
+      org.vllm-spark.ds3j-equals="ds3b-r2 + ds3f-cutlass-coherence + ds3h-oproj-scalefix" \
+      org.vllm-spark.ds3j-reproduces="be279190ff12 (DS3H/DS3I validated)" \
+      org.vllm-spark.ds3j-oproj-recipe="major12=(1,1,128),tma_aligned=True" \
+      org.vllm-spark.ds3j-mandatory-runtime="VLLM_USE_DEEP_GEMM_E8M0=1" \
+      org.opencontainers.image.description="EXPERIMENTAL DS3J-R1 promotion candidate: consolidated from-NGC rebuild == DS3B-R2 + DS3F cutlass-dsl 4.5.2 coherence + DS3H SM121 o_proj scale recipe (major12 (1,1,128) tma=True). Native DSpark (vLLM v0.25.0 @702f4814) k=7 greedy. Requires VLLM_USE_DEEP_GEMM_E8M0=1."
+
+EXPOSE 8000
