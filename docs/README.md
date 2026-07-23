@@ -5,10 +5,10 @@ this index and by the status banner at the top of each document**, not by its
 filename. A filename containing `production` or `validated` does not by itself make a
 document current — always check its group here and its banner.
 
-The current DeepSeek-V4-Flash production baseline is the **SM121 DeepGEMM FP8-Q
-indexer** path. Runtime deployments must use the **immutable digest-pinned** production
-preset (`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env`), never the
-mutable alias.
+The current DeepSeek-V4-Flash production baseline is the **native DSpark k=7 64K** path,
+active on spark01 port 8000. Runtime deployments use the **immutable digest-pinned** production
+preset (`presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env`); the MTP1 preset
+(`presets/deepseek-v4-flash-mtp1-production-tp2.env`) is the authoritative rollback.
 
 Groups: [Current production](#current-production) · [Rollback and operations](#rollback-and-operations)
 · [General stable stacks](#general-stable-stacks) · [Model guides](#model-guides)
@@ -18,24 +18,21 @@ Groups: [Current production](#current-production) · [Rollback and operations](#
 
 ## Current production
 
-Runtime authority = immutable digest `sha256:ade810fd…` (image config `fa83457d`). Deploy via the
-digest-pinned preset; the mutable alias `dsv4-sm121-indexer-production` is provenance only.
+Runtime authority = immutable digest `sha256:aacb06de…` (image config `75bdf3d8…`), active since
+2026-07-22 on spark01 port 8000. Deploy via the digest-pinned preset.
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [deepseek-v4-sm121-indexer-production.md](deepseek-v4-sm121-indexer-production.md) | Current DeepSeek-V4-Flash production baseline — SM121 DeepGEMM FP8-Q indexer, MARLIN MoE, production Triton dense/sparse-MLA, TP=2 mp | `Current production` | Authoritative runtime identity, routing, rollback, clone guard, ABI provenance |
-| [deepseek-v4-sm121-indexer-promotion-manifest.md](deepseek-v4-sm121-indexer-promotion-manifest.md) | Machine-oriented promotion record (digests, source/ABI SHAs, validation outcomes, rollback) | `Current production` | Quick identity/provenance lookup |
+| [deepseek-v4-production.md](deepseek-v4-production.md) | Canonical DeepSeek-V4 production operations — active native DSpark k=7 64K route and MTP1 rollback, runtime contracts, activation/rollback, validation provenance (DS3U/DS3V/DS3X/DS3Y) | `Current production` | Authoritative operations, runtime contracts, rollback |
 
 ## Rollback and operations
 
-Distinguish: current production (above), the immediate rollback baseline (config `4c41950c`, preset
-`presets/deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env`, SHA `593ba898`),
-and historical activation evidence.
+The authoritative rollback for the active DSpark production is the MTP1 preset
+(`presets/deepseek-v4-flash-mtp1-production-tp2.env`, image `@sha256:de69fa367137…`, stopped).
+Rollback and recovery procedure: [deepseek-v4-production.md](deepseek-v4-production.md).
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [deepseek-v4-prefill8192-production-runbook.md](deepseek-v4-prefill8192-production-runbook.md) | prefill8192 activation / acceptance / shutdown / rollback runbook | `Rollback baseline` | Rollback activation and historical reproduction (not the normal current path) |
-| [deepseek-v4-prefill8192-production-activation.md](deepseek-v4-prefill8192-production-activation.md) | prefill8192 production activation/acceptance record | `Rollback baseline` (historical activation evidence) | Immutable record of the prior production activation |
 | [release-management.md](release-management.md) | Maintainer-only Git tag creation, branch structure, archived branches | `Operational reference` | Release/branch maintenance |
 
 ## General stable stacks
@@ -77,7 +74,6 @@ Validated, but not the current default serving path.
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [deepseek-v4-mtp1-fullgraph-validated-preset.md](deepseek-v4-mtp1-fullgraph-validated-preset.md) | DeepSeek-V4 MTP n=1 + FULL_DECODE_ONLY validated preset provenance | `Validated alternative` | Provenance/gates for the MTP fullgraph validated preset |
 | [flashinfer-aot-prebake.md](flashinfer-aot-prebake.md) | FlashInfer AOT-prebaked image (`v022-d568-fi-aot`) validated specs | `Validated alternative` | Optional drop-in for `v022-d568` |
 
 ## Experimental work
@@ -86,11 +82,9 @@ Not promoted. Reference/experimental only.
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [deepseek-v4-v023-stack-pr41834.md](deepseek-v4-v023-stack-pr41834.md) | DeepSeek-V4 SM12x v0.23-stack / PR #41834 experimental build | `Experimental` | v0.23-stack DSV4 build notes |
 | [unholy-fusion-benchmark.md](unholy-fusion-benchmark.md) | `unholy-fusion` configuration, limits, and benchmark comparison | `Experimental` | Higher-prefill DSV4 experimental alternative (not a recommended production path) |
 | [step3.7-tokenizer-overlay.md](step3.7-tokenizer-overlay.md) | Step-3.7 non-mutating runtime tokenizer overlay | `Experimental` | Tokenizer-overlay technique |
 | [prometheus-routing-path-fix.md](prometheus-routing-path-fix.md) | Prometheus `routing.py` `.path` guard (experimental image) | `Experimental` | Monitoring routing-path fix notes |
-| [dsv4-longout-experimental-profiles.md](dsv4-longout-experimental-profiles.md) | DeepSeek-V4-Flash long-output c2/c4 experimental profiles (H1Z-P46) | `Experimental` | Long-output/throughput-only c2/c4 profiles (not production; c4 `llama-benchy` c4-safe PASS; short-output/interactive unsuitable; published GHCR metadata-only c4 tag, H1Z-P49D) |
 | [dsv4-dspark-speculative-decoding-72261a7-closure.md](dsv4-dspark-speculative-decoding-72261a7-closure.md) | DeepSeek-V4-Flash-DSpark speculative decoding on vLLM `72261a7` — DS2 arc closure (defects found and fixed; acceptance unmoved) | `Experimental` (investigation CLOSED, NOT VALIDATED) | DSpark experimental status: DS2D14 preferred baseline / DS2D13 fallback / DS2D12 rollback; k=3 only validated envelope; local-only images; production unaffected (speculative decoding not used) |
 
 ## Historical and superseded records
@@ -99,9 +93,6 @@ Preserved for evidence and reproducibility. Superseded ≠ incorrect; do not tre
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [deepseek-v4-prefill8192-validated-candidate.md](deepseek-v4-prefill8192-validated-candidate.md) | prefill8192 validated-candidate testing record | `Superseded` | Provenance for the rollback baseline (replacement: SM121 indexer) |
-| [deepseek-v4-prefill-optimization-campaign-plan.md](deepseek-v4-prefill-optimization-campaign-plan.md) | Completed prefill-optimization campaign plan | `Historical` | Campaign record (planned actions are not current instructions) |
-| [deepseek-v4-mtp1-fullgraph-promotion-checklist.md](deepseek-v4-mtp1-fullgraph-promotion-checklist.md) | MTP + FULL-graph validated-preset promotion checklist | `Historical` operational reference | Promotion-checklist record |
 | [model-serving-validation-history.md](model-serving-validation-history.md) | Historical stack validation notes and benchmarks (Gemma 4, Qwen3.5 122B/397B, PrismaQuant, Qwen3.6-35B, TurboQuant) | `Historical` | Historical benchmark/validation archive |
 | [stack-v021.md](stack-v021.md) | Software stack v021-ngc2603 (previous main, NGC 26.03) | `Superseded` | Prior main stack reference |
 | [stack-v019.md](stack-v019.md) | Software stack v019-ngc2603 (archived) | `Historical` (archived) | Archived stack reference |

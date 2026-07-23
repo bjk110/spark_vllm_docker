@@ -30,7 +30,7 @@ below.
 
 **This is the primary documented path for DeepSeek-V4-Flash on 2× DGX Spark / GB10.**
 
-Layered on top of `v022-d568`. Uses a fork of vLLM with SM12x DSV4 support (sparse MLA, Lightning Indexer, fp8_ds_mla KV cache, MTP heads). Preset: `presets/dsv4-flash-fp8-tp2.env`.
+Layered on top of `v022-d568`. Uses a fork of vLLM with SM12x DSV4 support (sparse MLA, Lightning Indexer, fp8_ds_mla KV cache, MTP heads). Preset: the frozen DSV4-Flash baseline preset (removed from the active surface; Git history).
 
 | Component | Version |
 |---|---|
@@ -40,7 +40,7 @@ Layered on top of `v022-d568`. Uses a fork of vLLM with SM12x DSV4 support (spar
 | Additional patches | `apply_dsv4_packed_mapping.py`, `patch_split_module_compat.py` (re-applied), `moe_config_e256/e512.json` (re-staged), `instanttensor` pip dep |
 | Image tag | `ghcr.io/bjk110/vllm-spark:dsv4-d568` (**on GHCR**, digest `sha256:b18da2a0`) |
 
-Verified preset: `presets/dsv4-flash-fp8-tp2.env` — DeepSeek-V4-Flash dual-rdma TP=2, 200K ctx, fp8 KV cache + Lightning Indexer.
+Verified preset: the frozen DSV4-Flash baseline preset (removed from the active surface; Git history) — DeepSeek-V4-Flash dual-rdma TP=2, 200K ctx, fp8 KV cache + Lightning Indexer.
 
 **Full guide + 9-way benchmark sweep + MTP/backend analysis**: [`docs/dsv4-flash-tp2.md`](dsv4-flash-tp2.md).
 
@@ -122,7 +122,7 @@ See [`CHANGELOG.md`](../CHANGELOG.md) for release-by-release detail and [`PATCH_
 - `v022-d568` is the stable general base for `v022-*` presets (Qwen3.6, Gemma 4 31B,
   abliterix NVFP4) and is the base on which `dsv4-d568` was originally built.
 - `v022-d568-ngc2605-tx5102-vllm022` is the active forward-stack for new models.
-- `dsv4-d568` is used only by `presets/dsv4-flash-fp8-tp2.env`.
+- `dsv4-d568` is used only by the frozen DSV4-Flash baseline preset (removed from the active surface; Git history).
 - `unholy-fusion` serves the same model/preset via its own override path
   (`.env.unholy-fusion` + `compose/docker-compose.unholy.yml`) rather than by
   copying a preset to `.env` — see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md).

@@ -169,7 +169,7 @@ docker compose \
   --profile worker down || true
 
 # Reboot to reclaim GB10 UMA memory, then start the normal dsv4-d568 path:
-# docker compose --env-file presets/dsv4-flash-fp8-tp2.env --profile worker|head up -d
+# docker compose --env-file presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env --profile worker|head up -d
 ```
 
 #### Manual fallback path

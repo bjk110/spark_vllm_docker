@@ -30,7 +30,7 @@ patch target**, so the arc closes with no evidence-backed narrow change left to 
 - **Images are local experimental artifacts on spark01/spark02 only.** No GHCR promotion occurred;
   none was pushed, retagged, or published.
 - **Production baseline (untouched):** the SM121 DeepGEMM FP8-Q indexer path — see
-  [`deepseek-v4-sm121-indexer-production.md`](deepseek-v4-sm121-indexer-production.md). It does not
+  [`deepseek-v4-production.md`](deepseek-v4-production.md). It does not
   enable speculative decoding, so **no production configuration change is required by any finding
   here.**
 
@@ -230,11 +230,11 @@ separately approved experimental arc.
 ## Cross-references
 
 - Production identity/routing/rollback:
-  [`deepseek-v4-sm121-indexer-production.md`](deepseek-v4-sm121-indexer-production.md).
+  [`deepseek-v4-production.md`](deepseek-v4-production.md).
 - Closure precedent and method (attribution arc closed without promotion):
   [`dsv4-sparse-mla-b3-investigation-closure.md`](dsv4-sparse-mla-b3-investigation-closure.md).
 - v0.23-stack / PR #41834 build context:
-  [`deepseek-v4-v023-stack-pr41834.md`](deepseek-v4-v023-stack-pr41834.md).
+  [`deepseek-v4-production.md`](deepseek-v4-production.md).
 
 ## Durable engineering lessons from this arc
 

@@ -3,9 +3,8 @@
 Docker Compose environment preset files for model-serving configurations. This directory does
 **not** contain Hugging Face model weights.
 
-**Status is set by this index, not by the filename.** A filename containing `production` or
-`validated` does not by itself make a preset current — check its group below. Each `.env` file also
-documents its own recipe/image/topology in its header comment.
+**Status is set by this index, not by the filename.** Each `.env` file also documents its own
+recipe/image/topology in its header comment.
 
 Serve a preset directly:
 
@@ -13,57 +12,37 @@ Serve a preset directly:
 docker compose --env-file presets/<preset>.env --profile head up -d   # + --profile worker on the worker node
 ```
 
-Navigation: **[1. Current production](#1-current-production-presets)** · **[2. Immediate rollback](#2-immediate-rollback-preset)**
-· [3. Validated (non-DSV4)](#3-validated-presets-non-deepseek-v4) · [4. General supported](#4-general-supported-presets)
-· [5. Experimental](#5-experimental-presets) · [6. Archived and historical](#6-archived-and-historical-presets)
+Navigation: **[1. DeepSeek-V4 production](#1-deepseek-v4-production-presets)** · [2. Validated (non-DSV4)](#2-validated-presets-non-deepseek-v4)
+· [3. General supported](#3-general-supported-presets) · [4. Experimental](#4-experimental-presets) · [5. Historical reproduction](#5-historical-reproduction-presets)
 
-**DeepSeek-V4-Flash selection order:** use **§1** (the one authoritative production preset).
-If production must be reverted, use **§2** (the one immediate rollback). Everything else —
-**§5** experimental, **§6** superseded candidate / validated lineage / deep recovery /
-historical reproduction — is **not** an operational choice for a new deployment.
-
-> This catalog reorganisation is **documentation-only**. It does not change runtime values,
-> image digests, model paths, or production behaviour, and it deletes no rollback artifact.
-> Every preset file remains exactly where it was; only the documented selection surface is
-> simplified.
+**DeepSeek-V4-Flash selection order:** use the **active production** preset for serving; use the
+**production rollback** preset only to revert. There is no other operational DeepSeek-V4 choice.
+Superseded DeepSeek-V4 presets (intermediate, experimental, candidate, legacy, deep-recovery,
+historical) are available through Git history and are **not** retained in the active preset directory.
 
 ---
 
-## 1. Current production presets
+## 1. DeepSeek-V4 production presets
 
-**DeepSeek-V4-Flash has exactly one authoritative production entry point** — the preset in the table
-below. Everything else in this file is secondary: rollback, experimental, or provenance. The
-production path runs the promoted image by its **immutable GHCR manifest digest**
-(`sha256:de69fa367137…`, config `5bb962a9`, graph-safe, H1Z-P54A promotion); the mutable alias
-`dsv4-sm121-indexer-production` is provenance only and must not be used as the runtime pin. Details:
-[`docs/deepseek-v4-sm121-indexer-production.md`](../docs/deepseek-v4-sm121-indexer-production.md).
+DeepSeek-V4-Flash has exactly two production-operable presets: the active native DSpark 64K
+production preset and its authoritative MTP1 rollback. Both pin their image by **immutable GHCR
+manifest digest**. Full operations and validation provenance:
+[`docs/deepseek-v4-production.md`](../docs/deepseek-v4-production.md).
 
-| Preset | Model / stack | Topology | Status | Use |
-|---|---|---|---|---|
-| `deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env` | DeepSeek-V4-Flash · SM121 DeepGEMM FP8-Q indexer, MARLIN MoE, **graph-safe** (Issue #17) | dual-rdma TP=2 mp | **Current production — authoritative production entry point** | The DSV4 serving path (concurrency 1, ≤131K, MTP n=1, FULL_DECODE_ONLY `[2]`, 4 GiB fp8 KV). Digest-pinned to the graph-safe image `@sha256:de69fa367137…` (config `5bb962a9`, H1Z-P54A promotion). Legacy `@ade810fd` baseline preserved as the immediate rollback preset below. Repo recipe-level patched image; not an upstream fix; no performance claim |
+| Preset | Model | Status | Notes |
+|---|---|---|---|
+| `deepseek-v4-flash-dspark-k7-64k-production-tp2.env` | DeepSeek-V4-Flash-DSpark | **Active production** (since 2026-07-22, spark01:8000) | native DSpark k=7 greedy, target FULL_DECODE_ONLY `[8]`, draft eager, `MAX_MODEL_LEN=65536`, KV 10 GiB FP8, `E8M0=1`, max_num_seqs 1, prefix caching off, TP=2 mp/RoCE. Digest `@sha256:aacb06de60ec…`. No LC131 exposure; unrestricted 135168 not supported |
+| `deepseek-v4-flash-mtp1-production-tp2.env` | DeepSeek-V4-Flash | **Production rollback** (stopped) | Authoritative rollback for the active DSpark production. MTP n=1, target FULL_DECODE_ONLY `[2]`, KV 4 GiB FP8, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:de69fa367137…`. Repeated large-context operation not approved |
 
-## 2. Immediate rollback preset
+## 2. Validated presets (non-DeepSeek-V4)
 
-**Exactly one immediate rollback target** for the current production baseline: it preserves the
-production serving envelope and changes **only** the image lineage, so returning to it needs no
-rebuild and no settings change. Deeper recovery steps are in
-[§6 Archived and historical presets](#6-archived-and-historical-presets). Runbook:
-[`docs/deepseek-v4-prefill8192-production-runbook.md`](../docs/deepseek-v4-prefill8192-production-runbook.md).
-
-| Preset | Model / stack | Topology | Status | Use |
-|---|---|---|---|---|
-| `deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env` | DeepSeek-V4-Flash · SM121 indexer, MARLIN MoE (pre-graph-safe baseline, `@ade810fd` / config `fa83457d`) | dual-rdma TP=2 mp | **Immediate rollback** | Byte-identical to the pre-H1Z-P54A production preset; roll the default graph-safe production preset back to `@ade810fd` with no rebuild. Same envelope; only `VLLM_IMAGE` differs |
-
-## 3. Validated presets (non-DeepSeek-V4)
-
-Validated, but **not** the current default serving path. DeepSeek-V4 validated lineage presets are
-provenance only and live in [§6](#6-archived-and-historical-presets).
+Validated, but **not** the current default serving path.
 
 | Preset | Model / stack | Topology | Status | Use |
 |---|---|---|---|---|
 | `step37-flash-nvfp4-v023-tp2-latency.env` | Step-3.7-Flash NVFP4 · v0.23 (EP-off, MARLIN, TRITON_ATTN) | dual-rdma TP=2 | Validated (Step-3.7 NVFP4 path) | Recommended Step-3.7 NVFP4 latency path ([bench](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md)) |
 
-## 4. General supported presets
+## 3. General supported presets
 
 Production-usable presets for non-DeepSeek-V4 models on the stable/forward stacks. Image bases:
 `v021-ngc2603` / `v021-tq` / `v022-d568` / `v022-d568-fi-aot` / step3p7 (see
@@ -94,36 +73,10 @@ Production-usable presets for non-DeepSeek-V4 models on the stable/forward stack
 | `step37-flash-fp8-v023-tp2.env` | stepfun-ai/Step-3.7-Flash-FP8 | FP8 block · v0.23 tokenizer overlay | dual-rdma TP2 | v023-step3p7 |
 | `step37-flash-fp8-tp2.env` | stepfun-ai/Step-3.7-Flash-FP8 | FP8 block | dual-rdma TP2 | v022-d568…step3p7 |
 
-## 5. Experimental presets
+## 4. Experimental presets
 
 Not promoted; tuning/bring-up/A-B and stack-bisection variants. **None is a production path**, and
 each requires separate validation before any operational use.
-
-### 5a. DeepSeek-V4 experimental — throughput
-
-Long-output / throughput-only profiles. **Not production; not interactive** (high TTFT). Detail:
-[`docs/dsv4-longout-experimental-profiles.md`](../docs/dsv4-longout-experimental-profiles.md).
-
-| Preset | Model / stack | Topology | Note |
-|---|---|---|---|
-| `deepseek-v4-h1z-longout-c2-throughput-experimental-tp2.env` | DeepSeek-V4-Flash long-output c2 (H0) | dual-rdma TP2 | Experimental long-output/throughput-only (not interactive; ~4 GiB KV) |
-| `deepseek-v4-h1z-longout-c4-deepbatch-experimental-tp2.env` | DeepSeek-V4-Flash long-output c4 deep-batch (H0) | dual-rdma TP2 | Experimental long-output/offline deep-batch (8 GiB KV; `llama-benchy` c4-safe PASS; high TTFT — not interactive) |
-
-### 5b. DeepSeek-V4 experimental — bring-up and feature validation
-
-v0.23-stack bring-up and single-feature checks. **Feature validation only** — small envelopes
-(8K/2048), not serving configurations. Detail:
-[`docs/deepseek-v4-v023-stack-pr41834.md`](../docs/deepseek-v4-v023-stack-pr41834.md).
-
-| Preset | Model / stack | Topology | Note |
-|---|---|---|---|
-| `deepseek-v4-v023-stack-pr41834-bootstrap-tp2.env` | DeepSeek-V4 v0.23-stack bring-up | dual-rdma TP2 | Bootstrap variant |
-| `deepseek-v4-v023-stack-pr41834-graph-tp2.env` | DeepSeek-V4 v0.23-stack graph | dual-rdma TP2 | Graph bring-up experiment |
-| `deepseek-v4-v023-stack-pr41834-prefixcache-tp2.env` | DeepSeek-V4 v0.23-stack prefix cache | dual-rdma TP2 | Prefix-cache experiment |
-| `deepseek-v4-v023-stack-pr41834-reasoning-parser-tp2.env` | DeepSeek-V4 v0.23-stack reasoning parser | dual-rdma TP2 | Reasoning-parser experiment |
-| `deepseek-v4-v023-stack-pr41834-tool-parser-tp2.env` | DeepSeek-V4 v0.23-stack tool parser | dual-rdma TP2 | Tool-parser experiment |
-
-### 5c. Other experimental presets
 
 | Preset | Model / stack | Topology | Note |
 |---|---|---|---|
@@ -137,45 +90,13 @@ v0.23-stack bring-up and single-feature checks. **Feature validation only** — 
 | `qwen3.6-27b-prismascout-nvfp4-tp2-v022-tx581.env` | …PrismaSCOUT NVFP4 · v022 Transformers 5.8.1 | dual-rdma TP2 | v022 stack-bisection variant |
 | `qwen3.6-27b-prismascout-nvfp4-tp2-v022-d568.env` | …PrismaSCOUT NVFP4 · v022-d568 | dual-rdma TP2 | v022-d568 stack variant |
 
-## 6. Archived and historical presets
+## 5. Historical reproduction presets
 
-Preserved for provenance, deep recovery, and reproduction. **None of these is an operational choice
-for a new deployment.** Files are retained in place — nothing here has been moved or deleted.
-
-### 6a. Superseded production candidate (provenance only)
-
-| Preset | Model / stack | Topology | Status | Note |
-|---|---|---|---|---|
-| `deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env` | Same graph-safe patch (Issue #17), digest-pinned `@sha256:de69fa367137…` | dual-rdma TP=2 mp | **Superseded production candidate — provenance only** | The former P53 production-candidate preset. Pins the **same** graph-safe digest that §1 now serves, so it is not an alternative production path. **Do not use as an active entry point** — use the §1 production preset |
-
-### 6b. Validated DeepSeek-V4 lineage (provenance only)
-
-Validated stages that preceded the current production promotion. Provenance, not serving paths.
-
-| Preset | Model / stack | Topology | Status | Note |
-|---|---|---|---|---|
-| `deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-production-tp2.env` | DeepSeek-V4-Flash prefill8192 (config `4c41950c`) | dual-rdma TP=2 mp | **Prior production — provenance only** | The production baseline before the SM121 indexer promotion. Superseded twice (SM121 indexer, then graph-safe P54A). Reaching it is a deeper step back than §2 — it changes the route, not just the image |
-| `deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-prefill8192-validated-candidate-tp2.env` | DeepSeek-V4-Flash prefill8192 | dual-rdma TP=2 mp | `VALIDATED_CANDIDATE` (superseded) — provenance only | Provenance for the prior-production baseline; not current serving |
-| `deepseek-v4-v023-stack-pr41834-mtp1-fullgraph-validated-tp2.env` | DeepSeek-V4-Flash MTP n=1 + FULL_DECODE_ONLY (8K/2048/2 GiB KV) | dual-rdma TP=2 mp | `VALIDATED_PRESET_CANDIDATE` — provenance only | Validated MTP fullgraph baseline; not production ([provenance](../docs/deepseek-v4-mtp1-fullgraph-validated-preset.md)) |
-
-### 6c. Deep recovery (historical diagnostic)
-
-Older operational checkpoints. **Not normal rollback choices** — use §2 first. These trade throughput
-for a simpler graph/execution path and are for diagnosis when §2 does not recover the service.
-
-| Preset | Model / stack | Topology | Status | Note |
-|---|---|---|---|---|
-| `deepseek-v4-v023-stack-pr41834-fullgraph-validated-rollback-tp2.env` | DeepSeek-V4-Flash graph-only (L1) | dual-rdma TP=2 | **Deep recovery (L1)** | Graph-only fallback (~27.2 t/s); historical diagnostic |
-| `deepseek-v4-v023-stack-pr41834-eager-u0-rollback-tp2.env` | DeepSeek-V4-Flash eager U0-RDMA (L2) | dual-rdma TP=2 | **Deep recovery (L2)** | Eager fallback (~7.4 t/s); historical diagnostic |
-
-### 6d. Historical reproduction
-
-Legacy / reproduction references. Preserved for provenance; **not current, not recommended for new
-deployments.**
+Legacy / reproduction references for non-DeepSeek-V4 models. Preserved for provenance; **not current,
+not recommended for new deployments.**
 
 | Preset | Model / stack | Topology | Note |
 |---|---|---|---|
-| `dsv4-flash-fp8-tp2.env` | DeepSeek-V4-Flash official FP8 (`dsv4-d568`, legacy/JASL) | dual-rdma TP2 | Legacy DSV4 reproduction ([`docs/dsv4-flash-tp2.md`](../docs/dsv4-flash-tp2.md)); not current production |
 | `wangzhang-122b-abliterix-fp8-tp2-v022.env` | wangzhang/…abliterix FP8 · v022 | dual-rdma TP2 | v022 stack reproduction variant |
 | `wangzhang-122b-abliterix-fp8-tp2-v022-d568.env` | wangzhang/…abliterix FP8 · v022-d568 | dual-rdma TP2 | v022-d568 stack reproduction variant |
 
@@ -197,7 +118,7 @@ Keep model weights outside this repository (e.g. `/mnt/data/llm-models/<org>/<mo
 
 ```bash
 sed -i 's|/path/to/model|/mnt/data/llm-models/deepseek-ai/DeepSeek-V4-Flash|' \
-  presets/dsv4-flash-fp8-tp2.env
+  presets/deepseek-v4-flash-mtp1-production-tp2.env
 ```
 
 ## Directory name

@@ -164,5 +164,5 @@ re-open. Disposition is a proposal for a later, separately authorized action.
 - Attribution precedents: H1C (B12X not primary), H1O (A4 DeepGEMM runtime partial),
   H1W (matched-nsys sparse-MLA metadata group), B2C9 (B12X MoE perf attribution).
 - Production identity/routing/rollback:
-  [`deepseek-v4-sm121-indexer-production.md`](deepseek-v4-sm121-indexer-production.md),
-  [`deepseek-v4-prefill8192-production-runbook.md`](deepseek-v4-prefill8192-production-runbook.md).
+  [`deepseek-v4-production.md`](deepseek-v4-production.md),
+  [`deepseek-v4-production.md`](deepseek-v4-production.md).

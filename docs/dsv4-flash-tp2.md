@@ -4,7 +4,7 @@
 |---|---|
 | Status | `Historical` |
 | Scope | Legacy JASL-era DeepSeek-V4-Flash TP=2 model guide and reproduction reference (`dsv4-d568`) |
-| Current replacement | [`deepseek-v4-sm121-indexer-production.md`](deepseek-v4-sm121-indexer-production.md) (current production) |
+| Current replacement | [`deepseek-v4-production.md`](deepseek-v4-production.md) (current production: native DSpark k=7 64K) |
 | Last validated | Not recorded (legacy `dsv4-d568` baseline, intentionally frozen) |
 | Runtime or image identity | image `ghcr.io/bjk110/vllm-spark:dsv4-d568` (frozen legacy baseline) |
 | Historical relevance | Not the default production path. Preserved for the historical configuration, JASL recipe, and 9-way benchmark sweep. |
@@ -101,7 +101,7 @@ ghcr.io/bjk110/vllm-spark:dsv4-d568
 | 호스트 (양 spark) | `${MODEL_PATH}` 환경변수가 가리키는 디렉토리 |
 | 컨테이너 내부 | `/models/DeepSeek-V4-Flash` (`${MODEL_CONTAINER_PATH}`) |
 
-호스트 경로는 [`presets/dsv4-flash-fp8-tp2.env`](../presets/dsv4-flash-fp8-tp2.env) 의 `MODEL_PATH` 로 지정. compose 가 그 디렉토리를 컨테이너의 `/models/DeepSeek-V4-Flash` 에 read-only 바인드.
+호스트 경로는 `presets/dsv4-flash-fp8-tp2.env` (이 legacy baseline preset 은 active preset surface 에서 제거됨 — Git history 참조) 의 `MODEL_PATH` 로 지정. compose 가 그 디렉토리를 컨테이너의 `/models/DeepSeek-V4-Flash` 에 read-only 바인드.
 
 ### 2.2. 디스크 요구사항
 

@@ -211,7 +211,7 @@ The graph-safe path is reproducible from the repository via a non-default experi
 A digest-pinned **promoted production-candidate** preset makes the graph-safe candidate selectable for serving without
 replacing the production baseline:
 
-- Preset: [`presets/deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env`](../presets/deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env)
+- Preset: `presets/deepseek-v4-h1z-b1ae-sm121-indexer-graphsafe-production-candidate-tp2.env` (superseded; removed from the active preset surface — see Git history)
 - Derived from the production preset (`f1b049d5`) — **identical runtime fields, only `VLLM_IMAGE` differs**, pinned to the
   candidate manifest `ghcr.io/bjk110/vllm-spark@sha256:de69fa367137…` (config `5bb962a9`, the P52C2-validated image).
 - Production-like validation (**H1Z-P53C**): `max_num_seqs=1`, capture `[2]`, 4 GiB KV, TP=2 mp/RoCE — correctness 5/5,
@@ -225,10 +225,10 @@ The graph-safe candidate was promoted to the **default recommended production re
 recipe-level promotion of a validated **patched** image — **not** an upstream vLLM fix, with **no** performance claim,
 and **no** GHCR `latest`/`stable`/`production` tag movement.
 
-- Default production preset (updated in place): [`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env`](../presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-tp2.env)
+- Default production preset at the time (now the MTP1 production rollback): [`presets/deepseek-v4-flash-mtp1-production-tp2.env`](../presets/deepseek-v4-flash-mtp1-production-tp2.env)
   — the **only** functional change is `VLLM_IMAGE` (`@ade810fd` → `@de69fa367137…`, config `5bb962a9`); every serving
   field (`max_num_seqs=1`, capture `[2]`, 4 GiB fp8 KV, TP=2 mp/RoCE, MTP n=1, MARLIN) is unchanged.
-- Legacy rollback preset (previous baseline, preserved verbatim): [`presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env`](../presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env)
+- Legacy rollback preset (previous baseline): `presets/deepseek-v4-h1z-b1ae-sm121-indexer-production-legacy-ade810fd-tp2.env` (superseded; removed from the active preset surface — see Git history)
   — `@ade810fd` / config `fa83457d`; use it to return to the pre-graph-safe image with no rebuild.
 - The earlier candidate preset (`…-graphsafe-production-candidate-tp2.env`) is retained for provenance and pins the
   **same** graph-safe digest as the default preset; new users should use the default production preset.

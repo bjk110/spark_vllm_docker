@@ -7,7 +7,7 @@
 | Current replacement | None |
 | Last validated | Not recorded (living reference; live-state snapshot 2026-05-26) |
 | Runtime or image identity | Not applicable (architecture reference) |
-| Historical relevance | Living architecture reference. Where a current production example is needed, the authoritative serving path is the SM121 indexer baseline — see [`deepseek-v4-sm121-indexer-production.md`](deepseek-v4-sm121-indexer-production.md). |
+| Historical relevance | Living architecture reference. Where a current production example is needed, the authoritative serving path is the SM121 indexer baseline — see [`deepseek-v4-production.md`](deepseek-v4-production.md). |
 
 > 최종 갱신: 2026-05-26 · 라이브 상태 기준 (spark01 head + spark02 worker, `dsv4-d568-relax` 가동 중)
 
