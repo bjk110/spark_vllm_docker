@@ -18,18 +18,29 @@ Groups: [Current production](#current-production) · [Rollback and operations](#
 
 ## Current production
 
-Runtime authority = immutable digest `sha256:aacb06de…` (image config `75bdf3d8…`), active since
-2026-07-22 on spark01 port 8000. Deploy via the digest-pinned preset.
+Two independent model tracks are documented as "current production" below; each is authoritative
+for its own model, not for the physical port 8000 slot simultaneously — spark01/spark02 run one
+model at a time, and whichever track is not currently deployed remains stopped (see each document's
+own status banner for what is actually running right now).
+
+Runtime authority (DeepSeek-V4-Flash) = immutable digest `sha256:aacb06de…` (image config
+`75bdf3d8…`). Deploy via the digest-pinned preset.
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
 | [deepseek-v4-production.md](deepseek-v4-production.md) | Canonical DeepSeek-V4 production operations — active native DSpark k=7 64K route and MTP1 rollback, runtime contracts, activation/rollback, validation provenance (DS3U/DS3V/DS3X/DS3Y) | `Current production` | Authoritative operations, runtime contracts, rollback |
+| [solar-open2-production.md](solar-open2-production.md) | Canonical Solar-Open2-250B production operations — active r4 BF16 (vLLM 0.25.1) route and v0.22.1 rollback, runtime contracts, activation/rollback with empirical reboot procedure, validation provenance (6-gate production fast-track 2026-08-08/09) | `Current production` | Authoritative operations, runtime contracts, rollback |
 
 ## Rollback and operations
 
 The authoritative rollback for the active DSpark production is the MTP1 preset
 (`presets/deepseek-v4-flash-mtp1-production-tp2.env`, image `@sha256:de69fa367137…`, stopped).
 Rollback and recovery procedure: [deepseek-v4-production.md](deepseek-v4-production.md).
+
+The authoritative rollback for the active Solar-Open2 r4 production is the v0.22.1 preset
+(`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`, image
+`sha256:1873d2174691…`, stopped). Rollback and recovery procedure (including the empirically
+required physical-reboot sequence): [solar-open2-production.md](solar-open2-production.md).
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
