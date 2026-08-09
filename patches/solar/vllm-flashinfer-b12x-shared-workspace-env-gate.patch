@@ -1,0 +1,302 @@
+--- a/flashinfer/fused_moe/cute_dsl/b12x_moe.py
++++ b/flashinfer/fused_moe/cute_dsl/b12x_moe.py
+@@ -222,6 +222,101 @@
+     )
+ 
+ 
++
++# ---------------------------------------------------------------------------
++# spark_vllm_docker experimental patch: VLLM_SPARK_B12X_SHARED_WORKSPACE.
++# Opt-in (default OFF) sharing of the per-wrapper pre-allocated SCRATCH
++# workspaces (_static_workspace / _dynamic_workspace / _moe_output) across
++# B12xMoEWrapper instances on the same device with identical size
++# parameters. Motivation (measured 2026-07-26, Solar-Open2 250B TP=2):
++# vLLM builds one wrapper per MoE layer with use_cuda_graph=True, so 48
++# layers pre-allocate ~27.9 GiB of identical per-call scratch per rank;
++# sharing one bounded set reduced engine-ready allocation from 103.5 GiB
++# to 76.2 GiB with byte-identical outputs.
++# Scope and safety:
++# - Layer-specific weight state (_weight_views/_padded_weights) is NEVER
++#   shared.
++# - Validated ONLY for eager, single-stream, sequential layer execution;
++#   allocating or running with shared workspaces during CUDA graph capture
++#   fails fast (no silent fallback).
++# - Manager is process-local, device-keyed, exact-size-keyed, bounded
++#   (max 8 entries, fail-loud). No resize: distinct sizes get distinct
++#   entries by key construction.
++# - When the variable is unset/false the original per-wrapper allocation
++#   path below runs unchanged.
++# ---------------------------------------------------------------------------
++_SW_ENV = "VLLM_SPARK_B12X_SHARED_WORKSPACE"
++_SW_TRUE_VALUES = ("1", "true", "yes", "on")
++_SW_FALSE_VALUES = ("", "0", "false", "no", "off")
++_SW_SHARED: dict = {}
++_SW_MAX_ENTRIES = 8
++_sw_activation_logged = False
++
++
++def _sw_logger():
++    import logging
++
++    return logging.getLogger("flashinfer.b12x_shared_workspace")
++
++
++def _sw_enabled() -> bool:
++    """Strictly parse VLLM_SPARK_B12X_SHARED_WORKSPACE; invalid fails fast."""
++    import os as _os
++
++    raw = _os.getenv(_SW_ENV)
++    if raw is None:
++        return False
++    value = raw.strip().lower()
++    if value in _SW_FALSE_VALUES:
++        return False
++    if value in _SW_TRUE_VALUES:
++        return True
++    raise ValueError(
++        f"Invalid {_SW_ENV}={raw!r}. Accepted true values: 1/true/yes/on; "
++        "accepted false values: unset/empty/0/false/no/off."
++    )
++
++
++def _sw_shared_get(kind, key, alloc_fn):
++    global _sw_activation_logged
++    import torch as _t
++
++    if _t.cuda.is_current_stream_capturing():
++        raise RuntimeError(
++            f"{_SW_ENV}=1 is validated only for eager execution; shared b12x "
++            "workspaces must not be allocated during CUDA graph capture."
++        )
++    if not _sw_activation_logged:
++        _sw_logger().warning(
++            "%s enabled: sharing b12x scratch workspaces per (kind, device, "
++            "size params); layer weight state stays per-layer. Validated for "
++            "eager single-stream b12x only.",
++            _SW_ENV,
++        )
++        _sw_activation_logged = True
++    full_key = (kind, int(_t.cuda.current_device())) + tuple(key)
++    ent = _SW_SHARED.get(full_key)
++    if ent is None:
++        if len(_SW_SHARED) >= _SW_MAX_ENTRIES:
++            raise RuntimeError(
++                f"b12x shared-workspace entries exceeded {_SW_MAX_ENTRIES}; "
++                f"refusing unbounded growth. Existing keys: {sorted(_SW_SHARED)}"
++            )
++        before = _t.cuda.memory_allocated()
++        ent = alloc_fn()
++        _SW_SHARED[full_key] = ent
++        _sw_logger().warning(
++            "allocated shared %s workspace: key=%s bytes=%d entries=%d/%d stream=%s",
++            kind,
++            full_key,
++            _t.cuda.memory_allocated() - before,
++            len(_SW_SHARED),
++            _SW_MAX_ENTRIES,
++            _t.cuda.current_stream().cuda_stream,
++        )
++    return ent
++
++
+ class B12xMoEWrapper:
+     """B12x fused MoE wrapper for SM120/SM121 with CUDA graph support.
+ 
+@@ -389,22 +484,52 @@
+ 
+         max_routed_rows = self.max_num_tokens * self.top_k
+         if self.quant_mode == "w4a16":
+-            self._static_workspace = allocate_sm120_moe_workspace(
+-                state_E=self.num_local_experts,
+-                weight_E=self.num_experts,
+-                routed_rows=max_routed_rows,
+-                k=self.hidden_size,
+-                n=self.intermediate_size,
+-                num_topk=self.top_k,
+-                device=torch.device(self.device),
+-                quant_mode=self.quant_mode,
+-                activation=self.activation,
+-            )
+-            self._moe_output = torch.empty(
+-                (self.max_num_tokens, self.hidden_size),
+-                dtype=self.output_dtype,
+-                device=self.device,
+-            )
++            if _sw_enabled():
++                self._static_workspace = _sw_shared_get(
++                    "ws_w4a16",
++                    (self.num_local_experts, self.num_experts, max_routed_rows,
++                 self.hidden_size, self.intermediate_size, self.top_k,
++                 self.quant_mode, self.activation),
++                    lambda: allocate_sm120_moe_workspace(
++                    state_E=self.num_local_experts,
++                    weight_E=self.num_experts,
++                    routed_rows=max_routed_rows,
++                    k=self.hidden_size,
++                    n=self.intermediate_size,
++                    num_topk=self.top_k,
++                    device=torch.device(self.device),
++                    quant_mode=self.quant_mode,
++                    activation=self.activation,
++                ),
++                )
++            else:
++                self._static_workspace = allocate_sm120_moe_workspace(
++                    state_E=self.num_local_experts,
++                    weight_E=self.num_experts,
++                    routed_rows=max_routed_rows,
++                    k=self.hidden_size,
++                    n=self.intermediate_size,
++                    num_topk=self.top_k,
++                    device=torch.device(self.device),
++                    quant_mode=self.quant_mode,
++                    activation=self.activation,
++                )
++            if _sw_enabled():
++                self._moe_output = _sw_shared_get(
++                    "moe_output",
++                    (self.max_num_tokens, self.hidden_size, str(self.output_dtype)),
++                    lambda: torch.empty(
++                        (self.max_num_tokens, self.hidden_size),
++                        dtype=self.output_dtype,
++                        device=self.device,
++                    ),
++                )
++            else:
++                self._moe_output = torch.empty(
++                    (self.max_num_tokens, self.hidden_size),
++                    dtype=self.output_dtype,
++                    device=self.device,
++                )
+             return
+ 
+         # Allocate a dynamic workspace alongside the static one when
+@@ -433,40 +558,91 @@
+             if needs_dynamic
+             else max_routed_rows
+         )
+-        self._static_workspace = allocate_sm120_moe_workspace(
+-            state_E=self.num_local_experts,
+-            weight_E=self.num_experts,
+-            max_rows=max(1, static_max_rows),
+-            k=self.hidden_size,
+-            n=self.intermediate_size,
+-            num_topk=self.top_k,
+-            device=torch.device(self.device),
+-            quant_mode=self.quant_mode,
+-            backend="static",
+-            activation=self.activation,
+-        )
+-
+-        if needs_dynamic:
+-            self._dynamic_workspace = allocate_sm120_moe_workspace(
++        if _sw_enabled():
++            self._static_workspace = _sw_shared_get(
++                "ws_static",
++                (self.num_local_experts, self.num_experts, max(1, static_max_rows),
++             self.hidden_size, self.intermediate_size, self.top_k,
++             self.quant_mode, self.activation),
++                lambda: allocate_sm120_moe_workspace(
+                 state_E=self.num_local_experts,
+                 weight_E=self.num_experts,
+-                routed_rows=max_routed_rows,
++                max_rows=max(1, static_max_rows),
+                 k=self.hidden_size,
+                 n=self.intermediate_size,
+                 num_topk=self.top_k,
+                 device=torch.device(self.device),
+                 quant_mode=self.quant_mode,
+-                backend="dynamic",
++                backend="static",
+                 activation=self.activation,
+-            )
++            ),
++            )
++        else:
++            self._static_workspace = allocate_sm120_moe_workspace(
++                state_E=self.num_local_experts,
++                weight_E=self.num_experts,
++                max_rows=max(1, static_max_rows),
++                k=self.hidden_size,
++                n=self.intermediate_size,
++                num_topk=self.top_k,
++                device=torch.device(self.device),
++                quant_mode=self.quant_mode,
++                backend="static",
++                activation=self.activation,
++            )
++
++        if needs_dynamic:
++            if _sw_enabled():
++                self._dynamic_workspace = _sw_shared_get(
++                    "ws_dynamic",
++                    (self.num_local_experts, self.num_experts, max_routed_rows,
++                 self.hidden_size, self.intermediate_size, self.top_k,
++                 self.quant_mode, self.activation),
++                    lambda: allocate_sm120_moe_workspace(
++                    state_E=self.num_local_experts,
++                    weight_E=self.num_experts,
++                    routed_rows=max_routed_rows,
++                    k=self.hidden_size,
++                    n=self.intermediate_size,
++                    num_topk=self.top_k,
++                    device=torch.device(self.device),
++                    quant_mode=self.quant_mode,
++                    backend="dynamic",
++                    activation=self.activation,
++                ),
++                )
++            else:
++                self._dynamic_workspace = allocate_sm120_moe_workspace(
++                    state_E=self.num_local_experts,
++                    weight_E=self.num_experts,
++                    routed_rows=max_routed_rows,
++                    k=self.hidden_size,
++                    n=self.intermediate_size,
++                    num_topk=self.top_k,
++                    device=torch.device(self.device),
++                    quant_mode=self.quant_mode,
++                    backend="dynamic",
++                    activation=self.activation,
++                )
+ 
+         # Allocated after arch-specific buffers to preserve memory layout
+         # that the autotuner's CUDA graph profiling is sensitive to.
+-        self._moe_output = torch.empty(
+-            (self.max_num_tokens, self.hidden_size),
+-            dtype=self.output_dtype,
+-            device=self.device,
+-        )
++        if _sw_enabled():
++            self._moe_output = _sw_shared_get(
++                "moe_output",
++                (self.max_num_tokens, self.hidden_size, str(self.output_dtype)),
++                lambda: torch.empty(
++                    (self.max_num_tokens, self.hidden_size),
++                    dtype=self.output_dtype,
++                    device=self.device,
++                ),
++            )
++        else:
++            self._moe_output = torch.empty(
++                (self.max_num_tokens, self.hidden_size),
++                dtype=self.output_dtype,
++                device=self.device,
++            )
+ 
+     @flashinfer_api(trace=b12x_moe_wrapper_run_trace)
+     def run(
+@@ -516,6 +692,13 @@
+             Output tensor of shape ``[num_tokens, hidden_size]``.
+         """
+         num_tokens = token_selected_experts.size(0)
++
++        # Shared scratch workspaces are validated for eager execution only.
++        if _SW_SHARED and _is_cuda_graph_capturing():
++            raise RuntimeError(
++                f"{_SW_ENV}=1 does not support CUDA graph capture; "
++                "disable the shared b12x workspace or run eagerly."
++            )
+ 
+         if self.use_cuda_graph and num_tokens > self.max_num_tokens:
+             raise ValueError(

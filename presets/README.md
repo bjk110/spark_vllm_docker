@@ -12,17 +12,28 @@ Serve a preset directly:
 docker compose --env-file presets/<preset>.env --profile head up -d   # + --profile worker on the worker node
 ```
 
-Navigation: **[1. DeepSeek-V4 production](#1-deepseek-v4-production-presets)** · [2. Validated (non-DSV4)](#2-validated-presets-non-deepseek-v4)
+Navigation: **[1. Production presets](#1-production-presets)** · [2. Validated (non-production)](#2-validated-presets-non-production)
 · [3. General supported](#3-general-supported-presets) · [4. Experimental](#4-experimental-presets) · [5. Historical reproduction](#5-historical-reproduction-presets)
 
-**DeepSeek-V4-Flash selection order:** use the **active production** preset for serving; use the
-**production rollback** preset only to revert. There is no other operational DeepSeek-V4 choice.
-Superseded DeepSeek-V4 presets (intermediate, experimental, candidate, legacy, deep-recovery,
-historical) are available through Git history and are **not** retained in the active preset directory.
+**Selection order (any production model family):** use the family's **active production** preset
+for serving; use its **production rollback** preset only to revert. There is no other operational
+choice for a promoted model family. Superseded presets (intermediate, experimental, candidate,
+legacy, deep-recovery, historical) are **not** retained in the active preset directory — see each
+family's subsection below for where that provenance actually lives (Git history for DeepSeek-V4,
+local/untracked build-host artifacts referenced by hash for Solar-Open2).
+
+**DeepSeek-V4 and Solar-Open2 are independent production baselines**, each promoted and rolled back
+on its own schedule. They are not served simultaneously: both currently target the same physical
+serving slot (spark01 head + spark02 worker, port 8000), so only one family's containers run at any
+given moment. Which one is *actually* running right now is **not** determined by this index or by
+either family's production document — check live container/health state directly (`docker ps`,
+`GET :8000/health`, `GET :8000/v1/models`) before assuming either baseline is currently deployed.
 
 ---
 
-## 1. DeepSeek-V4 production presets
+## 1. Production presets
+
+### 1a. DeepSeek-V4 production presets
 
 DeepSeek-V4-Flash has exactly two production-operable presets: the active native DSpark 64K
 production preset and its authoritative MTP1 rollback. Both pin their image by **immutable GHCR
@@ -34,9 +45,34 @@ manifest digest**. Full operations and validation provenance:
 | `deepseek-v4-flash-dspark-k7-64k-production-tp2.env` | DeepSeek-V4-Flash-DSpark | **Active production** (since 2026-07-22, spark01:8000) | native DSpark k=7 greedy, target FULL_DECODE_ONLY `[8]`, draft eager, `MAX_MODEL_LEN=65536`, KV 10 GiB FP8, `E8M0=1`, max_num_seqs 1, prefix caching off, TP=2 mp/RoCE. Digest `@sha256:aacb06de60ec…`. No LC131 exposure; unrestricted 135168 not supported |
 | `deepseek-v4-flash-mtp1-production-tp2.env` | DeepSeek-V4-Flash | **Production rollback** (stopped) | Authoritative rollback for the active DSpark production. MTP n=1, target FULL_DECODE_ONLY `[2]`, KV 4 GiB FP8, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:de69fa367137…`. Repeated large-context operation not approved |
 
-## 2. Validated presets (non-DeepSeek-V4)
+Superseded DeepSeek-V4 presets (intermediate, experimental, candidate, legacy, deep-recovery,
+historical) are available through Git history and are **not** retained in this directory.
 
-Validated, but **not** the current default serving path.
+### 1b. Solar-Open2 production presets
+
+Solar-Open2-250B has exactly two production-operable presets: the active r4 BF16 production preset
+and its authoritative v0.22.1 rollback. Both pin their image by **local Docker image ID** (not yet
+published to a registry — see [`docs/images.md`](../docs/images.md) for the distinction). Full
+operations and validation provenance: [`docs/solar-open2-production.md`](../docs/solar-open2-production.md).
+
+| Preset | Model | Status | Notes |
+|---|---|---|---|
+| `solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` | Solar-Open2-250B-Nota-NVFP4 | **Active production** (since 2026-08-09, spark01:8000 when deployed) | vLLM 0.25.1, TP=2 Ray, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`, eager, FLASH_ATTN auto, FLASHINFER_B12X MoE, ST_PREAD + B12X shared-workspace gates on. Local image ID `sha256:ecb7bfe3978a…`. 6-gate fast-track PASS, promotion commit `d966925`. |
+| `solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` | Solar-Open2-250B-Nota-NVFP4 | **Production rollback** (stopped) | Authoritative rollback for the active r4 production. vLLM 0.22.1, matched scheduler footprint (`MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`), BF16 KV. Local image ID `sha256:1873d21746…`. Rollback round-trip validated end-to-end (Gate 6). |
+
+Superseded Solar-Open2 presets (r2/r3/r4 diagnostic variants, eager-4k smoke configs, marlin c2
+diagnostics, the superseded active-test baseline) are **not** tracked in Git and are **not**
+retained in this directory — unlike DeepSeek-V4, this provenance is not recoverable from `git log`
+(those files were never committed). They remain as local, untracked, validated-in-place artifacts
+on the build hosts (spark01/spark02) and are referenced by content hash only in
+[`docs/solar-open2-production.md` section 3](../docs/solar-open2-production.md#3-preset-retention-policy-and-status).
+This is a local-only reproducibility limitation for the historical/intermediate development path
+only — the production preset is tracked and the rollback preset is working-tree-ready and
+hash-verified (not yet staged/committed; see `docs/solar-open2-production.md` sections 1-2).
+
+## 2. Validated presets (non-production)
+
+Validated, but **not** the current default serving path for any production model family.
 
 | Preset | Model / stack | Topology | Status | Use |
 |---|---|---|---|---|
@@ -44,8 +80,8 @@ Validated, but **not** the current default serving path.
 
 ## 3. General supported presets
 
-Production-usable presets for non-DeepSeek-V4 models on the stable/forward stacks. Image bases:
-`v021-ngc2603` / `v021-tq` / `v022-d568` / `v022-d568-fi-aot` / step3p7 (see
+Production-usable presets for non-DeepSeek-V4/non-Solar-Open2 models on the stable/forward stacks.
+Image bases: `v021-ngc2603` / `v021-tq` / `v022-d568` / `v022-d568-fi-aot` / step3p7 (see
 [`docs/software-stack.md`](../docs/software-stack.md)).
 
 | Preset | Model | Quant / dtype | Topology | Base image |
@@ -92,8 +128,8 @@ each requires separate validation before any operational use.
 
 ## 5. Historical reproduction presets
 
-Legacy / reproduction references for non-DeepSeek-V4 models. Preserved for provenance; **not current,
-not recommended for new deployments.**
+Legacy / reproduction references for non-production-family models. Preserved for provenance;
+**not current, not recommended for new deployments.**
 
 | Preset | Model / stack | Topology | Note |
 |---|---|---|---|

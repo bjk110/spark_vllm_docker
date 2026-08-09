@@ -4,6 +4,31 @@ All notable changes to `vllm-spark` (GHCR image + repo presets). Most recent on
 top. See `git log` for the full commit history; this file is curated to describe
 what users see (image tag, behavior, breaking changes) rather than every commit.
 
+## Solar-Open2-250B r4 BF16 promoted to production (2026-08-09)
+
+**Production commit**: `d966925fa4c6e5b270c37047b8c8ea000a57c9a9`
+**Production preset**: `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`
+**Production image**: `vllm-spark:solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp`
+(local image ID `sha256:ecb7bfe3978a5241c5c304d52ce91e061e22b750178d21a4ef7788a08e86e774`, not on
+GHCR)
+
+- **What**: Solar-Open2-250B-Nota-NVFP4 r4 BF16 (vLLM 0.25.1, TP=2 Ray, BF16 KV fixed 4 GiB/rank,
+  eager mode, FLASHINFER_B12X MoE, ST_PREAD + B12X shared-workspace gates) promoted to the
+  repository-defined production baseline, following a six-gate production fast-track: C2 targeted
+  KDA correctness (PASS), 24-prompt correctness suite (24/24 PASS), ~200-request mixed stability
+  soak (200/200 PASS, 0 restarts), six-case matched performance (-0.8% to -6.0% vs the v0.22.1
+  baseline, within the 10% acceptance threshold), dual-node cold start (PASS), and rollback
+  validation (PASS, full round-trip with exact state match).
+- **Rollback**: `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` (vLLM 0.22.1,
+  local image ID `sha256:1873d2174691f67e16b5588fcef01680d21f1e7b42ac5587bd23d7503cae1366`, stopped)
+  is the authoritative, validated rollback. Rollback/restore round-trip requires a physical reboot
+  of both nodes in each direction, per the observed GB10 unified-memory partial-reclaim behavior —
+  see [`docs/solar-open2-production.md`](docs/solar-open2-production.md) section 5.
+- **E4M3 KV**: a separate, experimental calibration artifact exists
+  (`artifact-generated-not-runtime-validated`) but is **not** part of this production baseline and
+  has not been runtime-validated. Production KV remains BF16.
+- **Reference**: [`docs/solar-open2-production.md`](docs/solar-open2-production.md).
+
 ## Step-3.7-Flash-NVFP4 native MTP speculative decoding — Candidate 1 acceptance (2026-06-15)
 
 **Candidate image**: `vllm-spark:step37-nvfp4-mtp-candidate1-canonical` (sha256 `b25400c3013e`)

@@ -111,3 +111,35 @@ Kept in `patches/` for archeology.
 | File | Purpose |
 |---|---|
 | `flashinfer_cache.patch` | Optional patch applied to the FlashInfer source tree during the FlashInfer wheel build (Stage 1 of `Dockerfile.gemma4`). Adds an offline cubin checksum check that skips re-download when the cubin already exists. Non-fatal — the build silently skips it if it does not apply. |
+
+## Solar-Open2 r4 BF16 production patches (`patches/solar/`, not yet tracked)
+
+These four patches are the source-level provenance for the three named production gates in the
+promoted Solar-Open2 r4 BF16 image
+(`vllm-spark:solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp`, local image ID
+`sha256:ecb7bfe3978a5241c5c304d52ce91e061e22b750178d21a4ef7788a08e86e774`). They exist locally at
+`patches/solar/` on the build hosts (spark01/spark02), following the repository's established
+per-vendor `patches/<vendor>/` convention (same pattern as `patches/dsv4/`, `patches/sm121/`,
+`patches/qwen/`), but are **not yet added to Git** as of this hygiene pass — they are
+working-tree-ready, hash-verified, and staged for a future tracking commit, not fabricated: content
+was read directly from the build hosts and matched to the exact gate names cited throughout the
+production fast-track and promotion evidence.
+
+| Patch file | Purpose | Applies to | Production status | Removal condition |
+|---|---|---|---|---|
+| `solar-open2-rawg1-contract-v025.patch` (sha256 `f252383c949de06cf14d2fadf6ff6c0a5ae76fa7408e7beb5b30c8db823dd6ca`) | **Raw-g1 KDA correction.** vLLM v0.25.x's `KimiGatedDeltaNetAttention` applies the KDA decay gate in-kernel (`fused_kda_gate`/`chunk_kda_with_fused_gate`); the v0.22-contract Solar-Open2 model code pre-gated `g1` before calling in, double-applying the gate and diverging at layer 1's kda_attention output. This patch passes the raw `g1` (reshaped, not pre-gated), matching the v0.25.x parent-forward contract. | `vllm/model_executor/models/solar_open2.py` (`SolarOpen2KimiDeltaAttention.forward`) | **Active in production.** Confirmed present in the live r4 image via source hash + bit-identical kernel-level conformance rerun (Gate 1, `SOLAR_OPEN2_V0251_R4_BF16_C2_TARGETED_CORRECTNESS_PASS`). | Remove only if Upstage's upstream Solar-Open2 vLLM integration ships this fix natively for the pinned vLLM revision (`752a3a504485`) — verify by reproducing Gate 1's kernel-level conformance check without the patch before removing. |
+| `vllm-safetensors-pread-env-gate.patch` (sha256 `39b26822f2bfb85dba1fb75e8e90a62ee2aabb32014d4b26ce963b6e2b1371ea`) | **`VLLM_SPARK_ST_PREAD` gate.** Opt-in `backend="pread"` for the lazy safetensors weight iterator, avoiding GB10 UMA swap pressure from the default mmap read path during weight loading. | `safetensors_weights_iterator()` (vLLM weight loader) | **Active in production** (`VLLM_SPARK_ST_PREAD=1` in the production preset). Measured effect: loader-phase swap 7.33 GB / 3.12 GB -> near-zero; TP0/TP1 load time roughly halved (2026-07-25 diagnostics, summarized in `docs/solar-open2-production.md` section 6). | Not applicable for removal — this is a downstream, env-gated optimization, not a bug workaround; keep as long as GB10 UMA mmap pressure remains a factor. |
+| `vllm-flashinfer-b12x-shared-workspace-env-gate.patch` (sha256 `2b31f3a873e7a29c991cefc39599b01b10f41f4dbdef096fc55f23c175382c83`) | **`VLLM_SPARK_B12X_SHARED_WORKSPACE` gate.** Opt-in sharing of FlashInfer `B12xMoEWrapper` pre-allocated scratch workspaces across MoE layers (default: one full scratch buffer per layer, ~27.9 GiB/rank for a 48-layer model; shared: one bounded set, ~0.6 GiB). | FlashInfer B12X MoE wrapper construction path | **Active in production** (`VLLM_SPARK_B12X_SHARED_WORKSPACE=1` in the production preset). Measured effect: torch allocated at engine-ready 103.5 -> 76.2 GiB/rank; deterministic output bit-identical to the unshared path (C3 conformance); decode throughput unchanged (2026-07-26 overlay validation). | Same as ST_PREAD — env-gated memory optimization, not a bug workaround; keep as long as the per-layer scratch allocation remains the FlashInfer default. |
+| `solar-open2-support-v0251.patch` (sha256 `1e73ef5b5d70aa29957975dab39ece83ec32b1e542f3d51cbb7c0e857d519575`) | General Solar-Open2 vLLM 0.25.1 support overlay (r2 lineage) — adds fused-MoE tuning configs and base model-class support, not one of the three named gates above. | `vllm/model_executor/...` (multiple files, largely new fused-MoE config JSONs) | **Active in production** (base layer all three gates above are built on). Not independently gated by an env var — always active for the Solar-Open2 architecture. | Not applicable — this is the base architecture-support overlay, not a point fix. |
+
+**Build-time provenance**: the r4 Dockerfile
+(`dockerfiles/active/Dockerfile.solar-open2-nvfp4-v0251-rawg1-pread-b12xsw-r4-exp`, local/untracked)
+applies these patches as `COPY` + in-image patch steps layered `r2 -> r3 (raw-g1 + ST_PREAD) -> r4
+(+ B12X shared-workspace)`. The Dockerfile itself, like the patches, is **not tracked** as of this
+pass — it is real, exact build source for the production image (not merely a claim), but its
+promotion to tracked status was out of scope for this hygiene pass (image reproducibility from
+source was not requested and was not verified against a fresh rebuild, which this pass explicitly
+does not perform). If the implementation for any of the three gates above is ever needed and cannot
+be reconstructed from `patches/solar/` plus the Dockerfile, say so explicitly rather than assuming
+the repository can rebuild it — as of this audit, the source **does** exist locally for all three
+gates; only the *tracked* (in-Git) status is what's missing.

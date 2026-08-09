@@ -15,6 +15,23 @@ document provides the detailed image-tag history.
 | `v022-d568-ngc2605-tx5102-vllm022` | Active forward-stack (NGC 26.05 + vLLM 0.22.1) | `.env` with `VLLM_IMAGE=ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022` | `ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022` |
 | `v022-d568` | Stable general base (NGC 26.04 + vLLM 0.21.0) | Various `presets/*.env` | `ghcr.io/bjk110/vllm-spark:v022-d568` |
 
+## Solar-Open2 r4 production and rollback (local build images, not on GHCR)
+
+These two images are **local Docker build images only** — they exist as local image IDs on
+spark01/spark02 and have **not** been pushed to GHCR or any other registry. Do not confuse a local
+Docker image ID (`sha256:` prefix, `docker images` output) with a registry manifest digest
+(`ghcr.io/...@sha256:...`, pullable) — the two are different kinds of identifiers, and inventing a
+GHCR digest for an unpublished image would be incorrect.
+
+| Path | Status | Local image ID | Stack lineage | Production preset |
+|---|---|---|---|---|
+| `solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp` | **Solar-Open2 promoted production** (r4 BF16, promoted 2026-08-09) | `sha256:ecb7bfe3978a5241c5c304d52ce91e061e22b750178d21a4ef7788a08e86e774` (identical on spark01 and spark02) | NGC 26.05 base -> r2 (`7e282758328c`) -> r3 (`001dcd2fb66d`, + raw-g1 KDA fix + ST_PREAD gate) -> r4 (+ B12X shared-workspace gate). vLLM 0.25.1 @`752a3a504485`. FlashInfer 0.6.15. Upstage overlay `00907fc`. Source patches: `patches/solar/` (see `PATCH_STATUS.md`). | `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` |
+| `solar-open2-nvfp4-v022d568-vllm0221-upstage00907fc-ecfix-exp` | **Solar-Open2 production rollback** (v0.22.1, stopped) | `sha256:1873d2174691f67e16b5588fcef01680d21f1e7b42ac5587bd23d7503cae1366` (identical on spark01 and spark02) | vLLM 0.22.1, Upstage overlay `00907fc`, `-ecfix-exp` child build (per-module cache-release fix). Predates the r2/r3/r4 raw-g1/ST_PREAD/B12X lineage. | `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` |
+
+Both image IDs were independently re-verified identical on both nodes as part of the 2026-08-09
+production fast-track (Gate 5/6) and the subsequent hygiene pass. Full runtime contracts, activation,
+and rollback procedure: [`docs/solar-open2-production.md`](solar-open2-production.md).
+
 ## Image tag mapping
 
 GHCR image tags (`ghcr.io/bjk110/vllm-spark:<tag>`) and Git tags do **not**

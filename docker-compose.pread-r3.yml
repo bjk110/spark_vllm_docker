@@ -1,0 +1,11 @@
+# Disposable overlay: forward VLLM_SPARK_ST_PREAD from the preset into the
+# head/worker containers (base docker-compose.yml enumerates env vars and is
+# intentionally left untouched). Empty/unset means default OFF (mmap).
+# EXPERIMENTAL — pairs with the v0.25.1 r3 image lineage only.
+services:
+  head:
+    environment:
+      - VLLM_SPARK_ST_PREAD=${VLLM_SPARK_ST_PREAD:-}
+  worker:
+    environment:
+      - VLLM_SPARK_ST_PREAD=${VLLM_SPARK_ST_PREAD:-}

@@ -1,0 +1,40 @@
+# Disposable overlay for the b12x cold/warm cache diagnostic (2026-07-26).
+# Bind-mounts experiment-owned per-node cache directories over every
+# persistent JIT/compile cache location used by the r3 runtime, plus the
+# /obs telemetry sink. B12X_CACHE_DIR must be exported by the launcher and
+# is NODE-LOCAL (never shared between spark01 and spark02).
+#
+# Cache contract (discovered from the r3 image, see cache-discovery/):
+#   dotcache -> /root/.cache   FlashInfer JIT workspace+log
+#                              (/root/.cache/flashinfer/0.6.15/121a: generated
+#                              sources + cached_ops .so), VLLM_CACHE_ROOT
+#                              (~/.cache/vllm), any ~/.cache consumer.
+#                              In-image content shadowed: 8 KiB stale jit log
+#                              + pip/uv caches only (no prebaked kernels).
+#   triton   -> /root/.triton  Triton default cache (TRITON_CACHE_DIR unset).
+#   nv       -> /root/.nv      CUDA driver JIT ComputeCache (CUDA_CACHE_PATH unset).
+#   cutedsl  -> /cache/cutedsl CUTLASS CuTe DSL cache, redirected from its
+#                              non-persistent /tmp default via CUTE_DSL_CACHE_DIR
+#                              (identical in both arms).
+# Not applicable (documented, nothing mounted): torchinductor (compilation
+# mode NONE), deep_gemm (module not installed in this image), /tmp (holds
+# Ray session runtime state; must NOT persist across arms).
+services:
+  head:
+    environment:
+      - CUTE_DSL_CACHE_DIR=/cache/cutedsl
+    volumes:
+      - ${B12X_CACHE_DIR:?}/dotcache:/root/.cache
+      - ${B12X_CACHE_DIR:?}/triton:/root/.triton
+      - ${B12X_CACHE_DIR:?}/nv:/root/.nv
+      - ${B12X_CACHE_DIR:?}/cutedsl:/cache/cutedsl
+      - /home/bjk110/docker-build/c2-obs:/obs
+  worker:
+    environment:
+      - CUTE_DSL_CACHE_DIR=/cache/cutedsl
+    volumes:
+      - ${B12X_CACHE_DIR:?}/dotcache:/root/.cache
+      - ${B12X_CACHE_DIR:?}/triton:/root/.triton
+      - ${B12X_CACHE_DIR:?}/nv:/root/.nv
+      - ${B12X_CACHE_DIR:?}/cutedsl:/cache/cutedsl
+      - /home/bjk110/docker-build/c2-obs:/obs

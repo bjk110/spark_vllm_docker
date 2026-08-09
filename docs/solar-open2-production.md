@@ -3,19 +3,26 @@
 Canonical operations document for the Solar-Open2-250B-Nota-NVFP4 serving path on the dual DGX
 Spark (GB10, SM121) cluster. Two production-operable presets exist: the **active** r4 BF16
 production preset and its **authoritative rollback** v0.22.1 preset. All other Solar-Open2 presets
-are historical/experimental and are retained for provenance but are not production-operable.
+are historical/experimental, are not tracked in the active preset directory, and are not
+production-operable — see section 3 for the retention policy.
 
 ## 1. Current active production — r4 BF16 (vLLM 0.25.1)
 
-- **Preset:** `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`
-- **Status:** Active production since 2026-08-09 (spark01 head + spark02 worker, port 8000).
+- **Preset:** `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` (tracked since
+  commit `d966925fa4c6e5b270c37047b8c8ea000a57c9a9`; comment-only corrections from the 2026-08-09
+  hygiene pass are pending in the working tree, not yet committed — zero functional/runtime diff,
+  see section 7).
+- **Status:** Promoted to production 2026-08-09 (spark01 head + spark02 worker, port 8000).
 - **Model:** `nota-ai/Solar-Open2-250B-Nota-NVFP4`, pinned HF revision
   `de88f6226788077e2d340204fd79d37720c9eda0`, compressed-tensors NVFP4 (W4A4, group_size 16).
-- **Image:** `vllm-spark:solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp`, image ID
-  (must match on BOTH nodes) `sha256:ecb7bfe3978a5241c5c304d52ce91e061e22b750178d21a4ef7788a08e86e774`.
-  NGC 26.05 base; vLLM 0.25.1 @752a3a504485; FlashInfer 0.6.15; Upstage overlay 00907fc; raw-g1 KDA
-  fix; ST_PREAD gate; B12X shared-workspace gate. No rebuild is required or expected for this
-  promotion — the promoted preset launches the exact, already-built and already-validated image.
+- **Image:** `vllm-spark:solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp`, local
+  Docker image ID (must match on BOTH nodes) `sha256:ecb7bfe3978a5241c5c304d52ce91e061e22b750178d21a4ef7788a08e86e774`.
+  This is a **local build image ID**, not a registry digest — the image has not been published to
+  GHCR (see `docs/images.md` for the distinction). NGC 26.05 base; vLLM 0.25.1 @752a3a504485;
+  FlashInfer 0.6.15; Upstage overlay 00907fc; raw-g1 KDA fix; ST_PREAD gate; B12X shared-workspace
+  gate — see `PATCH_STATUS.md` for per-gate source-patch provenance. No rebuild is required or
+  expected for this promotion; this and all later hygiene passes launch the exact, already-built and
+  already-validated image.
 - **Runtime contract:** vLLM 0.25.1, TP=2, Ray backend, one rank per node, BF16 KV, fixed KV cache
   4 GiB/rank (`--kv-cache-memory-bytes 4294967296`), KV capacity 66,764 tokens; `MAX_MODEL_LEN=4096`;
   `MAX_NUM_SEQS=8`; `MAX_NUM_BATCHED_TOKENS=2048`; `GPU_MEMORY_UTILIZATION=0.80`; eager mode (no CUDA
@@ -25,6 +32,14 @@ are historical/experimental and are retained for provenance but are not producti
   10.10.10.2 (worker) over `enp1s0f0np0`/`rocep1s0f0`.
 - **Policy adapter:** port 8011, 4 served aliases (`solar-open2-250b`,
   `solar-open2-250b-bounded-low`, `solar-open2-250b-exact`, `solar-open2-250b-evidence-bound`).
+- **Compose overlays (working-tree-ready, not yet staged/committed):** `docker-compose.yml`
+  (already tracked) + `docker-compose.solar-open2-hc-exp.yml` + `docker-compose.pread-r3.yml` +
+  `docker-compose.b12xsw-r4.yml` + `docker-compose.b12x-cache.yml` (all four Solar-specific overlays
+  verified and hash-recorded during the 2026-08-09 hygiene pass, but still untracked pending a
+  separate, explicitly authorized commit). All four are present at repository root, matching the
+  exact paths used by the validated launch invocation (see section 5). Non-disruptively re-resolved
+  with `docker compose ... config` during the hygiene pass — merge is clean, no errors, all runtime
+  values consistent with the values above.
 - **Performance envelope:** c1 paired median ratio 0.9863 vs the v0.22.1 baseline (parity class, CI
   includes 1.0); c2 paired median ratio 0.9702 (approximately 1-3% below baseline, not full parity).
   Gate 4 matched-cell regression -0.8% to -6.0% (within the 10% acceptance threshold), TTFT improved
@@ -32,18 +47,23 @@ are historical/experimental and are retained for provenance but are not producti
   must not be cited as the current performance result.
 - **Promotion basis:** readiness state `SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_READY`, evidence
   `solar-open2-v0251-r4-bf16-production-fasttrack-20260808T153704Z` (all six fast-track gates PASS —
-  see section 7). Promotion evidence:
-  `solar-open2-v0251-r4-bf16-production-promotion-20260809T053857Z`.
+  see section 7). Promotion commit `d966925fa4c6e5b270c37047b8c8ea000a57c9a9`. Promotion evidence:
+  `solar-open2-v0251-r4-bf16-production-promotion-20260809T053857Z` (local, `/home/bjk110/docker-build/`).
 
 ## 2. Production rollback — v0.22.1 KV4G matched baseline
 
-- **Preset:** `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`
-- **Status:** Production rollback, currently stopped. Authoritative rollback for the active r4 route.
-  Preset contents are immutable and must not be modified.
+- **Preset:** `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` (working-tree-ready,
+  not yet staged/committed — hash-verified against the validated rollback evidence during the
+  2026-08-09 hygiene pass, sha256
+  `9ff168273617f749e289934a138aeef46fae406cb592f4c7cc7fef46d0977b33`, exact match). Contents are
+  immutable and must not be modified.
+- **Status:** Production rollback, currently stopped. Authoritative rollback for the active r4
+  route.
 - **Model:** `nota-ai/Solar-Open2-250B-Nota-NVFP4` (same weights, same `MODEL_PATH`).
-- **Image:** `vllm-spark:solar-open2-nvfp4-v022d568-vllm0221-upstage00907fc-ecfix-exp`, image ID
-  `sha256:1873d2174691f67e16b5588fcef01680d21f1e7b42ac5587bd23d7503cae1366`, vLLM 0.22.1. Confirmed
-  identical on both nodes (`docker images`, matching creation timestamp).
+- **Image:** `vllm-spark:solar-open2-nvfp4-v022d568-vllm0221-upstage00907fc-ecfix-exp`, local Docker
+  image ID `sha256:1873d2174691f67e16b5588fcef01680d21f1e7b42ac5587bd23d7503cae1366`, vLLM 0.22.1.
+  Confirmed identical on both nodes (`docker images`, matching creation timestamp). Local build image
+  ID only, not published to GHCR.
 - **Runtime contract:** matched scheduler footprint to r4 (`MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`),
   BF16 KV, `HOST_PORT=8000`.
 - **Rollback validated end-to-end** (Gate 6, 2026-08-08/09): stop r4 -> start rollback -> verify
@@ -56,27 +76,40 @@ are historical/experimental and are retained for provenance but are not producti
   `jit_monitor` as an expected latency spike). This is a known v0.22.1 eager-mode characteristic, not
   a defect; subsequent requests complete normally (observed 1.5-26.6 s for a 16-token completion).
 
-## 3. Supported presets
+## 3. Preset retention policy and status
 
-Two Solar-Open2 presets are production-operable:
+Two Solar-Open2 presets are the only production-operable presets for this family:
 
-- `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` — active production.
+- `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` — active production. Tracked
+  since commit `d966925fa4c6e5b270c37047b8c8ea000a57c9a9`.
 - `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` — production rollback.
+  Working-tree-ready and hash-verified as of the 2026-08-09 hygiene pass, but not yet staged or
+  committed — see the "recommended commit boundary" in that pass's report for the follow-up
+  action.
 
-The following presets are retained for provenance and must not be described as production targets:
+This mirrors the DeepSeek-V4 retention policy exactly (see `presets/README.md`): only the active
+production preset and its authoritative rollback are retained as production-operable presets, with
+everything else excluded from the active preset directory. Historical/intermediate development
+presets (r2/r3/r4 diagnostic variants, eager-4k smoke configs, marlin c2 diagnostics) are **not**
+tracked and are **not** production-operable. They
+remain as local, untracked, validated-in-place artifacts on the build hosts for reproducibility
+provenance only — referenced below by content hash, not by claiming repository retention:
 
-- `presets/solar-open2-250b-nota-nvfp4-v0251-r4-active-test-tp2.env` — **historical.** The validated
-  active-test baseline this production preset was promoted from (2026-07-27 activation, superseded
-  as the production target on 2026-08-09; preserved unchanged, byte-identical runtime values to the
-  production preset). Retained as validation provenance; do not delete or repurpose.
-- `presets/solar-open2-250b-nota-nvfp4-v0251-r4-b12xsw-kv4g-exp-tp2.env`,
-  `presets/solar-open2-250b-nota-nvfp4-v0251-r3-pread-kv4g-exp-tp2.env`,
-  `presets/solar-open2-250b-nota-nvfp4-v0251-kv4g-diag-tp2.env`,
-  `presets/solar-open2-250b-nota-nvfp4-v0251-kv4g-marlin-diag-tp2.env`,
-  `presets/solar-open2-250b-nota-nvfp4-v0251-eager-4k-exp-tp2.env`,
-  `presets/solar-open2-250b-nota-nvfp4-v022-marlin-c2diag-tp2.env`,
-  `presets/solar-open2-250b-nota-nvfp4-eager-4k-exp-tp2.env` — **experimental/historical**
-  intermediate presets from the r2/r3/r4 development arcs. Not production-operable.
+| Local artifact (untracked, not a repository path) | SHA-256 | Role |
+|---|---|---|
+| `solar-open2-250b-nota-nvfp4-v0251-r4-active-test-tp2.env` | `2c8b0b2c46c9633d37a4500db335db449860920c216904507d859a027d1a9125` | The validated active-test baseline the production preset was promoted from (2026-07-27 activation through 2026-08-09). Runtime values are byte-identical (0 functional diff) to the current production preset. |
+| `solar-open2-250b-nota-nvfp4-v0251-r4-b12xsw-kv4g-exp-tp2.env` | `d8285a4162e5ec2529a729ee0362f8e8fddfe73514a2f32337241dd89fa800fe` | Earlier r4 development preset; the active-test preset's runtime values are byte-identical to this one. |
+| `solar-open2-250b-nota-nvfp4-v0251-r4-b12xsw-kv4g-no-template-logits-exp-tp2.env` | (not re-verified this pass) | r4 development variant, superseded. |
+| `solar-open2-250b-nota-nvfp4-v0251-r3-pread-kv4g-exp-tp2.env` | (not re-verified this pass) | r3 development preset (pre-B12X-shared-workspace). |
+| `solar-open2-250b-nota-nvfp4-v0251-kv4g-diag-tp2.env`, `-marlin-diag-tp2.env`, `-eager-4k-exp-tp2.env` | (not re-verified this pass) | Early v0.25.1 diagnostic/smoke presets. |
+| `solar-open2-250b-nota-nvfp4-v022-marlin-c2diag-tp2.env`, `-eager-4k-exp-tp2.env` | (not re-verified this pass) | v0.22.1-lineage diagnostic presets, predate the rollback baseline's `di-matched` variant. |
+
+None of the presets in this table exists in the Git repository. If exact byte-for-byte
+reproduction of one of these intermediate steps is ever required, it must be sourced from the
+original build hosts (spark01/spark02, `presets/` directory, untracked) — not from `git log` or
+`origin/main`. This is a **local-only reproducibility limitation** for the historical/intermediate
+development path only — the production preset is tracked and the rollback preset is
+working-tree-ready and hash-verified (see section 1/2 above), neither depends on this table.
 
 ## 4. Production status matrix
 
@@ -85,8 +118,7 @@ The following presets are retained for provenance and must not be described as p
 | r4 BF16 (vLLM 0.25.1) | **Active production** |
 | v0.22.1 KV4G matched | **Production rollback** (stopped) |
 | E4M3 KV calibration | **Experimental** — `artifact-generated-not-runtime-validated`, not part of production, no runtime test approved (see section 6) |
-| r4 active-test preset | **Historical** — superseded as production target, preserved for provenance |
-| other r2/r3/r4/v022 diagnostic presets | **Historical/experimental** — not production-operable |
+| r4 active-test preset and all r2/r3/r4/v022 intermediate presets | **Historical, local-only** — not tracked, not production-operable, referenced above by hash for provenance only |
 
 ## 5. Activation and rollback
 
@@ -101,7 +133,9 @@ Both presets launch through the established production launcher
 /home/bjk110/docker-build/c2-instr/launch-at.sh worker <evidence-dir>
 ```
 
-This resolves to (equivalent, direct form):
+This resolves to (equivalent, direct form, using only repository files — one tracked, four
+working-tree-ready pending a future commit — plus one external environment value; see the
+reproducibility-limitation note below):
 
 ```bash
 export B12X_CACHE_DIR=$(cat /home/bjk110/docker-build/CW_EV_PATH)/cache/$(hostname)
@@ -116,6 +150,44 @@ http://192.168.0.200:8011/v1/models` lists all 4 aliases. Cold start (no page ca
 approximately 7 minutes (both TP ranks report "Model loading took 71.6 GiB memory"); wait for
 `[entrypoint] All 2 nodes joined!` in the head container log and a stable 200 health response before
 serving.
+
+### Reproducibility limitation: launcher orchestration remains local-only
+
+The production preset is tracked (commit `d966925`). The four Solar-specific Compose files and the
+rollback preset are working-tree-ready and hash-verified as of the 2026-08-09 hygiene pass but not
+yet staged or committed; once committed, all five plus the production preset will be reproducible
+from a fresh clone. The **launcher orchestration layer** (`launch-at.sh`, `fastguard3.py`, the
+kernel-event watcher, and the `B12X_CACHE_DIR` / `CW_EV_PATH` cache-warm wiring) is **not** tracked,
+is **not** working-tree-ready in this repository (it lives entirely outside the repository, under
+`/home/bjk110/docker-build/`), and is **not** promoted in this pass, for a specific reason rather
+than an oversight:
+
+- `launch-at.sh` and `fastguard3.py` are small, promotable scripts in isolation, but the launcher's
+  `B12X_CACHE_DIR` resolves through `CW_EV_PATH` to
+  `/home/bjk110/docker-build/solar-open2-v0251-b12x-cold-warm-20260726T013344Z/cache/<hostname>` — a
+  **timestamped diagnostic evidence directory** from the 2026-07-26 b12x cold/warm cache experiment,
+  containing per-node FlashInfer/Triton/CUDA-driver JIT compilation caches (binary, large,
+  non-portable, GB10-arch/build-specific).
+- Tracking the launcher as-is would silently embed a dependency on that one evidence directory
+  continuing to exist at that exact path — not reproducible from a fresh clone.
+- Changing the launcher to point at a new, stable, git-tracked-adjacent cache location would fix
+  reproducibility but would refactor the validated launch behavior (a cold cache changes startup
+  timing) — explicitly out of scope for this hygiene pass, which must preserve exact validated
+  behavior.
+- The overlay also mounts `/home/bjk110/docker-build/c2-obs` (an observability/telemetry sink) —
+  also local-only, also not required for correctness, only for diagnostics.
+
+**Consequence:** once the working-tree-ready assets above are committed, a fresh clone of this
+repository will be able to reproduce the exact configuration (image reference, both presets, all
+Compose overlays) but will not be able to reproduce a *warm-cache* launch without also
+recreating (or accepting a cold, slower first start from) the `B12X_CACHE_DIR` target directory
+structure (`dotcache/`, `triton/`, `nv/`, `cutedsl/` subdirectories — see
+`docker-compose.b12x-cache.yml`'s header comment for the exact contract) and the guard/observability
+scripts under `/home/bjk110/docker-build/c2-instr/`. This is recorded as a known limitation, not a
+defect: a cold-cache launch through the Compose files alone still starts and serves
+correctly (confirmed in Gate 5 — the b12x-cache overlay is only a JIT-cache warm-start
+optimization, not a correctness dependency), it will simply pay the same JIT-compilation warmup cost
+documented for the rollback baseline in section 2.
 
 ### Rollback procedure (validated 2026-08-08/09, reboot requirement is empirical, not precautionary)
 
@@ -167,17 +239,17 @@ Observed during validation: Ray raylet emits a recurring `file_system_monitor.cc
 95% full` warning on both nodes; host root filesystem was approximately 97-99% full
 (`/dev/nvme0n1p2`) throughout the fast-track and promotion campaigns. This did not cause any request
 failure and predates both campaigns. Production operations should maintain additional free space.
-Recommended future (not performed as part of this promotion) targeted cleanup candidates: Ray
-temp/log files, safe Docker build cache, obsolete disposable build artifacts, and explicitly
-reviewed old evidence copies. Do not run an unqualified `docker system prune` — review targets
-individually first.
+Recommended future (not performed as part of promotion or this hygiene pass) targeted cleanup
+candidates: Ray temp/log files, safe Docker build cache, obsolete disposable build artifacts, and
+explicitly reviewed old evidence copies. Do not run an unqualified `docker system prune` — review
+targets individually first.
 
 ### `ray status` CLI unreliable inside the container
 
 Observed: `ray status` executed inside `vllm-spark-head` may segfault (exit code 139) even when the
-underlying Ray cluster is healthy and both ranks have joined. Reproduced consistently during both
-the fast-track and promotion campaigns. **Do not use `ray status` as the sole production health
-check.** Combine, instead:
+underlying Ray cluster is healthy and both ranks have joined. Reproduced consistently during the
+fast-track campaign. **Do not use `ray status` as the sole production health check.** Combine,
+instead:
 
 - API health (`GET :8000/health` = 200)
 - expected Ray node participation, confirmed via the head container log
@@ -195,6 +267,28 @@ The E4M3 KV calibration work is a **separate, experimental** track:
 - Production remains **BF16 KV** (see section 1).
 - Do not mix E4M3 configuration values into the production preset.
 
+### ST_PREAD and B12X shared-workspace gates are now production-active
+
+Two vLLM environment gates that were introduced and validated as *experimental, not promoted*
+(`VLLM_SPARK_ST_PREAD`, `VLLM_SPARK_B12X_SHARED_WORKSPACE`) are set (`=1`) in the production preset
+as of this promotion — they are load-time/memory optimizations, not correctness changes, and were
+exercised throughout the entire six-gate fast-track. Their original experimental deep-dive
+write-ups predate the promotion and still carry an "EXPERIMENTAL, not promoted" banner; that banner
+is now stale for the production context and is not linked from this document to avoid the
+contradiction. Measured effect, for reference:
+
+- **ST_PREAD** (lazy safetensors `pread` loader): loader-phase swap reduced from 7.33 GB / 3.12 GB
+  to near-zero on spark01/spark02; peak `Active_file` 37.3 GiB -> 1.87 GiB; TP0 load 450 s -> ~176 s,
+  TP1 255 s -> ~141 s (2026-07-25 diagnostics).
+- **B12X shared workspace**: torch allocated at engine-ready 103.5 -> 76.2 GiB per rank; spark01
+  warmup swap 6.9-7.5 GB -> ~0; deterministic output bit-identical to the unshared path; decode
+  throughput unchanged (2026-07-26 overlay validation).
+
+Full technical detail (contract, fail-fast behavior, measurement methodology) remains in the
+untracked local files `docs/solar-open2-st-pread.md` and `docs/solar-open2-b12x-shared-workspace.md`
+on the build hosts — not linked here because their status banners have not been updated to reflect
+production status and would otherwise contradict this document.
+
 ## 7. Validation provenance
 
 - **Production fast-track (2026-08-08/09)** — 6-gate campaign, evidence
@@ -208,10 +302,22 @@ The E4M3 KV calibration work is a **separate, experimental** track:
   - Gate 6 — rollback validation: PASS, full round-trip (r4 -> rollback -> r4) with exact state
     match, 3 physical reboots required across the round-trip (see section 5).
   - Final state: `SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_READY`.
-- **Production promotion (2026-08-09)** — this document and the production preset, evidence
+- **Production promotion (2026-08-09)** — commit `d966925fa4c6e5b270c37047b8c8ea000a57c9a9`
+  (`docs/README.md`, this document, and the production preset), evidence
   `solar-open2-v0251-r4-bf16-production-promotion-20260809T053857Z`. Result:
-  `SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_PROMOTED`. No image rebuild, no model change, zero functional
-  difference between the promoted production preset and the validated active-test preset.
+  `SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_PROMOTED`, then pushed to `origin/main`
+  (`SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_PROMOTION_PUSHED`). No image rebuild, no model change, zero
+  functional difference between the promoted production preset and the validated active-test preset.
+- **Repository hygiene and reproducibility pass (2026-08-09)** — verified and left
+  working-tree-ready (not staged, not committed) the rollback preset, four Solar-specific Compose
+  overlays, and the four Solar patch-provenance files (`patches/solar/`); made comment-only
+  corrections to the production preset (zero functional diff); corrected this document's
+  file-retention claims; documented the launcher-orchestration reproducibility limitation (see
+  section 5); updated `presets/README.md`, root `README.md`, `docs/README.md`, `docs/images.md`,
+  `docs/software-stack.md`, `PATCH_STATUS.md`, and `CHANGELOG.md` for consistency. No runtime
+  change; no image rebuild; no additional validation performed; nothing staged, committed, or
+  pushed — see that pass's report for the recommended commit boundary.
 - Earlier validation arcs (r2/r3/r4 development, MI/AC/FIA-C multi-instance benchmarking, b12x
-  shared-workspace, ST_PREAD): see `docs/solar-open2-st-pread.md` and
-  `docs/solar-open2-b12x-shared-workspace.md` for detail.
+  shared-workspace, ST_PREAD) are recorded by hash in section 3; their original detailed local
+  documents (`docs/solar-open2-st-pread.md`, `docs/solar-open2-b12x-shared-workspace.md`) remain
+  untracked build-host artifacts (see the note in section 6).

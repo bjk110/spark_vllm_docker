@@ -5,10 +5,19 @@ this index and by the status banner at the top of each document**, not by its
 filename. A filename containing `production` or `validated` does not by itself make a
 document current — always check its group here and its banner.
 
-The current DeepSeek-V4-Flash production baseline is the **native DSpark k=7 64K** path,
-active on spark01 port 8000. Runtime deployments use the **immutable digest-pinned** production
-preset (`presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env`); the MTP1 preset
+The DeepSeek-V4-Flash promoted production baseline is the **native DSpark k=7 64K** path. Runtime
+deployments use the **immutable digest-pinned** production preset
+(`presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env`); the MTP1 preset
 (`presets/deepseek-v4-flash-mtp1-production-tp2.env`) is the authoritative rollback.
+
+The Solar-Open2-250B promoted production baseline is the **r4 BF16** (vLLM 0.25.1) path. Runtime
+deployments use the **local-image-ID-pinned** production preset
+(`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`); the v0.22.1 KV4G matched preset
+(`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`) is the authoritative rollback.
+
+Both families are independent promoted baselines that currently share the same physical serving
+slot (spark01 head + spark02 worker, port 8000) rather than running simultaneously — this index
+does not track which one is deployed at this instant; check live container/health state for that.
 
 Groups: [Current production](#current-production) · [Rollback and operations](#rollback-and-operations)
 · [General stable stacks](#general-stable-stacks) · [Model guides](#model-guides)
@@ -25,6 +34,9 @@ own status banner for what is actually running right now).
 
 Runtime authority (DeepSeek-V4-Flash) = immutable digest `sha256:aacb06de…` (image config
 `75bdf3d8…`). Deploy via the digest-pinned preset.
+
+Runtime authority (Solar-Open2-250B) = local Docker image ID `sha256:ecb7bfe3…` (not yet published
+to a registry). Deploy via the local-ID-pinned preset.
 
 | Document | Subject | Status | Use |
 |---|---|---|---|

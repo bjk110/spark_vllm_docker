@@ -18,6 +18,8 @@ Current image roles:
 - `v022-d568-ngc2605-tx5102-vllm022`: active forward-stack (NGC 26.05 + vLLM 0.22.1 + FlashInfer v0.6.12 + Transformers 5.10.2)
 - `dsv4-d568`: primary DeepSeek-V4-Flash path — **frozen, not rebased onto NGC 26.05**
 - `unholy-fusion`: experimental high-prefill DeepSeek-V4-Flash path
+- `solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp`: Solar-Open2-250B promoted
+  production path (NGC 26.05 + vLLM 0.25.1) — local build image, not on GHCR
 
 `unholy-fusion` is a third-party image with custom GB10 (Blackwell sm_120/sm_121)
 kernels (B12X_MOE etc.) not present in `dsv4-d568`. Its full stack/configuration
@@ -45,6 +47,39 @@ Verified preset: the frozen DSV4-Flash baseline preset (removed from the active 
 **Full guide + 9-way benchmark sweep + MTP/backend analysis**: [`docs/dsv4-flash-tp2.md`](dsv4-flash-tp2.md).
 
 > **DSV4 path summary**: For DeepSeek-V4-Flash, use `dsv4-d568` as the primary path. For users who specifically want higher prefill throughput, `unholy-fusion` is available as an experimental alternative (see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md)). Earlier jasl-based DSV4 image notes are deferred and kept only for historical reference.
+
+## solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp — Solar-Open2-250B promoted production path
+
+**This is the promoted production path for Solar-Open2-250B on 2× DGX Spark / GB10** (promoted
+2026-08-09). Documented here only to the extent directly supported by the validated production
+fast-track evidence (`solar-open2-v0251-r4-bf16-production-fasttrack-20260808T153704Z`) — versions
+not confirmed by that evidence are not listed.
+
+| Component | Version |
+|---|---|
+| Base | NGC PyTorch **26.05-py3** |
+| vLLM | **0.25.1** (revision `752a3a504485`) |
+| FlashInfer | **0.6.15** |
+| Upstage Solar-Open2 overlay | revision `00907fc` (`00907fc9b982`) |
+| Lineage | r2 (Upstage overlay base) -> r3 (`001dcd2fb66d`, + raw-g1 KDA correction + `VLLM_SPARK_ST_PREAD` gate) -> r4 (+ `VLLM_SPARK_B12X_SHARED_WORKSPACE` gate) |
+| Image | `vllm-spark:solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp` — **local build image ID only**, `sha256:ecb7bfe3978a5241c5c304d52ce91e061e22b750178d21a4ef7788a08e86e774` (identical spark01/spark02), **not on GHCR** |
+| Preset | `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` |
+| Source patches | `patches/solar/solar-open2-rawg1-contract-v025.patch`, `patches/solar/vllm-safetensors-pread-env-gate.patch`, `patches/solar/vllm-flashinfer-b12x-shared-workspace-env-gate.patch`, `patches/solar/solar-open2-support-v0251.patch` — see `PATCH_STATUS.md` |
+
+**Production runtime gates** (see [`docs/solar-open2-production.md`](solar-open2-production.md) for
+the full contract): TP=2 Ray, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`,
+`MAX_NUM_SEQS=8`, `MAX_NUM_BATCHED_TOKENS=2048`, `GPU_MEMORY_UTILIZATION=0.80`, eager mode
+(no CUDA graphs), prefix caching on, chunked prefill on, `FLASH_ATTN` attention (auto), MoE
+`FLASHINFER_B12X`.
+
+Production rollback: `solar-open2-nvfp4-v022d568-vllm0221-upstage00907fc-ecfix-exp` (vLLM 0.22.1,
+local image ID `sha256:1873d2174691f67e16b5588fcef01680d21f1e7b42ac5587bd23d7503cae1366`, stopped) —
+predates the raw-g1/ST_PREAD/B12X lineage. Preset:
+`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`.
+
+Full runtime contract, activation/rollback procedure, and validation provenance:
+[`docs/solar-open2-production.md`](solar-open2-production.md). Local-build-image detail (not on
+GHCR) and the local-ID-vs-registry-digest distinction: [`docs/images.md`](images.md).
 
 ## v022-d568-ngc2605-tx5102-vllm022 (NGC 26.05, vLLM 0.22.1, FlashInfer v0.6.12, Transformers 5.10.2) — active forward-stack
 

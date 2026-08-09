@@ -27,19 +27,28 @@ diagrams, and the backend comparison are in [`docs/architecture.md`](docs/archit
 
 ## Current serving paths
 
+Two independent model families have a **promoted production baseline**: DeepSeek-V4-Flash and
+Solar-Open2-250B. "Promoted" describes the repository-defined baseline (which preset/image is
+authoritative), not which model is *physically running* at this instant — both currently target the
+same serving slot (spark01 head + spark02 worker, port 8000) and are not served simultaneously.
+Check live state (`docker ps`, `GET :8000/health`, `GET :8000/v1/models`) to see which one is
+actually deployed right now; do not infer it from this document alone.
+
 | Path | Status | Backend | Use case |
 |---|---|---|---|
-| `dsv4-flash-dspark` | **Current DeepSeek-V4-Flash production** — native DSpark k=7, 64K (active 2026-07-22) | `mp` | Active DSV4 path — native DSpark k=7 greedy, FULL_DECODE_ONLY `[8]`, KV 10 GiB FP8, E8M0=1, dual-node TP=2. Digest-pinned `@aacb06de60ec`. Rollback = MTP1 preset. |
+| `dsv4-flash-dspark` | **DeepSeek-V4-Flash promoted production** — native DSpark k=7, 64K (promoted 2026-07-22) | `mp` | Active DSV4 path — native DSpark k=7 greedy, FULL_DECODE_ONLY `[8]`, KV 10 GiB FP8, E8M0=1, dual-node TP=2. Digest-pinned `@aacb06de60ec`. Rollback = MTP1 preset. |
 | `dsv4-flash-mtp1` | DeepSeek-V4-Flash MTP1 production rollback (stopped) | `mp` | Authoritative rollback for the DSpark production — MTP n=1, capture `[2]`, 4 GiB FP8 KV, digest `@de69fa367137`. |
 | `dsv4-d568` | Frozen legacy/historical DSV4 baseline | `ray` or `mp` | Historical decode-optimized reproduction/reference only. |
 | `unholy-fusion` | Experimental (DSV4 only) | `mp` | Higher-prefill DSV4 experimental alternative — not a recommended production path. |
+| `solar-open2-r4-bf16` | **Solar-Open2-250B promoted production** — r4 BF16, vLLM 0.25.1 (promoted 2026-08-09) | `ray` | TP=2, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`, eager, FLASHINFER_B12X MoE, ST_PREAD + B12X shared-workspace gates. Local image ID `sha256:ecb7bfe3…` (not yet published to a registry). Rollback = v0.22.1 KV4G preset. |
+| `solar-open2-v022-rollback` | Solar-Open2-250B v0.22.1 production rollback (stopped) | `ray` | Authoritative rollback for the r4 production — matched scheduler footprint, BF16 KV. Local image ID `sha256:1873d217…`. |
 | `v022-d568-ngc2605-tx5102-vllm022` | Active forward-stack (NGC 26.05, vLLM 0.22.1) | `ray` | Qwen3.5-122B-FP8 and other forward-stack models. |
 | `v022-d568` | Stable general base (NGC 26.04, vLLM 0.21.0) | `ray` or direct | Qwen3.6, Gemma 4 31B, abliterix NVFP4 presets. |
-| `v021-ngc2603` / `v021-tq` | Stable base for most existing presets | `ray` or direct | Most non-DSV4 presets. |
+| `v021-ngc2603` / `v021-tq` | Stable base for most existing presets | `ray` or direct | Most non-DSV4/non-Solar presets. |
 
-**Current DeepSeek-V4 production** runs the native DSpark k=7 64K route by its **immutable GHCR
-manifest digest** (`sha256:aacb06de60ec…`, config `sha256:75bdf3d810558…`), active since 2026-07-22
-on spark01 port 8000, via the digest-pinned preset
+**DeepSeek-V4 promoted production** runs the native DSpark k=7 64K route by its **immutable GHCR
+manifest digest** (`sha256:aacb06de60ec…`, config `sha256:75bdf3d810558…`), promoted 2026-07-22
+for spark01 port 8000, via the digest-pinned preset
 [`presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env`](presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env).
 Runtime contract: native DSpark k=7 greedy, target FULL_DECODE_ONLY `[8]`, draft eager,
 `MAX_MODEL_LEN=65536`, KV 10 GiB FP8, `VLLM_USE_DEEP_GEMM_E8M0=1`, `max_num_seqs=1`, prefix caching off,
@@ -50,6 +59,21 @@ The authoritative rollback is the MTP1 preset
 (image `@sha256:de69fa367137…`, MTP n=1, capture `[2]`, 4 GiB FP8 KV; currently stopped). Full
 operations, activation, rollback, and validation provenance (DS3U / DS3V / DS3X / DS3Y):
 [`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md).
+
+**Solar-Open2-250B promoted production** runs the r4 BF16 route (vLLM 0.25.1) by its **local Docker
+image ID** (`sha256:ecb7bfe3978a…` — not yet published to a registry, see
+[`docs/images.md`](docs/images.md) for the local-ID-vs-digest distinction), promoted 2026-08-09 via
+[`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env).
+Runtime contract: TP=2 Ray, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`,
+`MAX_NUM_SEQS=8`, eager mode, FLASH_ATTN (auto), FLASHINFER_B12X MoE, ST_PREAD + B12X
+shared-workspace gates enabled.
+
+The authoritative rollback is the v0.22.1 preset
+[`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env)
+(local image ID `sha256:1873d2174691…`, matched scheduler footprint, BF16 KV; currently stopped).
+Full operations, activation, rollback (including the empirically required physical-reboot
+sequence), and validation provenance (6-gate production fast-track):
+[`docs/solar-open2-production.md`](docs/solar-open2-production.md).
 
 > **`dsv4-d568` is intentionally frozen** and will not be rebased onto NGC 26.05+. `dsv4-d568`
 > (JASL-era) and `unholy-fusion` are historical/experimental references, not recommended production paths.
