@@ -158,8 +158,10 @@ See [`CHANGELOG.md`](../CHANGELOG.md) for release-by-release detail and [`PATCH_
   abliterix NVFP4) and is the base on which `dsv4-d568` was originally built.
 - `v022-d568-ngc2605-tx5102-vllm022` is the active forward-stack for new models.
 - `dsv4-d568` is used only by the frozen DSV4-Flash baseline preset (removed from the active surface; Git history).
-- `unholy-fusion` serves the same model/preset via its own override path
-  (`.env.unholy-fusion` + `compose/docker-compose.unholy.yml`) rather than by
-  copying a preset to `.env` — see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md).
+- `unholy-fusion` served the same model/preset via its own override path
+  (formerly `.env.unholy-fusion` + `compose/docker-compose.unholy.yml`, removed from the active
+  tree 2026-08-11 as historical/experimental — see the Git history for both files) rather than by
+  copying a preset to `.env` — see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md)
+  for the retained historical benchmark record.
 
 For exact image tags, digests, and Git-ref → image mapping, see [`docs/images.md`](images.md).

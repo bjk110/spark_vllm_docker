@@ -11,7 +11,7 @@ document provides the detailed image-tag history.
 | Path | Status | Config | Image source |
 |---|---|---|---|
 | `dsv4-d568` | **Frozen** primary DSV4 baseline (NOT rebased onto NGC 26.05) | the frozen DSV4-Flash baseline preset (removed from the active surface; Git history) | `ghcr.io/bjk110/vllm-spark:dsv4-d568` — see the image mapping below |
-| `unholy-fusion` | Experimental high-prefill DSV4 path | `.env.unholy-fusion` + `compose/docker-compose.unholy.yml` | External/upstream image (`aidendle94/sparkrun-vllm-ds4-gb10:production-ready`) or GHCR mirror — see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md) |
+| `unholy-fusion` | Historical/experimental high-prefill DSV4 path (config removed from the active surface 2026-08-11; Git history) | formerly `.env.unholy-fusion` + `compose/docker-compose.unholy.yml` | External/upstream image (`aidendle94/sparkrun-vllm-ds4-gb10:production-ready`) or GHCR mirror — see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md) |
 | `v022-d568-ngc2605-tx5102-vllm022` | Active forward-stack (NGC 26.05 + vLLM 0.22.1) | `.env` with `VLLM_IMAGE=ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022` | `ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022` |
 | `v022-d568` | Stable general base (NGC 26.04 + vLLM 0.21.0) | Various `presets/*.env` | `ghcr.io/bjk110/vllm-spark:v022-d568` |
 

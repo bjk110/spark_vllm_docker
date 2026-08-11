@@ -5,6 +5,14 @@
 **GHCR mirror**: `ghcr.io/bjk110/vllm-spark:unholy-fusion-prod-ready`  
 **Tested**: 2026-06-05 | **llama-benchy**: 0.3.7
 
+> **2026-08-11 hygiene note:** `.env.unholy-fusion`, `compose/docker-compose.unholy.yml`, and
+> `entrypoints/entrypoint.unholy.sh` were removed from the active repository tree as
+> historical/experimental configuration, not a recommended production path (see `README.md`). All
+> three remain recoverable from Git history (present through commit `282e656`). No currently
+> supported preset, Compose path, or documented workflow references this path anymore. The commands
+> below are preserved as the historical procedure; reconstruct the removed files from Git history
+> before running them.
+
 ---
 
 ## Background
