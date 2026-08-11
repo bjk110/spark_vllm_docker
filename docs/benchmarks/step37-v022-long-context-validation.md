@@ -644,6 +644,9 @@ policy layer above it.
 ### Validation (2026-06-20)
 
 Unit tests: `tests/test_patch_prompt_token_admission.py` — 22 tests, all pass (homeserver, inside image).
+This test file was removed from the active tree 2026-08-11 as obsolete intermediate experiment
+machinery; the 2026-06-20 result above is preserved as a historical record and the file remains
+recoverable from Git history.
 
 Runtime integration test (cap=32,000, dual-Spark GB10, canonical image `a73ea6723649` on both nodes):
 
