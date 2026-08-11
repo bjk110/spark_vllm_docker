@@ -1,6 +1,18 @@
-# Disposable overlay for the b12x cold/warm cache diagnostic (2026-07-26).
+# compose/solar-open2/docker-compose.b12x-cache.yml
+#
+# Cache/JIT overlay for the Solar-Open2-250B r4 BF16 production route.
+# Originated as the b12x cold/warm cache diagnostic overlay (2026-07-26);
+# validated in Gate 5 of the 2026-08-08/09 production fast-track as a
+# JIT-cache warm-start optimization only, not a correctness dependency —
+# a cold-cache launch through the Compose files alone still starts and
+# serves correctly, it just pays the same JIT-compilation warmup cost
+# documented for the v0.22.1 rollback baseline (see
+# docs/solar-open2-production.md section 5). Kept as a separate overlay from
+# docker-compose.r4-production.yml because it is host/cache/JIT-related and
+# conceptually separable from correctness/runtime-required configuration.
+#
 # Bind-mounts experiment-owned per-node cache directories over every
-# persistent JIT/compile cache location used by the r3 runtime, plus the
+# persistent JIT/compile cache location used by the r3/r4 runtime, plus the
 # /obs telemetry sink. B12X_CACHE_DIR must be exported by the launcher and
 # is NODE-LOCAL (never shared between spark01 and spark02).
 #
@@ -19,6 +31,10 @@
 # Not applicable (documented, nothing mounted): torchinductor (compilation
 # mode NONE), deep_gemm (module not installed in this image), /tmp (holds
 # Ray session runtime state; must NOT persist across arms).
+#
+# B12X_CACHE_DIR resolution is launcher-local-only (not tracked in this
+# repository) — see docs/solar-open2-production.md section 5 for the
+# reproducibility-limitation note.
 services:
   head:
     environment:

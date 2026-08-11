@@ -1,0 +1,64 @@
+# compose/solar-open2/docker-compose.r4-production.yml
+#
+# Production overlay for the Solar-Open2-250B r4 BF16 route (promoted 2026-08-09,
+# vLLM 0.25.1). Consolidates the three correctness/runtime-required Compose
+# overrides that make up the active r4 production launch contract:
+#
+#   1. Ray GCS health-check tolerance (originally
+#      docker-compose.solar-open2-hc-exp.yml, added 2026-07-24 for the NVFP4
+#      dual-node smoke test). Raises the health-check window so a transient
+#      host stall during the 143 GiB weight load does not mark a node dead
+#      (failure mode: raylet missed heartbeats -> ActorDiedError). Tolerance:
+#      60 s initial delay, then 10 consecutive failed probes at 30 s period
+#      (120 s timeout each) before a node is declared dead (~5-6 min stall).
+#   2. ST_PREAD lazy safetensors loader gate (originally
+#      docker-compose.pread-r3.yml, added 2026-07-26 for the v0.25.1 r3 image
+#      lineage). Forwards VLLM_SPARK_ST_PREAD from the preset into the
+#      containers; empty/unset means default OFF (mmap). Measured effect:
+#      loader-phase swap reduced from 7.33 GB / 3.12 GB to near-zero on
+#      spark01/spark02; TP0 load 450 s -> ~176 s, TP1 255 s -> ~141 s.
+#   3. B12X shared-workspace gate (originally docker-compose.b12xsw-r4.yml,
+#      added 2026-07-26 for the r4 image lineage). Forwards
+#      VLLM_SPARK_B12X_SHARED_WORKSPACE into the containers; empty/unset means
+#      default OFF. Measured effect: torch allocated at engine-ready
+#      103.5 -> 76.2 GiB per rank; deterministic output bit-identical to the
+#      unshared path.
+#
+# All three gates were introduced and validated as experimental (not
+# promoted) but are production-active as of the r4 BF16 promotion
+# (2026-08-09, commit d966925) — see docs/solar-open2-production.md section 6
+# ("ST_PREAD and B12X shared-workspace gates are now production-active") for
+# full measurement detail and provenance. The base docker-compose.yml
+# intentionally enumerates its own environment list and is left untouched;
+# these three settings are forwarded here instead.
+#
+# Consolidation note (2026-08-11 repository hygiene pass): the three source
+# files set disjoint environment-variable keys (RAY_health_check_* vs.
+# VLLM_SPARK_ST_PREAD vs. VLLM_SPARK_B12X_SHARED_WORKSPACE) for the same
+# services, so merging them into one file is semantically equivalent to
+# applying them as three separate `-f` overlays — verified with
+# `docker compose ... config` before and after (see the hygiene pass report).
+#
+# Usage — part of the exact production launch command (see
+# docs/solar-open2-production.md section 5):
+#   docker compose --env-file presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env \
+#     -f docker-compose.yml -f compose/solar-open2/docker-compose.r4-production.yml \
+#     -f compose/solar-open2/docker-compose.b12x-cache.yml --profile head up -d   # spark01
+#     # ... --profile worker up -d                                               # spark02
+services:
+  head:
+    environment:
+      - RAY_health_check_initial_delay_ms=60000
+      - RAY_health_check_period_ms=30000
+      - RAY_health_check_timeout_ms=120000
+      - RAY_health_check_failure_threshold=10
+      - VLLM_SPARK_ST_PREAD=${VLLM_SPARK_ST_PREAD:-}
+      - VLLM_SPARK_B12X_SHARED_WORKSPACE=${VLLM_SPARK_B12X_SHARED_WORKSPACE:-}
+  worker:
+    environment:
+      - RAY_health_check_initial_delay_ms=60000
+      - RAY_health_check_period_ms=30000
+      - RAY_health_check_timeout_ms=120000
+      - RAY_health_check_failure_threshold=10
+      - VLLM_SPARK_ST_PREAD=${VLLM_SPARK_ST_PREAD:-}
+      - VLLM_SPARK_B12X_SHARED_WORKSPACE=${VLLM_SPARK_B12X_SHARED_WORKSPACE:-}

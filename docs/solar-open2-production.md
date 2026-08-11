@@ -33,13 +33,16 @@ production-operable — see section 3 for the retention policy.
 - **Policy adapter:** port 8011, 4 served aliases (`solar-open2-250b`,
   `solar-open2-250b-bounded-low`, `solar-open2-250b-exact`, `solar-open2-250b-evidence-bound`).
 - **Compose overlays (working-tree-ready, not yet staged/committed):** `docker-compose.yml`
-  (already tracked) + `docker-compose.solar-open2-hc-exp.yml` + `docker-compose.pread-r3.yml` +
-  `docker-compose.b12xsw-r4.yml` + `docker-compose.b12x-cache.yml` (all four Solar-specific overlays
-  verified and hash-recorded during the 2026-08-09 hygiene pass, but still untracked pending a
-  separate, explicitly authorized commit). All four are present at repository root, matching the
-  exact paths used by the validated launch invocation (see section 5). Non-disruptively re-resolved
-  with `docker compose ... config` during the hygiene pass — merge is clean, no errors, all runtime
-  values consistent with the values above.
+  (already tracked) + `compose/solar-open2/docker-compose.r4-production.yml` +
+  `compose/solar-open2/docker-compose.b12x-cache.yml`. The two Solar-specific overlays live under
+  `compose/solar-open2/` as of the 2026-08-11 repository hygiene pass, which consolidated the four
+  original root-level overlays (`docker-compose.solar-open2-hc-exp.yml`, `docker-compose.pread-r3.yml`,
+  `docker-compose.b12xsw-r4.yml`, `docker-compose.b12x-cache.yml`) into two: the Ray health-check
+  tolerance, ST_PREAD, and B12X shared-workspace gates (disjoint environment-variable keys, no merge
+  conflict) into `docker-compose.r4-production.yml`, with the cache/JIT overlay kept separate as
+  `docker-compose.b12x-cache.yml`. Consolidation was verified byte-for-byte equivalent via
+  `docker compose ... config` against the pre-move merged configuration — see that pass's report.
+  Matches the exact paths used by the validated launch invocation (see section 5).
 - **Performance envelope:** c1 paired median ratio 0.9863 vs the v0.22.1 baseline (parity class, CI
   includes 1.0); c2 paired median ratio 0.9702 (approximately 1-3% below baseline, not full parity).
   Gate 4 matched-cell regression -0.8% to -6.0% (within the 10% acceptance threshold), TTFT improved
@@ -133,16 +136,16 @@ Both presets launch through the established production launcher
 /home/bjk110/docker-build/c2-instr/launch-at.sh worker <evidence-dir>
 ```
 
-This resolves to (equivalent, direct form, using only repository files — one tracked, four
+This resolves to (equivalent, direct form, using only repository files — one tracked, two
 working-tree-ready pending a future commit — plus one external environment value; see the
 reproducibility-limitation note below):
 
 ```bash
 export B12X_CACHE_DIR=$(cat /home/bjk110/docker-build/CW_EV_PATH)/cache/$(hostname)
 docker compose --env-file presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env \
-  -f docker-compose.yml -f docker-compose.solar-open2-hc-exp.yml -f docker-compose.pread-r3.yml \
-  -f docker-compose.b12xsw-r4.yml -f docker-compose.b12x-cache.yml --profile head up -d   # spark01
-# ... --profile worker up -d                                                              # spark02
+  -f docker-compose.yml -f compose/solar-open2/docker-compose.r4-production.yml \
+  -f compose/solar-open2/docker-compose.b12x-cache.yml --profile head up -d   # spark01
+# ... --profile worker up -d                                                  # spark02
 ```
 
 Health validation: `GET http://192.168.0.200:8000/health` -> 200, and `GET
@@ -153,10 +156,11 @@ serving.
 
 ### Reproducibility limitation: launcher orchestration remains local-only
 
-The production preset is tracked (commit `d966925`). The four Solar-specific Compose files and the
-rollback preset are working-tree-ready and hash-verified as of the 2026-08-09 hygiene pass but not
-yet staged or committed; once committed, all five plus the production preset will be reproducible
-from a fresh clone. The **launcher orchestration layer** (`launch-at.sh`, `fastguard3.py`, the
+The production preset is tracked (commit `d966925`). The two Solar-specific Compose files (under
+`compose/solar-open2/` as of the 2026-08-11 hygiene pass) and the rollback preset are
+working-tree-ready and hash-verified but not yet staged or committed; once committed, all three
+plus the production preset will be reproducible from a fresh clone. The **launcher orchestration
+layer** (`launch-at.sh`, `fastguard3.py`, the
 kernel-event watcher, and the `B12X_CACHE_DIR` / `CW_EV_PATH` cache-warm wiring) is **not** tracked,
 is **not** working-tree-ready in this repository (it lives entirely outside the repository, under
 `/home/bjk110/docker-build/`), and is **not** promoted in this pass, for a specific reason rather
@@ -182,7 +186,8 @@ repository will be able to reproduce the exact configuration (image reference, b
 Compose overlays) but will not be able to reproduce a *warm-cache* launch without also
 recreating (or accepting a cold, slower first start from) the `B12X_CACHE_DIR` target directory
 structure (`dotcache/`, `triton/`, `nv/`, `cutedsl/` subdirectories — see
-`docker-compose.b12x-cache.yml`'s header comment for the exact contract) and the guard/observability
+`compose/solar-open2/docker-compose.b12x-cache.yml`'s header comment for the exact contract) and
+the guard/observability
 scripts under `/home/bjk110/docker-build/c2-instr/`. This is recorded as a known limitation, not a
 defect: a cold-cache launch through the Compose files alone still starts and serves
 correctly (confirmed in Gate 5 — the b12x-cache overlay is only a JIT-cache warm-start
@@ -317,6 +322,17 @@ production status and would otherwise contradict this document.
   `docs/software-stack.md`, `PATCH_STATUS.md`, and `CHANGELOG.md` for consistency. No runtime
   change; no image rebuild; no additional validation performed; nothing staged, committed, or
   pushed — see that pass's report for the recommended commit boundary.
+- **Repository hygiene pass — Compose consolidation (2026-08-11)** — relocated the four root-level
+  Solar-specific Compose overlays into `compose/solar-open2/`, consolidating the three
+  correctness/runtime-required overlays (health-check tolerance, ST_PREAD, B12X shared-workspace —
+  disjoint environment-variable keys, no merge conflict) into
+  `docker-compose.r4-production.yml`, and relocating the cache/JIT overlay unchanged (comment-only
+  update) to `docker-compose.b12x-cache.yml`. Verified byte-for-byte equivalent merged
+  configuration (`docker compose ... config`, both `head` and `worker` profiles) before and after
+  the move. Also removed `.env.unholy-fusion` and `compose/docker-compose.unholy.yml` from the
+  active tree (historical/experimental, per the existing README classification; recoverable from
+  Git history) and updated all affected documentation. No runtime change; no image rebuild; no
+  containers started, stopped, or restarted; nothing staged, committed, or pushed.
 - Earlier validation arcs (r2/r3/r4 development, MI/AC/FIA-C multi-instance benchmarking, b12x
   shared-workspace, ST_PREAD) are recorded by hash in section 3; their original detailed local
   documents (`docs/solar-open2-st-pread.md`, `docs/solar-open2-b12x-shared-workspace.md`) remain

@@ -160,6 +160,7 @@ topology, and flags in its header. Keep model weights outside the repository and
 ```
 vllm-spark/
 ├── docker-compose.yml        # Unified compose (head + worker profiles)
+├── compose/                  # Model-specific Compose overlays (e.g. compose/solar-open2/)
 ├── entrypoints/              # Container entrypoints (ENTRYPOINT_FILE); see entrypoints/README.md
 ├── dockerfiles/              # active/ + legacy/ Dockerfiles; see dockerfiles/README.md
 ├── presets/                  # .env model-serving presets (not weights); see presets/README.md
