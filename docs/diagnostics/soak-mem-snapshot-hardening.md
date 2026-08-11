@@ -103,6 +103,6 @@ The H1Z-B1AC driver that carried the defect was a throwaway per-run script (not 
 in this repository). This module is the tracked, reusable, tested replacement for the
 memory-snapshot + concurrency-gate logic that future soak drivers should import. The
 existing tracked long-soak driver
-[`scripts/diag/dsv4_mtp1_fullgraph_long_soak.py`](../../scripts/diag/dsv4_mtp1_fullgraph_long_soak.py)
+[`scripts/diag/dsv4_mtp1_fullgraph_long_context_probe.py`](../../scripts/diag/dsv4_mtp1_fullgraph_long_context_probe.py)
 reads local `/proc/meminfo` (not per-node SSH) and already guards `None`, so it has no
 concurrency-4 SSH gate to migrate.
