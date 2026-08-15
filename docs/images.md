@@ -32,6 +32,21 @@ Both image IDs were independently re-verified identical on both nodes as part of
 production fast-track (Gate 5/6) and the subsequent hygiene pass. Full runtime contracts, activation,
 and rollback procedure: [`docs/solar-open2-production.md`](solar-open2-production.md).
 
+## DeepSeek-V4-Flash-0731 / vLLM 0.27 — active production (published to GHCR, task B4.4C)
+
+| Path | Status | Local image ID | Registry digest | Stack lineage | Production preset |
+|---|---|---|---|---|---|
+| `v027-ngc2607-dsv4-0731-dspark-k7-256k-production` | **DeepSeek-V4 active production** (promoted 2026-08-15; B4.3S-B4.4C validated) | `sha256:a7f0f4b8a508c0b2510fc7e4dcb916491efa03c380c9c7b84dddd4c16ad6f38d` (identical on spark01 and spark02, unchanged since B4.3S) | `ghcr.io/bjk110/vllm-spark@sha256:<recorded after publication — see the B4.4C evidence/commit>` | NGC 26.07 base, vLLM 0.27, native DSpark k=7, `DSV4_DISPATCH(32,256)@pbs=64` sparse-MLA decode dispatch fix (B4.3S). | `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` (and its MAX_NUM_SEQS=4 optional variant) |
+
+Formerly a local-only build (tagged `v027-ngc2607-sm121-dsv4-0731-b43s-topk256-exp`, not on GHCR)
+through task B4.4B; published under the stable tag above in task B4.4C. The underlying image content
+(local image ID) is unchanged from B4.3S through publication — this was a tag/publish operation, not
+a rebuild.
+
+Full runtime contract, validation coverage, prewarm design, and residual risks:
+[`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](deepseek-v4-v027-b43s-promotion-candidate.md).
+Canonical operations document: [`docs/deepseek-v4-production.md`](deepseek-v4-production.md).
+
 ## Image tag mapping
 
 GHCR image tags (`ghcr.io/bjk110/vllm-spark:<tag>`) and Git tags do **not**

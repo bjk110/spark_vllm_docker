@@ -35,15 +35,20 @@ either family's production document — check live container/health state direct
 
 ### 1a. DeepSeek-V4 production presets
 
-DeepSeek-V4-Flash has exactly two production-operable presets: the active native DSpark 64K
-production preset and its authoritative MTP1 rollback. Both pin their image by **immutable GHCR
-manifest digest**. Full operations and validation provenance:
-[`docs/deepseek-v4-production.md`](../docs/deepseek-v4-production.md).
+DeepSeek-V4-Flash has four production-operable presets: the active vLLM 0.27 / 256K production
+preset, its optional MAX_NUM_SEQS=4 profile, its primary rollback (vLLM 0.25.0 / 64K, itself
+production-proven 2026-07-22 to 2026-08-15), and a legacy rollback (MTP1). Full operations,
+activation/rollback commands, and validation provenance:
+[`docs/deepseek-v4-production.md`](../docs/deepseek-v4-production.md); detailed technical reference
+(prewarm design, JIT inventory, residual risks):
+[`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](../docs/deepseek-v4-v027-b43s-promotion-candidate.md).
 
 | Preset | Model | Status | Notes |
 |---|---|---|---|
-| `deepseek-v4-flash-dspark-k7-64k-production-tp2.env` | DeepSeek-V4-Flash-DSpark | **Active production** (since 2026-07-22, spark01:8000) | native DSpark k=7 greedy, target FULL_DECODE_ONLY `[8]`, draft eager, `MAX_MODEL_LEN=65536`, KV 10 GiB FP8, `E8M0=1`, max_num_seqs 1, prefix caching off, TP=2 mp/RoCE. Digest `@sha256:aacb06de60ec…`. No LC131 exposure; unrestricted 135168 not supported |
-| `deepseek-v4-flash-mtp1-production-tp2.env` | DeepSeek-V4-Flash | **Production rollback** (stopped) | Authoritative rollback for the active DSpark production. MTP n=1, target FULL_DECODE_ONLY `[2]`, KV 4 GiB FP8, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:de69fa367137…`. Repeated large-context operation not approved |
+| `deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` | DeepSeek-V4-Flash-0731 | **Active production** (since 2026-08-15, spark01:8000) | native DSpark k=7 greedy, vLLM 0.27, `MAX_MODEL_LEN=262144`, `MAX_NUM_SEQS=1`, KV 10 GiB FP8, `E8M0=1`, prefix caching off, TP=2 mp/RoCE, automatic startup prewarm via `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`. Image `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`. Filename retains its original "candidate" naming from implementation (task B4.4B); the Status column here and in the preset's own header comment are authoritative. |
+| `deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env` | DeepSeek-V4-Flash-0731 | Optional validated profile (attended use only, not default) | Identical to the active preset except `MAX_NUM_SEQS=4`; not wired into automatic prewarm's global-topk target. See Residual Risk R1 in its own header |
+| `deepseek-v4-flash-dspark-k7-64k-production-tp2.env` | DeepSeek-V4-Flash-DSpark | **Primary rollback** (stopped) | vLLM 0.25.0, native DSpark k=7 greedy, `MAX_MODEL_LEN=65536`, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:aacb06de60ec…`. No LC131 exposure; unrestricted 135168 not supported |
+| `deepseek-v4-flash-mtp1-production-tp2.env` | DeepSeek-V4-Flash | **Legacy rollback** (stopped) | Second-tier fallback if the primary rollback is also unavailable. MTP n=1, target FULL_DECODE_ONLY `[2]`, KV 4 GiB FP8, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:de69fa367137…`. Repeated large-context operation not approved |
 
 Superseded DeepSeek-V4 presets (intermediate, experimental, candidate, legacy, deep-recovery,
 historical) are available through Git history and are **not** retained in this directory.

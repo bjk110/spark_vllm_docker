@@ -4,6 +4,61 @@ All notable changes to `vllm-spark` (GHCR image + repo presets). Most recent on
 top. See `git log` for the full commit history; this file is curated to describe
 what users see (image tag, behavior, breaking changes) rather than every commit.
 
+## DeepSeek-V4-Flash-0731 / vLLM 0.27 promoted to production (2026-08-15)
+
+**Production commit**: task B4.4C (see repository history for the exact hash)
+**Production preset**: `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env`
+**Production image**: `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`
+(local image ID `sha256:a7f0f4b8a508c0b2510fc7e4dcb916491efa03c380c9c7b84dddd4c16ad6f38d`, unchanged
+since B4.3S; now published to GHCR)
+
+- **What**: DeepSeek-V4-Flash-0731, vLLM 0.27, native DSpark k=7 greedy, TP=2 mp/RoCE,
+  `MAX_MODEL_LEN=262144` (256K), `MAX_NUM_SEQS=1`, fixed 10 GiB FP8 KV, MARLIN MoE, promoted to the
+  repository-defined DeepSeek-V4 production baseline, replacing the vLLM 0.25.0 / 64K DSpark route
+  active since 2026-07-22. Includes an automatic startup prewarm (2-stage: short decode + 61,440-token
+  non-aligned prefill) wired via `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`, covering
+  6 of 7 cataloged first-use JIT kernels for the default `MAX_NUM_SEQS=1` profile.
+- **Why**: this route was validated end-to-end across tasks B4.3S (correctness) through B4.4A
+  (promotion-readiness audit, `B4_4A_PREWARM_VALIDATED_PROMOTION_READY`) and implemented +
+  live-validated as a repository artifact in B4.4B (`B4_4B_PROMOTED_PRESET_IMPLEMENTATION_VALIDATED`)
+  before this formal promotion.
+- **Rollback**: `presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env` (the former active
+  production route, vLLM 0.25.0, 64K) is the primary, authoritative rollback.
+  `presets/deepseek-v4-flash-mtp1-production-tp2.env` remains as a legacy second-tier fallback.
+  Neither preset nor its image was modified by this promotion. Rollback/restore requires a physical
+  reboot of both nodes, per the observed GB10 unified-memory partial-reclaim behavior — see
+  [`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md) section 8.
+- **MAX_NUM_SEQS=4**: a separate, validated profile
+  (`presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env`) exists but is **not**
+  the production default — the historical B4.3X spark01 host power-loss incident occurred under this
+  condition, and while B4.3Y/Z failed to reproduce it, the root cause remains unresolved. Use only for
+  controlled, attended, higher-concurrency runs.
+- **Reference**: [`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md),
+  [`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](docs/deepseek-v4-v027-b43s-promotion-candidate.md).
+
+## DeepSeek-V4-Flash-0731 / vLLM 0.27 (b43s) promotion candidate implemented — not promoted (2026-08-15)
+
+**Candidate preset**: `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env`
+(+ optional `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env`)
+**Candidate image**: `vllm-spark:v027-ngc2607-sm121-dsv4-0731-b43s-topk256-exp`
+(local image ID `sha256:a7f0f4b8a508c0b2510fc7e4dcb916491efa03c380c9c7b84dddd4c16ad6f38d`, not on GHCR)
+
+- **What**: repository implementation (task B4.4B) of the DeepSeek-V4-Flash-0731 / vLLM 0.27 native
+  DSpark k=7 route validated across tasks B4.3S-B4.4A: TP=2 mp/RoCE, `MAX_MODEL_LEN=262144`,
+  `MAX_NUM_SEQS=1` default, fixed 10 GiB FP8 KV, MARLIN MoE. Adds a new
+  `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml` overlay providing a `head` healthcheck
+  and a one-shot `prewarm` service (`scripts/prewarm_dsv4_v027_b43s.py`) that automatically runs the
+  B4.4A-validated 2-stage startup warmup (short decode + 61,440-token non-aligned prefill) once the
+  engine is healthy, eliminating first-request lazy-JIT latency (measured 17.6-20x on short requests
+  in B4.4A) for the default profile. A `MAX_NUM_SEQS=4` variant is documented as an optional,
+  attended-use-only profile — not default, per the unresolved B4.3X host-power-loss residual risk.
+- **Why**: turn B4.4A's promotion-readiness conclusion into a reviewable, launchable repository
+  artifact ahead of an explicit promotion decision.
+- **User impact**: none yet. This candidate is **not** production — the active DeepSeek-V4 route
+  remains `presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env` (vLLM 0.25.0, 64K). No commit
+  has been made to promote this candidate; no image was rebuilt or retagged.
+- **Reference**: [`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](docs/deepseek-v4-v027-b43s-promotion-candidate.md).
+
 ## Solar-Open2-250B r4 BF16 promoted to production (2026-08-09)
 
 **Production commit**: `d966925fa4c6e5b270c37047b8c8ea000a57c9a9`

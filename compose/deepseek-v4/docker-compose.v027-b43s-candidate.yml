@@ -1,0 +1,76 @@
+# compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml
+#
+# Overlay for the DeepSeek-V4-Flash-0731 / vLLM 0.27 / b43s promotion
+# candidate (B4.4B repository implementation of the B4.4A-approved default:
+# TP=2, DSpark k=7, MAX_MODEL_LEN=262144, MAX_NUM_SEQS=1).
+#
+# This overlay is scoped to this candidate ONLY -- it is not merged into the
+# shared docker-compose.yml, so no other model family's launch command is
+# affected. It adds exactly two things on top of the base head/worker
+# services:
+#
+#   1. A `healthcheck` on `head`, required so `prewarm` can use
+#      `depends_on: condition: service_healthy`. `start_period` is set to
+#      900s because cold model load + CUDA graph capture for this runtime
+#      routinely takes ~8-10 minutes (see B4.3S-Z evidence) -- failures
+#      during start_period do not count against `retries`.
+#   2. A one-shot `prewarm` service (head node only, via `profiles: ["head"]`)
+#      that runs scripts/prewarm_dsv4_v027_b43s.py against the now-healthy
+#      API once head's healthcheck passes, then exits. It reuses the
+#      candidate's own image (already has the required tokenizer/transformers
+#      stack) and mounts the model path read-only for tokenizer loading only
+#      -- it does not touch the model weights used by `head`/`worker`.
+#
+# `head`'s ordinary `/health` semantics are UNCHANGED: `/health`=200 still
+# means "engine alive", not "prewarm complete". Prewarm completion is
+# observable via `docker logs <prewarm-container>` (STAGE_END / "prewarm
+# COMPLETE" markers) or `docker compose ... ps prewarm` (Exited (0)). A
+# prewarm failure is a nonzero exit on the `prewarm` container and is never
+# silently swallowed -- see docs/deepseek-v4-v027-b43s-promotion-candidate.md
+# section "Startup readiness semantics".
+#
+# `worker` does not run its own copy of this warmup -- only the API-serving
+# head node issues warmup requests.
+#
+# Usage (part of the exact candidate launch command, see
+# docs/deepseek-v4-v027-b43s-promotion-candidate.md):
+#   docker compose --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
+#     -f docker-compose.yml -f compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml \
+#     --profile head up -d           # spark01
+#   docker compose --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
+#     -f docker-compose.yml -f compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml \
+#     --profile worker up -d         # spark02 (worker only; this overlay adds nothing on spark02
+#                                     # beyond what the base file already defines for `worker`)
+services:
+  head:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 900s
+
+  prewarm:
+    image: ${VLLM_IMAGE}
+    container_name: vllm-spark-prewarm
+    profiles: ["head"]
+    network_mode: host
+    depends_on:
+      head:
+        condition: service_healthy
+    environment:
+      - SERVED_MODEL_NAME=${SERVED_MODEL_NAME}
+      - MODEL_CONTAINER_PATH=${MODEL_CONTAINER_PATH}
+      - PREWARM_CONCURRENCY_WARMUP=${PREWARM_CONCURRENCY_WARMUP:-}
+    volumes:
+      - ${MODEL_PATH}:${MODEL_CONTAINER_PATH}:ro
+      - ./scripts/prewarm_dsv4_v027_b43s.py:/prewarm.py:ro
+    entrypoint:
+      - bash
+      - -c
+      - >-
+        set -euo pipefail;
+        ARGS="--model $${SERVED_MODEL_NAME} --tokenizer-path $${MODEL_CONTAINER_PATH}";
+        if [ -n "$${PREWARM_CONCURRENCY_WARMUP}" ]; then ARGS="$$ARGS --concurrency-warmup"; fi;
+        exec python3 /prewarm.py $$ARGS
+    restart: "no"
