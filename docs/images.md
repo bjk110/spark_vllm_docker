@@ -36,7 +36,7 @@ and rollback procedure: [`docs/solar-open2-production.md`](solar-open2-productio
 
 | Path | Status | Local image ID | Registry digest | Stack lineage | Production preset |
 |---|---|---|---|---|---|
-| `v027-ngc2607-dsv4-0731-dspark-k7-256k-production` | **DeepSeek-V4 active production** (promoted 2026-08-15; B4.3S-B4.4C validated) | `sha256:a7f0f4b8a508c0b2510fc7e4dcb916491efa03c380c9c7b84dddd4c16ad6f38d` (identical on spark01 and spark02, unchanged since B4.3S) | `ghcr.io/bjk110/vllm-spark@sha256:<recorded after publication — see the B4.4C evidence/commit>` | NGC 26.07 base, vLLM 0.27, native DSpark k=7, `DSV4_DISPATCH(32,256)@pbs=64` sparse-MLA decode dispatch fix (B4.3S). | `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` (and its MAX_NUM_SEQS=4 optional variant) |
+| `v027-ngc2607-dsv4-0731-dspark-k7-256k-production` | **DeepSeek-V4 active production** (promoted+published 2026-08-15; B4.3S-B4.4C validated) | `sha256:a7f0f4b8a508c0b2510fc7e4dcb916491efa03c380c9c7b84dddd4c16ad6f38d` (identical on spark01 and spark02, unchanged since B4.3S) | `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f` | NGC 26.07 base, vLLM 0.27, native DSpark k=7, `DSV4_DISPATCH(32,256)@pbs=64` sparse-MLA decode dispatch fix (B4.3S). | `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` (and its MAX_NUM_SEQS=4 optional variant) |
 
 Formerly a local-only build (tagged `v027-ngc2607-sm121-dsv4-0731-b43s-topk256-exp`, not on GHCR)
 through task B4.4B; published under the stable tag above in task B4.4C. The underlying image content
