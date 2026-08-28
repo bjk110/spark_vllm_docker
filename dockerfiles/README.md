@@ -18,6 +18,7 @@ dockerfiles/
 | `Dockerfile.dsv4-d568` | `dsv4-d568` | Primary DeepSeek-V4-Flash image path. `FROM v022-d568` + SM12x DSV4 vLLM patches (sparse MLA, Lightning Indexer, fp8_ds_mla KV, MTP). **On GHCR. Currently frozen — do not update casually.** |
 | `Dockerfile.v022-d568-fi-aot` | `v022-d568-fi-aot` | `FROM v022-d568` + FlashInfer SM120/SM121 AOT kernel prebake (7 specs, AOT-promoted to skip runtime ninja). Drop-in replacement for `v022-d568`. See [`docs/flashinfer-aot-prebake.md`](../docs/flashinfer-aot-prebake.md). |
 | `Dockerfile.v022-d568-fi-aot-extra` | `v022-d568-fi-aot` | Idempotent addendum on top of `Dockerfile.v022-d568-fi-aot` (re-promotes 2 general FA2/sampling specs). Same output tag — strict superset. |
+| `Dockerfile.v027-ngc2607-dsv4-from-runtime-base` | local derivative tag chosen by caller | `FROM` the immutable DSV4-specific NGC 26.07/vLLM 0.27 frozen build base; validates package/import/dispatch pins without rebuilding the 37.1GB common stack. Use `scripts/build/build-dsv4-v027-from-runtime-base.sh`. |
 
 Build commands (always build from **repo root** with `.` as context):
 
@@ -26,6 +27,7 @@ Build commands (always build from **repo root** with `.` as context):
 docker buildx build -f dockerfiles/active/Dockerfile.v022-d568  -t vllm-spark:v022-d568  --load .
 docker buildx build -f dockerfiles/active/Dockerfile.dsv4-d568  -t vllm-spark:dsv4-d568  --load .
 docker buildx build -f dockerfiles/active/Dockerfile.v022-d568-fi-aot -t vllm-spark:v022-d568-fi-aot --load .
+./scripts/build/build-dsv4-v027-from-runtime-base.sh vllm-spark:my-dsv4-derivative
 ```
 
 `COPY patches/...`, `COPY scripts/...`, and other relative paths inside these Dockerfiles

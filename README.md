@@ -101,9 +101,10 @@ DeepSeek-V4 production route, use its immutable manifest digest:
 docker pull ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f
 ```
 
-Other general bases are cataloged in [`docs/images.md`](docs/images.md). Building from source on
-spark01/spark02 is documented in [`dockerfiles/`](dockerfiles/) and
-[`docs/software-stack.md`](docs/software-stack.md).
+Other general bases are cataloged in [`docs/images.md`](docs/images.md). Future DSV4 derivative
+images can reuse the published frozen runtime build base instead of rebuilding vLLM/FlashInfer; see
+[`docs/deepseek-v4-v027-runtime-build-base.md`](docs/deepseek-v4-v027-runtime-build-base.md) and
+[`dockerfiles/`](dockerfiles/).
 
 ### 2. Check the preset and prerequisites
 
@@ -117,8 +118,7 @@ current DeepSeek-V4 production artifacts are:
 - `scripts/prewarm_dsv4_v027_b43s.py`.
 
 The preset retains `candidate` in its historical filename but is the active production preset. Its
-published tag is mutable, so the commands below override `VLLM_IMAGE` with the recorded immutable
-digest.
+`VLLM_IMAGE` is pinned directly to the immutable manifest digest.
 
 ### 3. Start current DeepSeek-V4 production
 
@@ -127,7 +127,6 @@ not two independent servers:
 
 ```bash
 # spark02 — worker first
-VLLM_IMAGE=ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f \
 docker compose \
   --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
   -f docker-compose.yml \
@@ -135,7 +134,6 @@ docker compose \
   --profile worker up -d
 
 # spark01 — head plus one-shot automatic prewarm
-VLLM_IMAGE=ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f \
 docker compose \
   --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
   -f docker-compose.yml \

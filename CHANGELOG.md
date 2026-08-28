@@ -4,6 +4,21 @@ All notable changes to `vllm-spark` (GHCR image + repo presets). Most recent on
 top. See `git log` for the full commit history; this file is curated to describe
 what users see (image tag, behavior, breaking changes) rather than every commit.
 
+## DeepSeek-V4 v0.27 frozen runtime build base released (2026-08-28)
+
+- Published `v027-ngc2607-dsv4-runtime-base-20260828` and stable alias
+  `v027-ngc2607-dsv4-runtime-base` to GHCR. Both resolve to the existing production manifest
+  `sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f`; this was a byte-identical
+  retag/release, not a rebuild.
+- Added `dockerfiles/active/Dockerfile.v027-ngc2607-dsv4-from-runtime-base` and
+  `scripts/build/build-dsv4-v027-from-runtime-base.sh`. A measured first thin-derivative smoke build
+  completed in 9.03 seconds because the 37.1GB common stack was reused.
+- Pinned the active MS1 and optional MS4 presets directly to the immutable manifest. Runtime bytes and
+  the production envelope are unchanged; no service was started or promoted by this release.
+- Scope is DSV4-specific, including existing dependency closure and B4.3R/B4.3S dispatch patches; it
+  must not be represented as a model-neutral vLLM base. See
+  [`docs/deepseek-v4-v027-runtime-build-base.md`](docs/deepseek-v4-v027-runtime-build-base.md).
+
 ## DeepSeek-V4-Flash-0731 / vLLM 0.27 promoted to production (2026-08-15)
 
 **Production commit**: task B4.4C (see repository history for the exact hash)

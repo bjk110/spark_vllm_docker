@@ -8,8 +8,8 @@ document current — always check its group here and its banner.
 The DeepSeek-V4-Flash promoted production baseline is the **vLLM 0.27 native DSpark k=7 256K** path
 with `MAX_NUM_SEQS=1`. Deploy with
 `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` plus
-`compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`, overriding the preset's published tag
-with the immutable registry digest documented in `deepseek-v4-production.md`. The v0.25.0/64K preset
+`compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`; the preset itself is pinned to the
+immutable registry digest documented in `deepseek-v4-production.md`. The v0.25.0/64K preset
 is the primary rollback; MTP1 is the legacy second-tier rollback.
 
 The Solar-Open2-250B promoted production baseline is the **r4 BF16** (vLLM 0.25.1) path. Runtime
@@ -44,6 +44,7 @@ to a registry). Deploy via the local-ID-pinned preset.
 | Document | Subject | Status | Use |
 |---|---|---|---|
 | [deepseek-v4-production.md](deepseek-v4-production.md) | Canonical DeepSeek-V4 production operations — active v0.27 native DSpark k=7 256K/MS1 route, v0.25.0/64K primary rollback, MTP1 legacy rollback, startup/prewarm and qualification provenance | `Current production` | Authoritative operations, runtime contracts, rollback |
+| [deepseek-v4-v027-runtime-build-base.md](deepseek-v4-v027-runtime-build-base.md) | Frozen DSV4-specific NGC 26.07/vLLM 0.27 build base, GHCR identities, thin-derivative recipe | `Build/release reference` | Avoid rebuilding the validated common runtime closure |
 | [solar-open2-production.md](solar-open2-production.md) | Canonical Solar-Open2-250B production operations — active r4 BF16 (vLLM 0.25.1) route and v0.22.1 rollback, runtime contracts, activation/rollback with empirical reboot procedure, validation provenance (6-gate production fast-track 2026-08-08/09) | `Current production` | Authoritative operations, runtime contracts, rollback |
 
 ## Rollback and operations

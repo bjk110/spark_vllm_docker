@@ -10,7 +10,8 @@ document provides the detailed image-tag history.
 
 | Path | Status | Config | Image source |
 |---|---|---|---|
-| `dsv4-d568` | **Frozen** primary DSV4 baseline (NOT rebased onto NGC 26.05) | the frozen DSV4-Flash baseline preset (removed from the active surface; Git history) | `ghcr.io/bjk110/vllm-spark:dsv4-d568` — see the image mapping below |
+| `dsv4-v027-0731` | **DeepSeek-V4 active production** — NGC 26.07/vLLM 0.27, native DSpark k=7, 256K/MS1 | `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` + health/prewarm overlay | immutable manifest `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c…`; same manifest released under the frozen DSV4 build-base aliases below |
+| `dsv4-d568` | Frozen legacy/historical DSV4 baseline (NOT rebased onto NGC 26.05) | historical preset removed from the active surface; Git history | `ghcr.io/bjk110/vllm-spark:dsv4-d568` — reproduction only |
 | `unholy-fusion` | Historical/experimental high-prefill DSV4 path (config removed from the active surface 2026-08-11; Git history) | formerly `.env.unholy-fusion` + `compose/docker-compose.unholy.yml` | External/upstream image (`aidendle94/sparkrun-vllm-ds4-gb10:production-ready`) or GHCR mirror — see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md) |
 | `v022-d568-ngc2605-tx5102-vllm022` | Active forward-stack (NGC 26.05 + vLLM 0.22.1) | `.env` with `VLLM_IMAGE=ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022` | `ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022` |
 | `v022-d568` | Stable general base (NGC 26.04 + vLLM 0.21.0) | Various `presets/*.env` | `ghcr.io/bjk110/vllm-spark:v022-d568` |
@@ -42,6 +43,13 @@ Formerly a local-only build (tagged `v027-ngc2607-sm121-dsv4-0731-b43s-topk256-e
 through task B4.4B; published under the stable tag above in task B4.4C. The underlying image content
 (local image ID) is unchanged from B4.3S through publication — this was a tag/publish operation, not
 a rebuild.
+
+The same manifest is also published under build-base aliases
+`v027-ngc2607-dsv4-runtime-base-20260828` (versioned) and
+`v027-ngc2607-dsv4-runtime-base` (stable). Both resolve to the same digest and local image ID; no image
+layer was rebuilt. They are DSV4-specific frozen donor aliases for thin derivative builds, not a
+model-neutral vLLM base. Build recipe and measured smoke build:
+[`deepseek-v4-v027-runtime-build-base.md`](deepseek-v4-v027-runtime-build-base.md).
 
 Full runtime contract, validation coverage, prewarm design, and residual risks:
 [`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](deepseek-v4-v027-b43s-promotion-candidate.md).
