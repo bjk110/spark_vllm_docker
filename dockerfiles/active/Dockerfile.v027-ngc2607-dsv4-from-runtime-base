@@ -11,4 +11,3 @@ LABEL org.opencontainers.image.title="DeepSeek-V4 thin derivative from frozen v0
       org.opencontainers.image.revision="${RECIPE_REVISION}" \
       org.vllm-spark.runtime-base.digest="sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f" \
       org.vllm-spark.runtime-base.scope="dsv4-specific-frozen-build-base"
-
