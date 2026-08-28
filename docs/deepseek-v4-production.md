@@ -94,6 +94,12 @@ historical reproduction) are available through Git history and are not retained 
 | 256K single-needle / ~496K combined-pressure correctness | Validated (B4.3W/X) |
 | Four-cycle no-cooldown 128K×4 soak | Validated (B4.3Z) |
 | Automatic startup prewarm (Targets A+B) | Validated (B4.4A/B4.4B), wired via the candidate Compose overlay |
+| 2026-08-28 eugr/Mia/Aiden replacement candidates | **Not qualified** — MS1 divergence or MTP startup blocker; no MS8/benchmark |
+
+The external-candidate closure, immutable identities, canonical lossless contract, and fail-closed
+performance conclusion are recorded in
+[`docs/deepseek-v4-external-runtime-qualification-2026-08-28.md`](deepseek-v4-external-runtime-qualification-2026-08-28.md).
+They do not expand the active route beyond `MAX_NUM_SEQS=1` and do not supersede B4.3S-B4.4C.
 
 ## 6. Activation and rollback
 
@@ -144,6 +150,13 @@ released** — host `MemAvailable` recovers only partially, and **full recovery 
 Plan any route switch on a fresh boot (~118 GiB `MemAvailable`).
 
 ## 9. Validation provenance (final milestones)
+
+**External replacement audit (2026-08-28):** eugr B12X, MiaAI/Anemll, and Aiden/Tony were
+qualified as independent immutable candidates. All candidates were blocked before equal-envelope
+performance comparison: eugr, Mia, and the Aiden MTP-off child produced 8 unique completion hashes
+across 8 canonical MS1 requests; the Aiden MTP candidate failed drafter weight loading. MS8 and
+benchmarking were therefore not run. See
+[`docs/deepseek-v4-external-runtime-qualification-2026-08-28.md`](deepseek-v4-external-runtime-qualification-2026-08-28.md).
 
 **v0.27/256K route (current active production):** B4.3S (first TP=2+DSpark k=7 success on v0.27) →
 B4.3T (performance/acceptance baseline) → B4.3U (concurrency to c=8) → B4.3V/W (long-context to 256K)
