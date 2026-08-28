@@ -36,8 +36,9 @@ actually deployed right now; do not infer it from this document alone.
 
 | Path | Status | Backend | Use case |
 |---|---|---|---|
-| `dsv4-flash-dspark` | **DeepSeek-V4-Flash promoted production** — native DSpark k=7, 64K (promoted 2026-07-22) | `mp` | Active DSV4 path — native DSpark k=7 greedy, FULL_DECODE_ONLY `[8]`, KV 10 GiB FP8, E8M0=1, dual-node TP=2. Digest-pinned `@aacb06de60ec`. Rollback = MTP1 preset. |
-| `dsv4-flash-mtp1` | DeepSeek-V4-Flash MTP1 production rollback (stopped) | `mp` | Authoritative rollback for the DSpark production — MTP n=1, capture `[2]`, 4 GiB FP8 KV, digest `@de69fa367137`. |
+| `dsv4-flash-0731-v027` | **DeepSeek-V4-Flash promoted production** — native DSpark k=7, 256K (promoted 2026-08-15) | `mp` | Active DSV4 path — `MAX_NUM_SEQS=1`, FULL_DECODE_ONLY `[8]`, automatic startup prewarm, dual-node TP=2. Immutable manifest `@sha256:7a005243701c…`. |
+| `dsv4-flash-dspark-64k` | DeepSeek-V4 primary rollback (stopped) | `mp` | vLLM 0.25.0 native DSpark k=7, 64K, digest `@sha256:aacb06de60ec…`. |
+| `dsv4-flash-mtp1` | DeepSeek-V4 legacy rollback (stopped) | `mp` | Second-tier fallback — MTP n=1, capture `[2]`, 4 GiB FP8 KV, digest `@sha256:de69fa367137…`. |
 | `dsv4-d568` | Frozen legacy/historical DSV4 baseline | `ray` or `mp` | Historical decode-optimized reproduction/reference only. |
 | `unholy-fusion` | Historical/experimental (DSV4 only); config removed from active tree 2026-08-11 | `mp` | Higher-prefill DSV4 experimental alternative — not a recommended production path. Recoverable from Git history; see [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md). |
 | `solar-open2-r4-bf16` | **Solar-Open2-250B promoted production** — r4 BF16, vLLM 0.25.1 (promoted 2026-08-09) | `ray` | TP=2, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`, eager, FLASHINFER_B12X MoE, ST_PREAD + B12X shared-workspace gates. Local image ID `sha256:ecb7bfe3…` (not yet published to a registry). Rollback = v0.22.1 KV4G preset. |
@@ -46,19 +47,13 @@ actually deployed right now; do not infer it from this document alone.
 | `v022-d568` | Stable general base (NGC 26.04, vLLM 0.21.0) | `ray` or direct | Qwen3.6, Gemma 4 31B, abliterix NVFP4 presets. |
 | `v021-ngc2603` / `v021-tq` | Stable base for most existing presets | `ray` or direct | Most non-DSV4/non-Solar presets. |
 
-**DeepSeek-V4 promoted production** runs the native DSpark k=7 64K route by its **immutable GHCR
-manifest digest** (`sha256:aacb06de60ec…`, config `sha256:75bdf3d810558…`), promoted 2026-07-22
-for spark01 port 8000, via the digest-pinned preset
-[`presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env`](presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env).
-Runtime contract: native DSpark k=7 greedy, target FULL_DECODE_ONLY `[8]`, draft eager,
-`MAX_MODEL_LEN=65536`, KV 10 GiB FP8, `VLLM_USE_DEEP_GEMM_E8M0=1`, `max_num_seqs=1`, prefix caching off,
-TP=2 mp/RoCE. No LC131 exposure; unrestricted 135168 is not supported.
-
-The authoritative rollback is the MTP1 preset
-[`presets/deepseek-v4-flash-mtp1-production-tp2.env`](presets/deepseek-v4-flash-mtp1-production-tp2.env)
-(image `@sha256:de69fa367137…`, MTP n=1, capture `[2]`, 4 GiB FP8 KV; currently stopped). Full
-operations, activation, rollback, and validation provenance (DS3U / DS3V / DS3X / DS3Y):
-[`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md).
+**DeepSeek-V4 promoted production** runs `deepseek-ai/DeepSeek-V4-Flash-0731` on vLLM 0.27,
+native DSpark k=7, 256K, and `MAX_NUM_SEQS=1`. Its immutable image identity is
+`ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f`
+(local image ID `sha256:a7f0f4b8a508…`). Launch uses the production preset plus its health/prewarm
+overlay; see [Quick Start](#quick-start) and
+[`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md). The v0.25.0/64K DSpark route is the
+primary rollback; MTP1 is the legacy second-tier rollback.
 
 **Solar-Open2-250B promoted production** runs the r4 BF16 route (vLLM 0.25.1) by its **local Docker
 image ID** (`sha256:ecb7bfe3978a…` — not yet published to a registry, see
@@ -99,53 +94,77 @@ the repo and point `MODEL_PATH` / `MODEL_CONTAINER_PATH` at them.
 
 ### 1. Get the image
 
+Pull the image referenced by the selected preset on every participating node. For the current
+DeepSeek-V4 production route, use its immutable manifest digest:
+
 ```bash
-# Pick the base for your path (see Current serving paths):
-docker pull ghcr.io/bjk110/vllm-spark:v021-ngc2603                      # stable base for most presets
-docker pull ghcr.io/bjk110/vllm-spark:v022-d568                        # NGC 26.04 general base
-docker pull ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022 # forward stack (NGC 26.05)
-docker pull ghcr.io/bjk110/vllm-spark:dsv4-d568                        # frozen legacy DSV4
+docker pull ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f
 ```
 
-Building from source (all builds on spark01/spark02): see [`dockerfiles/`](dockerfiles/) and
+Other general bases are cataloged in [`docs/images.md`](docs/images.md). Building from source on
+spark01/spark02 is documented in [`dockerfiles/`](dockerfiles/) and
 [`docs/software-stack.md`](docs/software-stack.md).
 
-### 2. Choose a preset
+### 2. Check the preset and prerequisites
 
-Pick from [`presets/README.md`](presets/README.md) (grouped by status). Single-Spark presets ship
-`CLUSTER_MODE=single`/TP=1; dual-Spark presets ship `CLUSTER_MODE=dual-rdma`/TP=2.
+Presets are cataloged by status in [`presets/README.md`](presets/README.md). Keep model weights outside
+the repository. Before startup, ensure both nodes use the same clean tracked Git revision and that
+`MODEL_PATH`, the RoCE addresses/interface, and the immutable image identity exist on both nodes. The
+current DeepSeek-V4 production artifacts are:
 
-```bash
-# Current DeepSeek-V4 production (digest-pinned):
-docker compose --env-file presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env --profile head up -d   # + worker on spark02
+- `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env`;
+- `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`;
+- `scripts/prewarm_dsv4_v027_b43s.py`.
 
-# Or copy any preset to .env and edit MODEL_PATH:
-cp presets/redhatai-122b-nvfp4.env .env
-```
+The preset retains `candidate` in its historical filename but is the active production preset. Its
+published tag is mutable, so the commands below override `VLLM_IMAGE` with the recorded immutable
+digest.
 
-### 3. Start services
+### 3. Start current DeepSeek-V4 production
 
-```bash
-# Single Spark (TP=1, no Ray/RDMA):
-docker compose --profile head up -d
-
-# Dual Spark (TP=2):
-docker compose --profile head up -d      # spark01
-docker compose --profile worker up -d    # spark02
-```
-
-`entrypoint.sh` normalizes the environment by `CLUSTER_MODE` and dispatches on
-`ROLE`×`TP_SIZE`×`DISTRIBUTED_BACKEND`. In `single` mode it forces `VLLM_HOST_IP=127.0.0.1` and
-`NCCL_IB_DISABLE=1` (avoids the c10d `server socket has timed out` hang — see
-[`docs/troubleshooting.md`](docs/troubleshooting.md)). Backend selection (`ray` vs `mp`), the full
-dispatch table, and RDMA env requirements are in [`docs/architecture.md`](docs/architecture.md).
-
-### 4. Verify
+Run from the repository root on both nodes. Start the MP worker before the head. This is TP=2 startup,
+not two independent servers:
 
 ```bash
-curl http://localhost:8000/health      # single
-curl http://spark01:8000/health        # dual-rdma
+# spark02 — worker first
+VLLM_IMAGE=ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f \
+docker compose \
+  --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
+  -f docker-compose.yml \
+  -f compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml \
+  --profile worker up -d
+
+# spark01 — head plus one-shot automatic prewarm
+VLLM_IMAGE=ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f \
+docker compose \
+  --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
+  -f docker-compose.yml \
+  -f compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml \
+  --profile head up -d
 ```
+
+For generic single-Spark and other dual-Spark presets, follow the preset header and
+[`presets/README.md`](presets/README.md); model-specific overlays must not be omitted. `entrypoint.sh`
+dispatches on `CLUSTER_MODE`×`ROLE`×`TP_SIZE`×`DISTRIBUTED_BACKEND`; details are in
+[`docs/architecture.md`](docs/architecture.md).
+
+### 4. Verify readiness
+
+`/health` means engine alive, not prewarm complete. Wait for all three checks before serving traffic:
+
+```bash
+curl -fsS http://127.0.0.1:8000/health
+curl -fsS http://127.0.0.1:8000/v1/models
+
+docker ps -a --filter name=vllm-spark-prewarm \
+  --format 'table {{.Names}}\t{{.Status}}'
+docker logs vllm-spark-prewarm
+```
+
+The model list must contain `deepseek-ai/DeepSeek-V4-Flash-0731` with
+`max_model_len: 262144`, and `vllm-spark-prewarm` must finish with exit code 0. Cold startup normally
+takes about 8–11 minutes. See [`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md) for
+rollback and GB10 UMA recovery.
 
 ## Presets and model paths
 
@@ -197,8 +216,9 @@ validated alternatives, experimental, historical/superseded). Start there. Frequ
 
 - All Docker/vLLM builds run on spark01 or spark02, never on the homeserver (GB10 template
   compilation needs 64–128 GiB peak).
-- DeepSeek-V4 production runs at the validated envelope (concurrency 1, prompts up to 131K). Exceeding
-  concurrency or context requires KV-headroom re-validation.
+- DeepSeek-V4 production runs only within the documented v0.27 envelope: `MAX_NUM_SEQS=1` and
+  `MAX_MODEL_LEN=262144`. Any concurrency increase, runtime/image change, or context claim beyond that
+  contract requires separate qualification.
 - GB10 uses unified memory; a clean reboot + dedicated-cache-clear startup gate is required before a
   full model load when UVM is retained (not automated by presets).
 - Recommended OS tuning: `sudo sysctl -w vm.swappiness=10`.

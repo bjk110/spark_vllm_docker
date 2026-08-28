@@ -4,7 +4,7 @@
 |---|---|
 | Status | `Historical` |
 | Scope | Legacy JASL-era DeepSeek-V4-Flash TP=2 model guide and reproduction reference (`dsv4-d568`) |
-| Current replacement | [`deepseek-v4-production.md`](deepseek-v4-production.md) (current production: native DSpark k=7 64K) |
+| Current replacement | [`deepseek-v4-production.md`](deepseek-v4-production.md) (current production: DeepSeek-V4-Flash-0731, v0.27, native DSpark k=7, 256K, `MAX_NUM_SEQS=1`) |
 | Last validated | Not recorded (legacy `dsv4-d568` baseline, intentionally frozen) |
 | Runtime or image identity | image `ghcr.io/bjk110/vllm-spark:dsv4-d568` (frozen legacy baseline) |
 | Historical relevance | Not the default production path. Preserved for the historical configuration, JASL recipe, and 9-way benchmark sweep. |

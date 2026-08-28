@@ -5,10 +5,12 @@ this index and by the status banner at the top of each document**, not by its
 filename. A filename containing `production` or `validated` does not by itself make a
 document current — always check its group here and its banner.
 
-The DeepSeek-V4-Flash promoted production baseline is the **native DSpark k=7 64K** path. Runtime
-deployments use the **immutable digest-pinned** production preset
-(`presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env`); the MTP1 preset
-(`presets/deepseek-v4-flash-mtp1-production-tp2.env`) is the authoritative rollback.
+The DeepSeek-V4-Flash promoted production baseline is the **vLLM 0.27 native DSpark k=7 256K** path
+with `MAX_NUM_SEQS=1`. Deploy with
+`presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` plus
+`compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`, overriding the preset's published tag
+with the immutable registry digest documented in `deepseek-v4-production.md`. The v0.25.0/64K preset
+is the primary rollback; MTP1 is the legacy second-tier rollback.
 
 The Solar-Open2-250B promoted production baseline is the **r4 BF16** (vLLM 0.25.1) path. Runtime
 deployments use the **local-image-ID-pinned** production preset
@@ -32,21 +34,23 @@ for its own model, not for the physical port 8000 slot simultaneously — spark0
 model at a time, and whichever track is not currently deployed remains stopped (see each document's
 own status banner for what is actually running right now).
 
-Runtime authority (DeepSeek-V4-Flash) = immutable digest `sha256:aacb06de…` (image config
-`75bdf3d8…`). Deploy via the digest-pinned preset.
+Runtime authority (DeepSeek-V4-Flash) = immutable manifest `sha256:7a005243…` (local image ID
+`sha256:a7f0f4b8…`). Deploy the v0.27/256K preset with its required health/prewarm overlay and immutable
+image override; see `deepseek-v4-production.md`.
 
 Runtime authority (Solar-Open2-250B) = local Docker image ID `sha256:ecb7bfe3…` (not yet published
 to a registry). Deploy via the local-ID-pinned preset.
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [deepseek-v4-production.md](deepseek-v4-production.md) | Canonical DeepSeek-V4 production operations — active native DSpark k=7 64K route and MTP1 rollback, runtime contracts, activation/rollback, validation provenance (DS3U/DS3V/DS3X/DS3Y) | `Current production` | Authoritative operations, runtime contracts, rollback |
+| [deepseek-v4-production.md](deepseek-v4-production.md) | Canonical DeepSeek-V4 production operations — active v0.27 native DSpark k=7 256K/MS1 route, v0.25.0/64K primary rollback, MTP1 legacy rollback, startup/prewarm and qualification provenance | `Current production` | Authoritative operations, runtime contracts, rollback |
 | [solar-open2-production.md](solar-open2-production.md) | Canonical Solar-Open2-250B production operations — active r4 BF16 (vLLM 0.25.1) route and v0.22.1 rollback, runtime contracts, activation/rollback with empirical reboot procedure, validation provenance (6-gate production fast-track 2026-08-08/09) | `Current production` | Authoritative operations, runtime contracts, rollback |
 
 ## Rollback and operations
 
-The authoritative rollback for the active DSpark production is the MTP1 preset
-(`presets/deepseek-v4-flash-mtp1-production-tp2.env`, image `@sha256:de69fa367137…`, stopped).
+The primary rollback for the active v0.27/256K DSpark production is
+`presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env` (v0.25.0, image
+`@sha256:aacb06de60ec…`, stopped). MTP1 (`@sha256:de69fa367137…`) is the legacy second-tier rollback.
 Rollback and recovery procedure: [deepseek-v4-production.md](deepseek-v4-production.md).
 
 The authoritative rollback for the active Solar-Open2 r4 production is the v0.22.1 preset
@@ -116,6 +120,7 @@ Preserved for evidence and reproducibility. Superseded ≠ incorrect; do not tre
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
+| [deepseek-v4-external-runtime-qualification-2026-08-28.md](deepseek-v4-external-runtime-qualification-2026-08-28.md) | eugr, MiaAI/Anemll, and Aiden/Tony replacement-candidate closure | `Qualification record` (no candidate promoted) | Immutable identities, lossless-gate results, benchmark fail-closed decision |
 | [model-serving-validation-history.md](model-serving-validation-history.md) | Historical stack validation notes and benchmarks (Gemma 4, Qwen3.5 122B/397B, PrismaQuant, Qwen3.6-35B, TurboQuant) | `Historical` | Historical benchmark/validation archive |
 | [stack-v021.md](stack-v021.md) | Software stack v021-ngc2603 (previous main, NGC 26.03) | `Superseded` | Prior main stack reference |
 | [stack-v019.md](stack-v019.md) | Software stack v019-ngc2603 (archived) | `Historical` (archived) | Archived stack reference |

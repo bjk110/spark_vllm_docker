@@ -6,10 +6,14 @@ Docker Compose environment preset files for model-serving configurations. This d
 **Status is set by this index, not by the filename.** Each `.env` file also documents its own
 recipe/image/topology in its header comment.
 
-Serve a preset directly:
+Serve a preset directly only when its header does not require a model-specific overlay. For dual-node
+profiles, start the worker first. The current DeepSeek-V4 route requires the overlay shown in the
+top-level README Quick Start and `docs/deepseek-v4-production.md`; omitting it skips health/prewarm.
 
 ```bash
-docker compose --env-file presets/<preset>.env --profile head up -d   # + --profile worker on the worker node
+# Generic shape only — consult the selected preset's operations document first.
+docker compose --env-file presets/<preset>.env --profile worker up -d  # worker node, if TP=2
+docker compose --env-file presets/<preset>.env --profile head up -d    # head node
 ```
 
 Navigation: **[1. Production presets](#1-production-presets)** · [2. Validated (non-production)](#2-validated-presets-non-production)
@@ -45,7 +49,7 @@ activation/rollback commands, and validation provenance:
 
 | Preset | Model | Status | Notes |
 |---|---|---|---|
-| `deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` | DeepSeek-V4-Flash-0731 | **Active production** (since 2026-08-15, spark01:8000) | native DSpark k=7 greedy, vLLM 0.27, `MAX_MODEL_LEN=262144`, `MAX_NUM_SEQS=1`, KV 10 GiB FP8, `E8M0=1`, prefix caching off, TP=2 mp/RoCE, automatic startup prewarm via `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`. Image `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`. Filename retains its original "candidate" naming from implementation (task B4.4B); the Status column here and in the preset's own header comment are authoritative. |
+| `deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` | DeepSeek-V4-Flash-0731 | **Active production** (since 2026-08-15, spark01:8000) | native DSpark k=7 greedy, vLLM 0.27, `MAX_MODEL_LEN=262144`, `MAX_NUM_SEQS=1`, KV 10 GiB FP8, `E8M0=1`, prefix caching off, TP=2 mp/RoCE, automatic startup prewarm via `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`. Published tag `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`; immutable manifest `sha256:7a005243701c…`. Production launch overrides the tag with this digest. Filename retains its original "candidate" naming from implementation (task B4.4B); the Status column here and in the preset's own header comment are authoritative. |
 | `deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env` | DeepSeek-V4-Flash-0731 | Optional validated profile (attended use only, not default) | Identical to the active preset except `MAX_NUM_SEQS=4`; not wired into automatic prewarm's global-topk target. See Residual Risk R1 in its own header |
 | `deepseek-v4-flash-dspark-k7-64k-production-tp2.env` | DeepSeek-V4-Flash-DSpark | **Primary rollback** (stopped) | vLLM 0.25.0, native DSpark k=7 greedy, `MAX_MODEL_LEN=65536`, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:aacb06de60ec…`. No LC131 exposure; unrestricted 135168 not supported |
 | `deepseek-v4-flash-mtp1-production-tp2.env` | DeepSeek-V4-Flash | **Legacy rollback** (stopped) | Second-tier fallback if the primary rollback is also unavailable. MTP n=1, target FULL_DECODE_ONLY `[2]`, KV 4 GiB FP8, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:de69fa367137…`. Repeated large-context operation not approved |

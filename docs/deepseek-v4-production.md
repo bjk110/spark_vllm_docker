@@ -12,10 +12,13 @@ presets are superseded and available only through Git history.
 - **Status:** Active production since 2026-08-15 (promotion task B4.4C). Promoted from
   `B4_4A_PREWARM_VALIDATED_PROMOTION_READY` / `B4_4B_PROMOTED_PRESET_IMPLEMENTATION_VALIDATED`.
 - **Model:** `deepseek-ai/DeepSeek-V4-Flash-0731`.
-- **Image:** `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`
-  (local build ID `sha256:a7f0f4b8a508c0b2510fc7e4dcb916491efa03c380c9c7b84dddd4c16ad6f38d`, identical
-  on spark01/spark02, unchanged since task B4.3S; NGC 26.07 base, vLLM 0.27, arm64). Immutable
-  registry digest recorded once published — see [`docs/images.md`](images.md).
+- **Image:** published tag
+  `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`; immutable manifest
+  `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f`.
+  Local image ID `sha256:a7f0f4b8a508c0b2510fc7e4dcb916491efa03c380c9c7b84dddd4c16ad6f38d`
+  is identical on spark01/spark02 (NGC 26.07 base, vLLM 0.27, arm64). The committed preset retains the
+  published tag; production commands below override it with the immutable digest. See
+  [`docs/images.md`](images.md).
 - **Runtime contract:** native DSpark `method=dspark`, `num_speculative_tokens=7`, greedy draft;
   target `FULL_DECODE_ONLY`, `cudagraph_capture_sizes=[8]`, 2 warmups; `MAX_MODEL_LEN=262144`;
   `MAX_NUM_BATCHED_TOKENS=8192`; `MAX_NUM_SEQS=1`; fixed **10 GiB FP8** KV cache; MoE backend MARLIN;
@@ -103,18 +106,23 @@ They do not expand the active route beyond `MAX_NUM_SEQS=1` and do not supersede
 
 ## 6. Activation and rollback
 
-Active production launches through the committed Compose project plus the candidate overlay
-(network host, local-then-registry-pinned image):
+Active production launches through the committed Compose project plus its health/prewarm overlay.
+Before startup, verify both nodes use the same clean tracked Git revision. Run from the repository root
+on both nodes, with the MP worker first. Override the preset's published tag with the recorded immutable
+digest:
 
 ```bash
-# Active production (spark01 head + spark02 worker):
-docker compose --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
-  -f docker-compose.yml -f compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml \
-  --profile head up -d
-# on the worker node:
+# spark02 — worker first
+VLLM_IMAGE=ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f \
 docker compose --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
   -f docker-compose.yml -f compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml \
   --profile worker up -d
+
+# spark01 — head plus one-shot prewarm
+VLLM_IMAGE=ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f \
+docker compose --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
+  -f docker-compose.yml -f compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml \
+  --profile head up -d
 ```
 
 Health validation: `GET http://127.0.0.1:8000/health` → 200, `GET /v1/models` lists
