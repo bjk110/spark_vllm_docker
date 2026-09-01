@@ -17,7 +17,7 @@ deployments use the **local-image-ID-pinned** production preset
 (`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`); the v0.22.1 KV4G matched preset
 (`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`) is the authoritative rollback.
 
-Both families are independent promoted baselines that currently share the same physical serving
+All three families are independent promoted baselines that currently share the same physical serving
 slot (spark01 head + spark02 worker, port 8000) rather than running simultaneously — this index
 does not track which one is deployed at this instant; check live container/health state for that.
 
@@ -29,7 +29,7 @@ Groups: [Current production](#current-production) · [Rollback and operations](#
 
 ## Current production
 
-Two independent model tracks are documented as "current production" below; each is authoritative
+Three independent model tracks are documented as "current production" below; each is authoritative
 for its own model, not for the physical port 8000 slot simultaneously — spark01/spark02 run one
 model at a time, and whichever track is not currently deployed remains stopped (see each document's
 own status banner for what is actually running right now).
@@ -46,6 +46,7 @@ to a registry). Deploy via the local-ID-pinned preset.
 | [deepseek-v4-production.md](deepseek-v4-production.md) | Canonical DeepSeek-V4 production operations — active v0.27 native DSpark k=7 256K/MS1 route, v0.25.0/64K primary rollback, MTP1 legacy rollback, startup/prewarm and qualification provenance | `Current production` | Authoritative operations, runtime contracts, rollback |
 | [deepseek-v4-v027-runtime-build-base.md](deepseek-v4-v027-runtime-build-base.md) | Frozen DSV4-specific NGC 26.07/vLLM 0.27 build base, GHCR identities, thin-derivative recipe | `Build/release reference` | Avoid rebuilding the validated common runtime closure |
 | [solar-open2-production.md](solar-open2-production.md) | Canonical Solar-Open2-250B production operations — active r4 BF16 (vLLM 0.25.1) route and v0.22.1 rollback, runtime contracts, activation/rollback with empirical reboot procedure, validation provenance (6-gate production fast-track 2026-08-08/09) | `Current production` | Authoritative operations, runtime contracts, rollback |
+| [qwen3.8-flash-next-tp2.md](qwen3.8-flash-next-tp2.md) | Qwen/Qwen3.8-Flash-Next-FP8 dual DGX Spark TP=2 recipe — production-qualified c1/c2 profile, `MAX_NUM_SEQS=2`, FULL_DECODE_ONLY capture sizes `[1,2]`, staged Gate0–Gate3 procedure, checksum/identity verification | `Production-qualified` (c1/c2; not auto-start) | Production-qualified c1/c2 route; not auto-started, activate manually |
 
 ## Rollback and operations
 

@@ -26,12 +26,13 @@ legacy, deep-recovery, historical) are **not** retained in the active preset dir
 family's subsection below for where that provenance actually lives (Git history for DeepSeek-V4,
 local/untracked build-host artifacts referenced by hash for Solar-Open2).
 
-**DeepSeek-V4 and Solar-Open2 are independent production baselines**, each promoted and rolled back
-on its own schedule. They are not served simultaneously: both currently target the same physical
-serving slot (spark01 head + spark02 worker, port 8000), so only one family's containers run at any
-given moment. Which one is *actually* running right now is **not** determined by this index or by
-either family's production document — check live container/health state directly (`docker ps`,
-`GET :8000/health`, `GET :8000/v1/models`) before assuming either baseline is currently deployed.
+**DeepSeek-V4, Solar-Open2, and Qwen3.8-Flash-Next are independent production baselines**, each
+promoted and rolled back on its own schedule. They are not served simultaneously: all currently
+target the same physical serving slot (spark01 head + spark02 worker, port 8000), so only one
+family's containers run at any given moment. Which one is *actually* running right now is **not**
+determined by this index or by either family's production document — check live container/health
+state directly (`docker ps`, `GET :8000/health`, `GET :8000/v1/models`) before assuming any
+baseline is currently deployed.
 
 ---
 
@@ -78,6 +79,17 @@ on the build hosts (spark01/spark02) and are referenced by content hash only in
 This is a local-only reproducibility limitation for the historical/intermediate development path
 only — the production preset is tracked and the rollback preset is working-tree-ready and
 hash-verified (not yet staged/committed; see `docs/solar-open2-production.md` sections 1-2).
+
+### 1c. Qwen3.8-Flash-Next production presets
+
+Qwen3.8-Flash-Next-FP8 has one production-qualified preset: c1/c2 concurrency,
+`MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`. Manual activation only — not
+wired into any auto-start path; after teardown, reboot the node before the next fresh launch.
+Full gate ledger: [`docs/qwen3.8-flash-next-tp2.md`](../docs/qwen3.8-flash-next-tp2.md).
+
+| Preset | Model | Status | Notes |
+|---|---|---|---|
+| `qwen3.8-flash-next-fp8-tp2-candidate.env` | Qwen/Qwen3.8-Flash-Next-FP8 | **Production-qualified** (manual activation only, not auto-start) | dual-rdma TP2 (mp), production-qualified at c1/c2, `MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`, `MAX_MODEL_LEN=262144`, `GPU_MEMORY_UTILIZATION=0.83`. Requires `compose/qwen3.8-flash-next/docker-compose.candidate.yml` overlay. Reboot before next fresh launch after teardown. `MAX_NUM_SEQS=4` remains BLOCKED (content diverges across identical repeats at c2/c4) and must not be raised. MTP and PLE-offloaded NVFP4 excluded from the default; MTP untested/off. |
 
 ## 2. Validated presets (non-production)
 

@@ -1,0 +1,88 @@
+# compose/qwen3.8-flash-next/docker-compose.candidate.yml
+#
+# STATIC CANDIDATE overlay for Qwen/Qwen3.8-Flash-Next-FP8 (dual DGX Spark
+# TP=2, mp backend). Scoped to this candidate ONLY -- it is not merged into
+# the shared docker-compose.yml, so no other model family's or preset's
+# launch command is affected. NOT production. Does not extend, modify, or
+# supersede any other validated baseline or promoted preset in this
+# repository.
+#
+# This overlay adds exactly two things on top of the base head/worker
+# services:
+#
+#   1. A bounded `head` healthcheck (`/health`, curl). This exists so a
+#      launcher/operator can poll readiness with `docker compose ... ps` /
+#      `docker inspect --format '{{.State.Health.Status}}'` instead of
+#      guessing from logs. `start_period` is set generously (900s) as an
+#      UNVALIDATED estimate scaled from the DeepSeek-V4-Flash-0731 cold-start
+#      envelope (149 GB checkpoint, ~8-11 min cold start) for this candidate's
+#      larger 172.78 GiB FP8 checkpoint -- it is not itself a runtime
+#      measurement. Failures during start_period do not count against
+#      `retries`. There is deliberately NO automatic prewarm service and NO
+#      `depends_on` wiring here -- worker/head sequencing stays a manual,
+#      operator-driven step (see docs/qwen3.8-flash-next-tp2.md), unlike the
+#      DeepSeek-V4 v027-b43s overlay's automatic prewarm.
+#
+#   2. Explicit passthrough of VLLM_ALL2ALL_BACKEND, the one env var this
+#      candidate's conservative envelope depends on that base
+#      docker-compose.yml does not already forward into the containers.
+#
+#   3. An explicit-empty PYTORCH_CUDA_ALLOC_CONF override for BOTH head and
+#      worker. Base docker-compose.yml defaults this to
+#      `expandable_segments:True` whenever the variable is unset
+#      (`PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}`).
+#      A current dual-Spark SGLang recipe explicitly warns that
+#      `expandable_segments:True` is unproven on GB10 and is absent from
+#      known-good dual-Spark recipes, so this candidate does not want that
+#      base default to silently apply. The override below uses
+#      `${PYTORCH_CUDA_ALLOC_CONF-}` (unset-only fallback, no colon) rather
+#      than `${PYTORCH_CUDA_ALLOC_CONF:-}` (unset-OR-empty fallback) -- with
+#      a colon, Compose would treat a preset that explicitly sets
+#      PYTORCH_CUDA_ALLOC_CONF="" the same as unset and could still resolve
+#      to a non-empty value from an inherited shell environment default
+#      elsewhere; without the colon, an explicitly-empty value is preserved
+#      as empty and an unset value also resolves to empty -- both cases yield
+#      the same safe, explicit empty result. This is enforced here (not in
+#      the preset) because only an overlay entry for this exact key can
+#      override base docker-compose.yml's own `:-expandable_segments:True`
+#      default at Compose's per-key environment merge; the preset alone
+#      cannot suppress it. See presets/qwen3.8-flash-next-fp8-tp2-candidate.env's
+#      "Safety hardening" header block for the full rationale.
+#
+# SYS_NICE capability and a raised `stack` ulimit were evaluated for this
+# overlay (per the known dual-Spark community command referenced in
+# docs/qwen3.8-flash-next-tp2.md) and are DELIBERATELY NOT added here: no
+# evidence in this repository ties either setting to a specific Qwen3.8-Flash-
+# Next requirement, and `cap_add: SYS_NICE` is an added container privilege
+# that should not be granted speculatively. If a future runtime gate finds
+# either is actually required, add `cap_add: [SYS_NICE]` and/or a `stack`
+# entry under `ulimits` here (Compose merges `ulimits` keys per-key, so a
+# `stack` entry here would compose cleanly alongside base docker-compose.yml's
+# existing `memlock` entry) and update this comment with the evidence.
+#
+# No services besides head/worker are added or modified here, and no `image`
+# override is set -- VLLM_IMAGE keeps coming from the --env-file preset, same
+# as every other compose invocation in this repository. No `command`,
+# `volumes`, or `restart` changes.
+#
+# Usage (see docs/qwen3.8-flash-next-tp2.md for the full worker-first launch
+# sequence -- this overlay does not by itself authorize a launch):
+#   docker compose --env-file presets/qwen3.8-flash-next-fp8-tp2-candidate.env \
+#     -f docker-compose.yml -f compose/qwen3.8-flash-next/docker-compose.candidate.yml \
+#     --no-deps --profile worker config   # validate only, do not start
+services:
+  head:
+    environment:
+      - VLLM_ALL2ALL_BACKEND=${VLLM_ALL2ALL_BACKEND:-}
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 900s
+
+  worker:
+    environment:
+      - VLLM_ALL2ALL_BACKEND=${VLLM_ALL2ALL_BACKEND:-}
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF-}
