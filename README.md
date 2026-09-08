@@ -27,10 +27,10 @@ diagrams, and the backend comparison are in [`docs/architecture.md`](docs/archit
 
 ## Current serving paths
 
-Two independent model families have a **promoted production baseline**: DeepSeek-V4-Flash and
-Solar-Open2-250B. "Promoted" describes the repository-defined baseline (which preset/image is
-authoritative), not which model is *physically running* at this instant — both currently target the
-same serving slot (spark01 head + spark02 worker, port 8000) and are not served simultaneously.
+Three independent model-family repository paths are documented: DeepSeek-V4-Flash, Solar-Open2-250B,
+and Qwen3.8-Flash-Next. Repository status describes configuration authority, not which model is
+*physically running* at this instant — all target the same serving slot (spark01 head + spark02 worker,
+port 8000), are not served simultaneously, and no model is inferred active from this index.
 Check live state (`docker ps`, `GET :8000/health`, `GET :8000/v1/models`) to see which one is
 actually deployed right now; do not infer it from this document alone.
 
@@ -43,6 +43,8 @@ actually deployed right now; do not infer it from this document alone.
 | `unholy-fusion` | Historical/experimental (DSV4 only); config removed from active tree 2026-08-11 | `mp` | Higher-prefill DSV4 experimental alternative — not a recommended production path. Recoverable from Git history; see [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md). |
 | `solar-open2-r4-bf16` | **Solar-Open2-250B promoted production** — r4 BF16, vLLM 0.25.1 (promoted 2026-08-09) | `ray` | TP=2, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`, eager, FLASHINFER_B12X MoE, ST_PREAD + B12X shared-workspace gates. Local image ID `sha256:ecb7bfe3…` (not yet published to a registry). Rollback = v0.22.1 KV4G preset. |
 | `solar-open2-v022-rollback` | Solar-Open2-250B v0.22.1 production rollback (stopped) | `ray` | Authoritative rollback for the r4 production — matched scheduler footprint, BF16 KV. Local image ID `sha256:1873d217…`. |
+| `qwen3.8-flash-next-c1-c2` | **Qwen3.8-Flash-Next production-qualified baseline** — manual c1/c2, not auto-start | `mp` | Authoritative existing TP2 baseline: `MAX_NUM_SEQS=2`, prefix cache ON, FULL_DECODE_ONLY `[1,2]`; MTP off. |
+| `qwen3.8-flash-next-pr55122-mtp1-c1` | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | `mp` | Additional TP2 MTP depth-1 profile: `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
 | `v022-d568-ngc2605-tx5102-vllm022` | Active forward-stack (NGC 26.05, vLLM 0.22.1) | `ray` | Qwen3.5-122B-FP8 and other forward-stack models. |
 | `v022-d568` | Stable general base (NGC 26.04, vLLM 0.21.0) | `ray` or direct | Qwen3.6, Gemma 4 31B, abliterix NVFP4 presets. |
 | `v021-ngc2603` / `v021-tq` | Stable base for most existing presets | `ray` or direct | Most non-DSV4/non-Solar presets. |

@@ -1,0 +1,14 @@
+FROM vllm/vllm-openai@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e
+LABEL org.vllm-spark.candidate.purpose="LOCAL NON-PRODUCTION experimental deterministic persistent_topk evaluation; not promoted or pushed"
+LABEL org.vllm-spark.candidate.base-image="vllm/vllm-openai@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e"
+LABEL org.vllm-spark.candidate.base-image-id="sha256:d464f3b466fa9c45ddbff8a812e80564503b6879a9fd95c1a47514f3f0df5a4a"
+LABEL org.vllm-spark.candidate.vllm-version="0.1.dev20073+g8e685d198"
+LABEL org.vllm-spark.candidate.upstream-pr="https://github.com/vllm-project/vllm/pull/55122"
+LABEL org.vllm-spark.candidate.upstream-pr-head="1c4caa3dbe1c3c616f63810fd6fa60877105132d"
+LABEL org.vllm-spark.candidate.community-source="https://github.com/jschmied/qwen38-flash-next-gb10@0c5598782b33bbfc9acb46acd57b495ca0eb01b7"
+LABEL org.vllm-spark.candidate.kernel-sha256="803037813e307a7c5fa05efee5e874695a0620a336dd798800ccd51d566377b3"
+LABEL org.vllm-spark.candidate.qsa-original-sha256="c4ffe3674cafa0ce2dabc39a39f0ddbb4b594bc358ad210ffce9d04383350c7f"
+LABEL org.vllm-spark.candidate.qsa-patched-sha256="7e6aff79a37b866b130de65bd483a6526d9e8ae14cc45733c2deb080ff2f2c47"
+LABEL org.vllm-spark.candidate.activation="VLLM_QSA_DET_TOPK=1 and VLLM_QSA_DET_LIB=/opt/llm/kernel-det/_C_det.so"
+COPY --chmod=0644 patches/qwen/pr55122/_C_det.so /opt/llm/kernel-det/_C_det.so
+COPY --chmod=0644 patches/qwen/pr55122/qsa.det.py /usr/local/lib/python3.12/dist-packages/vllm/models/qwen3_8_flash_next/nvidia/ops/qsa.py

@@ -1,0 +1,20 @@
+name: qwen38-pr55122-mtp1-c1-candidate
+services:
+  head:
+    environment:
+      - VLLM_QSA_DET_TOPK=1
+      - VLLM_QSA_DET_LIB=/opt/llm/kernel-det/_C_det.so
+      - VLLM_ALL2ALL_BACKEND=allgather_reducescatter
+      - PYTORCH_CUDA_ALLOC_CONF=
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 900s
+  worker:
+    environment:
+      - VLLM_QSA_DET_TOPK=1
+      - VLLM_QSA_DET_LIB=/opt/llm/kernel-det/_C_det.so
+      - VLLM_ALL2ALL_BACKEND=allgather_reducescatter
+      - PYTORCH_CUDA_ALLOC_CONF=

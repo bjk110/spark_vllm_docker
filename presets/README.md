@@ -82,14 +82,16 @@ hash-verified (not yet staged/committed; see `docs/solar-open2-production.md` se
 
 ### 1c. Qwen3.8-Flash-Next production presets
 
-Qwen3.8-Flash-Next-FP8 has one production-qualified preset: c1/c2 concurrency,
-`MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`. Manual activation only — not
+Qwen3.8-Flash-Next-FP8 has two indexed presets: the existing production-qualified c1/c2 baseline and
+an additional main-merge-approved opt-in MTP1 interactive-c1 profile that is not the production default. Both use
+`MAX_NUM_SEQS=2` and `FULL_DECODE_ONLY` capture sizes `[1,2]`. Manual activation only — not
 wired into any auto-start path; after teardown, reboot the node before the next fresh launch.
 Full gate ledger: [`docs/qwen3.8-flash-next-tp2.md`](../docs/qwen3.8-flash-next-tp2.md).
 
 | Preset | Model | Status | Notes |
 |---|---|---|---|
 | `qwen3.8-flash-next-fp8-tp2-candidate.env` | Qwen/Qwen3.8-Flash-Next-FP8 | **Production-qualified** (manual activation only, not auto-start) | dual-rdma TP2 (mp), production-qualified at c1/c2, `MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`, `MAX_MODEL_LEN=262144`, `GPU_MEMORY_UTILIZATION=0.83`. Requires `compose/qwen3.8-flash-next/docker-compose.candidate.yml` overlay. Reboot before next fresh launch after teardown. `MAX_NUM_SEQS=4` remains BLOCKED (content diverges across identical repeats at c2/c4) and must not be raised. MTP and PLE-offloaded NVFP4 excluded from the default; MTP untested/off. |
+| `qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env` | Qwen/Qwen3.8-Flash-Next-FP8 | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | dual-rdma TP2 (mp), MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, exact local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; requires `compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml`. MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
 
 ## 2. Validated presets (non-production)
 
