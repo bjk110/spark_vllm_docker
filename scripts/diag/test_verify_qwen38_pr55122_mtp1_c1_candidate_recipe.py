@@ -16,9 +16,8 @@ _spec = importlib.util.spec_from_file_location("gate4_verifier", VERIFIER_PATH)
 verifier = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(verifier)
 AUTHORIZATION_STATEMENT = (
-    "Local commit was subsequently explicitly user-authorized and applied; push, release, image "
-    "tag/publication, build, launch, service activation, auto-start, and production-default change "
-    "remain HOLD/unauthorized."
+    "Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, "
+    "service activation, auto-start, and production-default change remain out of scope."
 )
 PROMOTED_CONTENT_PATHS = (
     *verifier.PROMOTION_INDEX_PATHS.values(),
@@ -314,7 +313,7 @@ class TestDocMutations(MutationCase):
                 self.assertTrue(any("doc full-file SHA256" in f for f in results.failures))
 
     def test_status_downgrade_to_controlled_candidate_is_rejected(self):
-        promoted = "**Status: PROMOTED_LOCAL_CONFIG_NOT_RELEASED — opt-in interactive c1 only; NOT the production default; no auto-start.**"
+        promoted = "**Status: MAIN_MERGE_APPROVED_OPT_IN — opt-in interactive c1 only; NOT the production default; no auto-start.**"
         downgraded = "**Status: CONTROLLED-CANDIDATE — opt-in only; NOT the production default; no auto-start.**"
         text = verifier.DOC_PATH.read_text().replace(promoted, downgraded, 1)
         self.patch_path("DOC_PATH", text, "candidate.md")
@@ -564,4 +563,38 @@ class TestRenderedAndImageIdentity(MutationCase):
             results = verifier.Results(); verifier.check_local_image_identity(results)
         self.assertEqual(2, run.call_count)
         self.assertTrue(any("spark02" in f and "image ID" in f for f in results.failures))
+
+class TestRepositoryMergeAuthorizationState(unittest.TestCase):
+    def test_current_product_surfaces_record_bounded_main_merge_authorization(self):
+        required = (
+            "MAIN_MERGE_APPROVED_OPT_IN",
+            "Commit, push, and main merge are explicitly authorized.",
+            "production-default change remain out of scope",
+        )
+        forbidden = (
+            "PROMOTED_LOCAL_CONFIG_NOT_RELEASED",
+            "push, release, image tag/publication, build, launch, service activation, auto-start, and production-default change remain HOLD/unauthorized",
+        )
+        for path in PROMOTED_CONTENT_PATHS:
+            text = path.read_text()
+            with self.subTest(path=path):
+                for needle in required:
+                    self.assertIn(needle, text)
+                for needle in forbidden:
+                    self.assertNotIn(needle, text)
+        doc = verifier.DOC_PATH.read_text()
+        self.assertIn("PRODUCTION_RUNTIME_PROMOTION_BLOCKED", doc)
+        self.assertIn("MAIN_REPOSITORY_INTEGRATION_APPROVED", doc)
+        self.assertIn("NV_ERR_NO_MEMORY", doc)
+        self.assertIn("open and unmerged", doc)
+        self.assertIn("995cd99fa7d47834c0d89e038c2e07324a0065ac", doc)
+        self.assertIn("b4ef9ce298d43d6c0e6db9fcca451df20815b2cfe33791919c1ad9c0e84f0ba7", doc)
+        self.assertIn("differs from the tested and pinned source", doc)
+        self.assertIn("current PR head is not locally qualified", doc)
+        self.assertNotIn("c056c2d", doc)
+        self.assertNotIn("the relevant kernel bytes remain identical", doc)
+        verifier_source = VERIFIER_PATH.read_text()
+        self.assertIn("repository merge-approved; runtime not promoted; zero-start static closure", verifier_source)
+        self.assertNotIn("PASSED (not released; zero-start static closure)", verifier_source)
+
 if __name__ == "__main__": unittest.main(verbosity=2)

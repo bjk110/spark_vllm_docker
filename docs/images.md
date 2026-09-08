@@ -35,11 +35,11 @@ and rollback procedure: [`docs/solar-open2-production.md`](solar-open2-productio
 
 ## Qwen3.8 PR55122 MTP1 c1 registry-free local image authority
 
-This authority is a local Docker image ID, not a pullable registry manifest. Local product/config promotion did not rebuild, retag, publish, or release the image. The immutable `LOCAL NON-PRODUCTION...not promoted` image/Dockerfile label is retained as build-time provenance and is not a statement that a rebuild or retag occurred.
+This authority is a local Docker image ID, not a pullable registry manifest. Repository integration approval did not rebuild, retag, publish, or release the image. The immutable `LOCAL NON-PRODUCTION...not promoted` image/Dockerfile label is retained as build-time provenance and is not a statement that a rebuild or retag occurred.
 
 | Path | Status | Local image ID | Config authority |
 |---|---|---|---|
-| `qwen3.8-flash-next-pr55122-mtp1-c1` | `PROMOTED_LOCAL_CONFIG_NOT_RELEASED` — opt-in interactive c1 only; NOT the production default; no auto-start | `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610` (registry-free local image authority on spark01/spark02) | TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Local commit was subsequently explicitly user-authorized and applied; push, release, image tag/publication, build, launch, service activation, auto-start, and production-default change remain HOLD/unauthorized. |
+| `qwen3.8-flash-next-pr55122-mtp1-c1` | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610` (registry-free local image authority on spark01/spark02) | TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
 
 ## DeepSeek-V4-Flash-0731 / vLLM 0.27 — active production (published to GHCR, task B4.4C)
 
