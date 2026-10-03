@@ -64,7 +64,9 @@ PROMOTION_INDEX_PATHS = {
 }
 # Entry keys and semantic contracts, independent of Markdown column/link layout.
 INDEX_ENTRIES = {
-    "README.md": ("qwen3.8-flash-next-c1-c2", "qwen3.8-flash-next-pr55122-mtp1-c1"),
+    # The top-level README intentionally lists one representative path per
+    # model family; detailed opt-in variants remain in their specific indexes.
+    "README.md": ("qwen3.8-flash-next-c1-c2",),
     "presets/README.md": ("qwen3.8-flash-next-fp8-tp2-candidate.env", "qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env"),
     "docs/README.md": ("qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md",),
     "docs/images.md": ("qwen3.8-flash-next-pr55122-mtp1-c1",),

@@ -1,0 +1,26 @@
+# UNVALIDATED dual-GB10 TP2 experiment; explicitly include with -f.
+# Separate names/ports do not make concurrent production GPU use safe.
+services:
+  head:
+    container_name: vllm-spark-vision-exp-head
+    platform: linux/arm64
+    pull_policy: never
+    restart: "no"
+    environment:
+      VLLM_USAGE_SOURCE: experimental
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      # Preserve the official arm64 image's recorded library search rather than
+      # the base Compose file's production HPC-X/pip paths.
+      LD_LIBRARY_PATH: /usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64
+      TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC: "300"
+  worker:
+    container_name: vllm-spark-vision-exp-worker
+    platform: linux/arm64
+    pull_policy: never
+    restart: "no"
+    environment:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      LD_LIBRARY_PATH: /usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64
+      TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC: "300"

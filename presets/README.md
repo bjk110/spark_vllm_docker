@@ -166,6 +166,7 @@ each requires separate validation before any operational use.
 
 | Preset | Model / stack | Topology | Note | Launch / docs |
 |---|---|---|---|---|
+| [`deepseek-v4-flash-vision-exp-tp2.env`](deepseek-v4-flash-vision-exp-tp2.env) | deepseek-ai/DeepSeek-V4-Flash-Vision-Exp · pinned official image | dual-rdma TP2 | **UNVALIDATED** dual GB10; NVIDIA validation is GB200 TP4+EP, NOT GB10. 32K/c1, FP8 KV/block 256, MP/RoCE+EP, prefix off; no DSpark/speculation/autostart/promotion | [Experimental runbook](../docs/deepseek-v4-flash-vision-exp-tp2.md) — validation/reproduction only |
 | [`step37-flash-nvfp4-tp2.env`](step37-flash-nvfp4-tp2.env) | Step-3.7-Flash NVFP4 v0.22 (EP-on) | dual-rdma TP2 | Experimental long-context (`STAGE_D_PARTIALLY_VALIDATED_TO_245009`) | [Long-context evidence](../docs/benchmarks/step37-v022-long-context-validation.md) — validation/reproduction only |
 | [`qwen3.6-35b-fp16.env`](qwen3.6-35b-fp16.env) | Qwen/Qwen3.6-35B-A3B FP16 | single TP1 | Experimental FP16 | [Stack evidence](../docs/software-stack.md) — validation/reproduction only |
 | [`qwen3.6-27b-prismascout-nvfp4-tp2-v022.env`](qwen3.6-27b-prismascout-nvfp4-tp2-v022.env) | Qwen3.6-27B PrismaSCOUT NVFP4 · v022 | dual-rdma TP2 | v022 stack A/B (requires `--mm-encoder-tp-mode data`) | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |

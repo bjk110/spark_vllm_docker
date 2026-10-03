@@ -20,7 +20,7 @@ AUTHORIZATION_STATEMENT = (
     "service activation, auto-start, and production-default change remain out of scope."
 )
 PROMOTED_CONTENT_PATHS = (
-    *verifier.PROMOTION_INDEX_PATHS.values(),
+    *(path for name, path in verifier.PROMOTION_INDEX_PATHS.items() if name != "README.md"),
     verifier.DOC_PATH,
     verifier.PRESET_PATH,
 )
@@ -465,8 +465,8 @@ class TestPromotionIndexes(MutationCase):
         self.assertTrue(any(target in f and "scope creep" in f for f in results.failures))
 
 class TestPostCommitStateContract(unittest.TestCase):
-    def test_all_eight_promoted_content_files_require_exact_post_commit_statement(self):
-        self.assertEqual(8, len(PROMOTED_CONTENT_PATHS))
+    def test_all_seven_detailed_promotion_surfaces_require_exact_post_commit_statement(self):
+        self.assertEqual(7, len(PROMOTED_CONTENT_PATHS))
         for path in PROMOTED_CONTENT_PATHS:
             with self.subTest(path=path):
                 self.assertIn(AUTHORIZATION_STATEMENT, path.read_text())

@@ -25,29 +25,19 @@ status. Preset catalog and status: [`presets/README.md`](presets/README.md). Rel
 (SPMD, no Ray). Full entrypoint dispatch (`CLUSTER_MODE` × `ROLE` × `TP_SIZE` × backend), topology
 diagrams, and the backend comparison are in [`docs/architecture.md`](docs/architecture.md).
 
-## Current serving paths
+## Representative serving paths
 
-Three independent model-family repository paths are documented: DeepSeek-V4-Flash, Solar-Open2-250B,
-and Qwen3.8-Flash-Next. Repository status describes configuration authority, not which model is
-*physically running* at this instant — all target the same serving slot (spark01 head + spark02 worker,
-port 8000), are not served simultaneously, and no model is inferred active from this index.
-Check live state (`docker ps`, `GET :8000/health`, `GET :8000/v1/models`) to see which one is
-actually deployed right now; do not infer it from this document alone.
+The top-level README shows one representative path for each primary model family. These entries
+describe repository recipes, not live process state; all use the same dual-Spark serving slot and are
+not intended to run simultaneously. See [`presets/README.md`](presets/README.md) for rollback,
+validated, experimental, and historical variants, and inspect the live endpoint when runtime state
+matters.
 
-| Path | Status | Backend | Use case |
+| Representative image / path | Model family | Backend | Serving profile |
 |---|---|---|---|
-| `dsv4-flash-0731-v027` | **DeepSeek-V4-Flash promoted production** — native DSpark k=7, 256K (promoted 2026-08-15) | `mp` | Active DSV4 path — `MAX_NUM_SEQS=1`, FULL_DECODE_ONLY `[8]`, automatic startup prewarm, dual-node TP=2. Immutable manifest `@sha256:7a005243701c…`. |
-| `dsv4-flash-dspark-64k` | DeepSeek-V4 primary rollback (stopped) | `mp` | vLLM 0.25.0 native DSpark k=7, 64K, digest `@sha256:aacb06de60ec…`. |
-| `dsv4-flash-mtp1` | DeepSeek-V4 legacy rollback (stopped) | `mp` | Second-tier fallback — MTP n=1, capture `[2]`, 4 GiB FP8 KV, digest `@sha256:de69fa367137…`. |
-| `dsv4-d568` | Frozen legacy/historical DSV4 baseline | `ray` or `mp` | Historical decode-optimized reproduction/reference only. |
-| `unholy-fusion` | Historical/experimental (DSV4 only); config removed from active tree 2026-08-11 | `mp` | Higher-prefill DSV4 experimental alternative — not a recommended production path. Recoverable from Git history; see [`docs/unholy-fusion-benchmark.md`](docs/unholy-fusion-benchmark.md). |
-| `solar-open2-r4-bf16` | **Solar-Open2-250B promoted production** — r4 BF16, vLLM 0.25.1 (promoted 2026-08-09) | `ray` | TP=2, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`, eager, FLASHINFER_B12X MoE, ST_PREAD + B12X shared-workspace gates. Local image ID `sha256:ecb7bfe3…` (not yet published to a registry). Rollback = v0.22.1 KV4G preset. |
-| `solar-open2-v022-rollback` | Solar-Open2-250B v0.22.1 production rollback (stopped) | `ray` | Authoritative rollback for the r4 production — matched scheduler footprint, BF16 KV. Local image ID `sha256:1873d217…`. |
-| `qwen3.8-flash-next-c1-c2` | **Qwen3.8-Flash-Next production-qualified baseline** — manual c1/c2, not auto-start | `mp` | Authoritative existing TP2 baseline: `MAX_NUM_SEQS=2`, prefix cache ON, FULL_DECODE_ONLY `[1,2]`; MTP off. |
-| `qwen3.8-flash-next-pr55122-mtp1-c1` | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | `mp` | Additional TP2 MTP depth-1 profile: `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
-| `v022-d568-ngc2605-tx5102-vllm022` | Active forward-stack (NGC 26.05, vLLM 0.22.1) | `ray` | Qwen3.5-122B-FP8 and other forward-stack models. |
-| `v022-d568` | Stable general base (NGC 26.04, vLLM 0.21.0) | `ray` or direct | Qwen3.6, Gemma 4 31B, abliterix NVFP4 presets. |
-| `v021-ngc2603` / `v021-tq` | Stable base for most existing presets | `ray` or direct | Most non-DSV4/non-Solar presets. |
+| `dsv4-flash-0731-v027` · `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c…` | DeepSeek-V4-Flash | `mp` | Native DSpark k=7, 256K, `MAX_NUM_SEQS=1`, FULL_DECODE_ONLY `[8]`, automatic startup prewarm, dual-node TP=2. |
+| `solar-open2-r4-bf16` · local image ID `sha256:ecb7bfe3978a…` | Solar-Open2-250B | `ray` | vLLM 0.25.1, TP=2, BF16 KV 4 GiB/rank, `MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`, eager. |
+| `qwen3.8-flash-next-c1-c2` | Qwen3.8-Flash-Next | `mp` | Production-qualified manual TP=2 baseline, not auto-start; `MAX_NUM_SEQS=2`, prefix cache ON, FULL_DECODE_ONLY `[1,2]`, MTP off. |
 
 **DeepSeek-V4 promoted production** runs `deepseek-ai/DeepSeek-V4-Flash-0731` on vLLM 0.27,
 native DSpark k=7, 256K, and `MAX_NUM_SEQS=1`. Its immutable image identity is
@@ -67,7 +57,7 @@ shared-workspace gates enabled.
 
 The authoritative rollback is the v0.22.1 preset
 [`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env)
-(local image ID `sha256:1873d2174691…`, matched scheduler footprint, BF16 KV; currently stopped).
+(local image ID `sha256:1873d2174691…`, matched scheduler footprint, BF16 KV).
 Full operations, activation, rollback (including the empirically required physical-reboot
 sequence), and validation provenance (6-gate production fast-track):
 [`docs/solar-open2-production.md`](docs/solar-open2-production.md).
@@ -214,11 +204,6 @@ validated alternatives, experimental, historical/superseded). Start there. Frequ
 
 ## Compatibility and safety notice
 
-- All Docker/vLLM builds run on spark01 or spark02, never on the homeserver (GB10 template
-  compilation needs 64–128 GiB peak).
-- DeepSeek-V4 production runs only within the documented v0.27 envelope: `MAX_NUM_SEQS=1` and
-  `MAX_MODEL_LEN=262144`. Any concurrency increase, runtime/image change, or context claim beyond that
-  contract requires separate qualification.
 - GB10 uses unified memory; a clean reboot + dedicated-cache-clear startup gate is required before a
   full model load when UVM is retained (not automated by presets).
 - Recommended OS tuning: `sudo sysctl -w vm.swappiness=10`.

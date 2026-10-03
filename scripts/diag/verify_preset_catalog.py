@@ -28,7 +28,7 @@ def anchors(text):
     result.update(re.findall(r'(?:id|name)=["\']([^"\']+)', text))
     return result
 
-def verify(root, skip_compose=False, expected_count=42):
+def verify(root, skip_compose=False, expected_count=43):
     root = Path(root).resolve()
     tracked = tracked_files(root)
     presets = sorted(p for p in tracked if p.startswith('presets/') and p.endswith('.env'))
@@ -91,6 +91,30 @@ def verify(root, skip_compose=False, expected_count=42):
         if number == '1' and not status.startswith(('active production', 'optional validated profile', 'primary rollback', 'legacy rollback', 'production rollback', 'production-qualified', 'main_merge_approved_opt_in')):
             fail(f'{path}: status not operationally qualified for production catalog section')
         if number == '1' and status.split(' (')[0] not in re.sub(r'[*`]', '', row).lower(): fail(f'{path}: status disagrees with catalog row')
+        if path == 'presets/deepseek-v4-flash-vision-exp-tp2.env':
+            required = {
+                'VLLM_IMAGE': 'vllm/vllm-openai:deepseekv4-flash-vision-arm64-0075fd82',
+                'MAX_MODEL_LEN': '32768', 'MAX_NUM_SEQS': '1',
+                'CLUSTER_MODE': 'dual-rdma', 'TP_SIZE': '2', 'DISTRIBUTED_BACKEND': 'mp',
+                'VLLM_SKIP_INIT_MEMORY_CHECK': '0',
+                'VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN': '0',
+            }
+            source_digest = 'sha256:0075fd82e3b6d943b0aa91e35da8dbca63d88516c607745131055e9d81f37ebb'
+            args = env.get('VLLM_EXTRA_ARGS', '').split()
+            required_args = ('--revision 6821d6ad3681a4b137b066b76094fa82ebd0a380',
+                             '--enable-expert-parallel', '--kv-cache-dtype fp8',
+                             '--block-size 256', '--no-enable-prefix-caching',
+                             '--enforce-eager',
+                             '--limit-mm-per-prompt {"image":1,"video":0}')
+            if (number != '4' or 'UNVALIDATED' not in metadata['Status']
+                    or source_digest not in metadata['Image identity']
+                    or any(env.get(key) != value for key, value in required.items())
+                    or any(not any(args[i:i + len(arg.split())] == arg.split()
+                                   for i in range(len(args))) for arg in required_args)
+                    or any('speculat' in arg or 'dspark' in arg.lower() for arg in args)
+                    or '--enable-prefix-caching' in args
+                    or 'compose/deepseek-v4/docker-compose.vision-exp.yml' not in metadata['Required overlay']):
+                fail(f'{path}: UNVALIDATED vision experiment contract drift')
         mode, tp = env.get('CLUSTER_MODE'), env.get('TP_SIZE')
         topology = metadata['Topology']
         if mode not in ('single', 'dual-rdma') or tp != {'single':'1', 'dual-rdma':'2'}.get(mode) or not re.search(r'\b' + str(mode) + r'\b', topology) or f'TP={tp}' not in topology:
@@ -141,7 +165,7 @@ def main():
     args = parser.parse_args()
     errors, rendered = verify(args.root, args.skip_compose)
     for error in errors: print(f'[FAIL] {error}')
-    print(f'{"FAIL" if errors else "PASS"}: 42 tracked presets; compose rendered {rendered}/42' + (' (explicitly skipped)' if args.skip_compose else ''))
+    print(f'{"FAIL" if errors else "PASS"}: 43 tracked presets; compose rendered {rendered}/43' + (' (explicitly skipped)' if args.skip_compose else ''))
     return bool(errors)
 
 if __name__ == '__main__': raise SystemExit(main())

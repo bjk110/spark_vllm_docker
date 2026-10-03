@@ -155,3 +155,13 @@ def test_optional_archive_verification_detects_missing_or_changed_files(repo, tm
     raw.write_text("changed")
     errors = recipe_evidence.verify(repo, expected_count=2, archive_root=archive)
     assert any("archive SHA256 mismatch" in error for error in errors)
+
+
+def test_experimental_recipe_does_not_expand_evidence_scope(repo):
+    path = repo / 'presets/README.md'
+    path.write_text(path.read_text() +
+                    '## 4. Experimental presets\n| [vision.env](vision.env) | UNVALIDATED |\n')
+    (repo / 'presets/vision.env').write_text('# Status: Experimental — UNVALIDATED\n')
+    subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+    assert len(recipe_evidence.catalog_scope(repo)) == 2
+    assert recipe_evidence.verify(repo, expected_count=2) == []

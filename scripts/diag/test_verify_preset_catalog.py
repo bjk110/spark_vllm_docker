@@ -235,3 +235,47 @@ def test_production_section_cannot_bless_experimental_status(repo):
     index = repo / 'presets/README.md'
     index.write_text(index.read_text().replace('3. General supported presets', '1. Production presets').replace('| single TP1 |', '| Experimental single TP1 |'))
     assert any('status' in error for error in check(repo))
+
+@pytest.fixture
+def vision_repo(repo):
+    root = Path(__file__).resolve().parents[2]
+    (repo / 'presets/a.env').unlink()
+    (repo / 'entrypoints').mkdir()
+    (repo / 'entrypoints/entrypoint.sh').write_text('#!/bin/bash\n')
+    (repo / 'compose/deepseek-v4').mkdir(parents=True)
+    (repo / 'compose/deepseek-v4/docker-compose.vision-exp.yml').write_text('services: {}\n')
+    name = 'deepseek-v4-flash-vision-exp-tp2.env'
+    (repo / 'presets' / name).write_text((root / 'presets' / name).read_text())
+    (repo / 'docs.md').write_text('# Runbook\n')
+    (repo / 'presets/README.md').write_text(
+        '# Catalog\n## 4. Experimental presets\n'
+        '| Preset | Topology | Launch / docs |\n|---|---|---|\n'
+        f'| [{name}]({name}) | dual-rdma TP2 | [Runbook](../docs.md) — validation/reproduction only |\n')
+    subprocess.run(['git', '-C', str(repo), 'add', '-A'], check=True)
+    return repo
+
+
+def test_vision_experiment_contract_passes(vision_repo):
+    assert check(vision_repo) == []
+
+
+@pytest.mark.parametrize('old,new', [
+    ('MAX_MODEL_LEN=32768', 'MAX_MODEL_LEN=65536'),
+    ('MAX_NUM_SEQS=1', 'MAX_NUM_SEQS=2'),
+    ('--block-size 256', '--block-size 128'),
+    ('--kv-cache-dtype fp8', '--kv-cache-dtype auto'),
+    ('--enable-expert-parallel', ''),
+    ('--no-enable-prefix-caching', '--enable-prefix-caching'),
+    ('--enforce-eager', ''),
+    ('{"image":1,"video":0}', '{"image":2,"video":1}'),
+    ('--enforce-eager', '--enforce-eager --speculative-config {}'),
+    ('VLLM_SKIP_INIT_MEMORY_CHECK=0', 'VLLM_SKIP_INIT_MEMORY_CHECK=1'),
+    ('VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN=0', 'VLLM_SPARK_SKIP_FIXED_KV_PROFILE_RUN=1'),
+    ('6821d6ad3681a4b137b066b76094fa82ebd0a380', 'main'),
+    ('0075fd82e3b6d943b0aa91e35da8dbca63d88516c607745131055e9d81f37ebb', 'wrong'),
+    ('UNVALIDATED', 'validated'),
+])
+def test_vision_contract_drift_fails_closed(vision_repo, old, new):
+    path = vision_repo / 'presets/deepseek-v4-flash-vision-exp-tp2.env'
+    path.write_text(path.read_text().replace(old, new))
+    assert any('contract drift' in error for error in check(vision_repo))
