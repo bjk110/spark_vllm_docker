@@ -6,14 +6,36 @@ Docker Compose environment preset files for model-serving configurations. This d
 **Status is set by this index, not by the filename.** Each `.env` file also documents its own
 recipe/image/topology in its header comment.
 
-Serve a preset directly only when its header does not require a model-specific overlay. For dual-node
-profiles, start the worker first. The current DeepSeek-V4 route requires the overlay shown in the
-top-level README Quick Start and `docs/deepseek-v4-production.md`; omitting it skips health/prewarm.
+## Launch / docs
+
+Every catalog row links its tracked preset and either a canonical generic launch below or the
+most specific existing runbook/evidence. Production and model-specific rows use their runbook;
+experimental/historical links are **validation/reproduction only**, not recommended deployment paths.
+The preset header's **Required overlay wins**: include its required overlays and runtime setup,
+even when a generic command appears applicable. The current DeepSeek-V4 route requires its
+production overlay; omitting it skips health/prewarm.
+
+All commands run from the **repository root** on the indicated node. Replace `<preset>` with the
+selected filename (without `.env`), resolve `MODEL_PATH` and model weights, network/RDMA settings,
+and the required image identity/availability before launch. See [image prerequisites](../docs/images.md)
+and [architecture/network setup](../docs/architecture.md). For TP2, resolve prerequisites on both nodes.
+Generic snippets apply only to general supported presets whose header documents no required overlay;
+follow the linked runbook for production, tokenizer-overlay, Step-3.7, and FlashInfer-AOT setup.
+
+### Generic TP1 launch
 
 ```bash
-# Generic shape only — consult the selected preset's operations document first.
-docker compose --env-file presets/<preset>.env --profile worker up -d  # worker node, if TP=2
-docker compose --env-file presets/<preset>.env --profile head up -d    # head node
+# Single node — general supported TP1 preset with Required overlay=None.
+docker compose --env-file presets/<preset>.env --profile head up -d
+```
+
+### Generic TP2 launch
+
+```bash
+# Worker node first — general supported TP2 preset with Required overlay=None.
+docker compose --env-file presets/<preset>.env --profile worker up -d
+# Then head node, after the worker starts.
+docker compose --env-file presets/<preset>.env --profile head up -d
 ```
 
 Navigation: **[1. Production presets](#1-production-presets)** · [2. Validated (non-production)](#2-validated-presets-non-production)
@@ -48,12 +70,12 @@ activation/rollback commands, and validation provenance:
 (prewarm design, JIT inventory, residual risks):
 [`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](../docs/deepseek-v4-v027-b43s-promotion-candidate.md).
 
-| Preset | Model | Status | Notes |
-|---|---|---|---|
-| `deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` | DeepSeek-V4-Flash-0731 | **Active production** (since 2026-08-15, spark01:8000) | native DSpark k=7 greedy, vLLM 0.27, `MAX_MODEL_LEN=262144`, `MAX_NUM_SEQS=1`, KV 10 GiB FP8, `E8M0=1`, prefix caching off, TP=2 mp/RoCE, automatic startup prewarm via `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`. Published tag `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`; immutable manifest `sha256:7a005243701c…`. Production launch overrides the tag with this digest. Filename retains its original "candidate" naming from implementation (task B4.4B); the Status column here and in the preset's own header comment are authoritative. |
-| `deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env` | DeepSeek-V4-Flash-0731 | Optional validated profile (attended use only, not default) | Identical to the active preset except `MAX_NUM_SEQS=4`; not wired into automatic prewarm's global-topk target. See Residual Risk R1 in its own header |
-| `deepseek-v4-flash-dspark-k7-64k-production-tp2.env` | DeepSeek-V4-Flash-DSpark | **Primary rollback** (stopped) | vLLM 0.25.0, native DSpark k=7 greedy, `MAX_MODEL_LEN=65536`, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:aacb06de60ec…`. No LC131 exposure; unrestricted 135168 not supported |
-| `deepseek-v4-flash-mtp1-production-tp2.env` | DeepSeek-V4-Flash | **Legacy rollback** (stopped) | Second-tier fallback if the primary rollback is also unavailable. MTP n=1, target FULL_DECODE_ONLY `[2]`, KV 4 GiB FP8, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:de69fa367137…`. Repeated large-context operation not approved |
+| Preset | Model | Status | Notes | Launch / docs |
+|---|---|---|---|---|
+| [`deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env`](deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env) | DeepSeek-V4-Flash-0731 | **Active production** (since 2026-08-15, spark01:8000) | native DSpark k=7 greedy, vLLM 0.27, `MAX_MODEL_LEN=262144`, `MAX_NUM_SEQS=1`, KV 10 GiB FP8, `E8M0=1`, prefix caching off, TP=2 mp/RoCE, automatic startup prewarm via `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`. Published tag `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`; immutable manifest `sha256:7a005243701c…`. Production launch overrides the tag with this digest. Filename retains its original "candidate" naming from implementation (task B4.4B); the Status column here and in the preset's own header comment are authoritative. | [Production runbook](../docs/deepseek-v4-production.md) |
+| [`deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env`](deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env) | DeepSeek-V4-Flash-0731 | Optional validated profile (attended use only, not default) | Identical to the active preset except `MAX_NUM_SEQS=4`; not wired into automatic prewarm's global-topk target. See Residual Risk R1 in its own header | [Production runbook](../docs/deepseek-v4-production.md) |
+| [`deepseek-v4-flash-dspark-k7-64k-production-tp2.env`](deepseek-v4-flash-dspark-k7-64k-production-tp2.env) | DeepSeek-V4-Flash-DSpark | **Primary rollback** (stopped) | vLLM 0.25.0, native DSpark k=7 greedy, `MAX_MODEL_LEN=65536`, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:aacb06de60ec…`. No LC131 exposure; unrestricted 135168 not supported | [Production runbook](../docs/deepseek-v4-production.md) |
+| [`deepseek-v4-flash-mtp1-production-tp2.env`](deepseek-v4-flash-mtp1-production-tp2.env) | DeepSeek-V4-Flash | **Legacy rollback** (stopped) | Second-tier fallback if the primary rollback is also unavailable. MTP n=1, target FULL_DECODE_ONLY `[2]`, KV 4 GiB FP8, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:de69fa367137…`. Repeated large-context operation not approved | [Production runbook](../docs/deepseek-v4-production.md) |
 
 Superseded DeepSeek-V4 presets (intermediate, experimental, candidate, legacy, deep-recovery,
 historical) are available through Git history and are **not** retained in this directory.
@@ -65,10 +87,10 @@ and its authoritative v0.22.1 rollback. Both pin their image by **local Docker i
 published to a registry — see [`docs/images.md`](../docs/images.md) for the distinction). Full
 operations and validation provenance: [`docs/solar-open2-production.md`](../docs/solar-open2-production.md).
 
-| Preset | Model | Status | Notes |
-|---|---|---|---|
-| `solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` | Solar-Open2-250B-Nota-NVFP4 | **Active production** (since 2026-08-09, spark01:8000 when deployed) | vLLM 0.25.1, TP=2 Ray, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`, eager, FLASH_ATTN auto, FLASHINFER_B12X MoE, ST_PREAD + B12X shared-workspace gates on. Local image ID `sha256:ecb7bfe3978a…`. 6-gate fast-track PASS, promotion commit `d966925`. |
-| `solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` | Solar-Open2-250B-Nota-NVFP4 | **Production rollback** (stopped) | Authoritative rollback for the active r4 production. vLLM 0.22.1, matched scheduler footprint (`MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`), BF16 KV. Local image ID `sha256:1873d21746…`. Rollback round-trip validated end-to-end (Gate 6). |
+| Preset | Model | Status | Notes | Launch / docs |
+|---|---|---|---|---|
+| [`solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`](solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env) | Solar-Open2-250B-Nota-NVFP4 | **Active production** (since 2026-08-09, spark01:8000 when deployed) | vLLM 0.25.1, TP=2 Ray, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`, eager, FLASH_ATTN auto, FLASHINFER_B12X MoE, ST_PREAD + B12X shared-workspace gates on. Local image ID `sha256:ecb7bfe3978a…`. 6-gate fast-track PASS, promotion commit `d966925`. | [Production/rollback runbook](../docs/solar-open2-production.md) |
+| [`solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`](solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env) | Solar-Open2-250B-Nota-NVFP4 | **Production rollback** (stopped) | Authoritative rollback for the active r4 production. vLLM 0.22.1, matched scheduler footprint (`MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`), BF16 KV. Local image ID `sha256:1873d21746…`. Rollback round-trip validated end-to-end (Gate 6). | [Production/rollback runbook](../docs/solar-open2-production.md) |
 
 Superseded Solar-Open2 presets (r2/r3/r4 diagnostic variants, eager-4k smoke configs, marlin c2
 diagnostics, the superseded active-test baseline) are **not** tracked in Git and are **not**
@@ -89,18 +111,18 @@ an additional main-merge-approved opt-in MTP1 interactive-c1 profile that is not
 wired into any auto-start path; after teardown, reboot the node before the next fresh launch.
 Full gate ledger: [`docs/qwen3.8-flash-next-tp2.md`](../docs/qwen3.8-flash-next-tp2.md).
 
-| Preset | Model | Status | Notes |
-|---|---|---|---|
-| `qwen3.8-flash-next-fp8-tp2-candidate.env` | Qwen/Qwen3.8-Flash-Next-FP8 | **Production-qualified** (manual activation only, not auto-start) | dual-rdma TP2 (mp), production-qualified at c1/c2, `MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`, `MAX_MODEL_LEN=262144`, `GPU_MEMORY_UTILIZATION=0.83`. Requires `compose/qwen3.8-flash-next/docker-compose.candidate.yml` overlay. Reboot before next fresh launch after teardown. `MAX_NUM_SEQS=4` remains BLOCKED (content diverges across identical repeats at c2/c4) and must not be raised. MTP and PLE-offloaded NVFP4 excluded from the default; MTP untested/off. |
-| `qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env` | Qwen/Qwen3.8-Flash-Next-FP8 | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | dual-rdma TP2 (mp), MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, exact local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; requires `compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml`. MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
+| Preset | Model | Status | Notes | Launch / docs |
+|---|---|---|---|---|
+| [`qwen3.8-flash-next-fp8-tp2-candidate.env`](qwen3.8-flash-next-fp8-tp2-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | **Production-qualified** (manual activation only, not auto-start) | dual-rdma TP2 (mp), production-qualified at c1/c2, `MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`, `MAX_MODEL_LEN=262144`, `GPU_MEMORY_UTILIZATION=0.83`. Requires `compose/qwen3.8-flash-next/docker-compose.candidate.yml` overlay. Reboot before next fresh launch after teardown. `MAX_NUM_SEQS=4` remains BLOCKED (content diverges across identical repeats at c2/c4) and must not be raised. MTP and PLE-offloaded NVFP4 excluded from the default; MTP untested/off. | [Manual activation runbook](../docs/qwen3.8-flash-next-tp2.md) |
+| [`qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env`](qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | dual-rdma TP2 (mp), MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, exact local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; requires `compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml`. MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. | [Manual opt-in runbook](../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) |
 
 ## 2. Validated presets (non-production)
 
 Validated, but **not** the current default serving path for any production model family.
 
-| Preset | Model / stack | Topology | Status | Use |
-|---|---|---|---|---|
-| `step37-flash-nvfp4-v023-tp2-latency.env` | Step-3.7-Flash NVFP4 · v0.23 (EP-off, MARLIN, TRITON_ATTN) | dual-rdma TP=2 | Validated (Step-3.7 NVFP4 path) | Recommended Step-3.7 NVFP4 latency path ([bench](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md)) |
+| Preset | Model / stack | Topology | Status | Use | Launch / docs |
+|---|---|---|---|---|---|
+| [`step37-flash-nvfp4-v023-tp2-latency.env`](step37-flash-nvfp4-v023-tp2-latency.env) | Step-3.7-Flash NVFP4 · v0.23 (EP-off, MARLIN, TRITON_ATTN) | dual-rdma TP=2 | Validated (Step-3.7 NVFP4 path) | Recommended Step-3.7 NVFP4 latency path ([bench](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md)) | [Latency recipe/benchmark](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md) |
 
 ## 3. General supported presets
 
@@ -108,57 +130,57 @@ Production-usable presets for non-DeepSeek-V4/non-Solar-Open2 models on the stab
 Image bases: `v021-ngc2603` / `v021-tq` / `v022-d568` / `v022-d568-fi-aot` / step3p7 (see
 [`docs/software-stack.md`](../docs/software-stack.md)).
 
-| Preset | Model | Quant / dtype | Topology | Base image |
-|---|---|---|---|---|
-| `gemma4-26b-a4b.env` | google/gemma-4-26B-A4B-it | BF16 MoE | single TP1 | v021-ngc2603 |
-| `gemma4-26b-a4b-tq.env` | google/gemma-4-26B-A4B-it | BF16 + TurboQuant KV | single TP1 | v021-tq |
-| `gemma4-31b-it.env` | google/gemma-4-31B-it | BF16 dense multimodal | single TP1 | v022-d568 |
-| `intel-122b-int4.env` | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | single TP1 | v021-ngc2603 |
-| `qwen3.5-122b-fp8.env` | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 multimodal | dual-rdma TP2 | v021-ngc2603 |
-| `qwen3.5-122b-nvfp4.env` | Qwen/Qwen3.5-122B-A10B | NVFP4 runtime | single TP1 | v021-ngc2603 |
-| `qwen3.5-122b-nvfp4-tp2.env` | Qwen/Qwen3.5-122B-A10B | NVFP4 runtime | dual-rdma TP2 | v021-ngc2603 |
-| `qwen3.5-122b-prismaquant.env` | rdtand/…PrismaQuant-4.75bit | PrismaQuant 4.76bpp mixed | single TP1 | v021-ngc2603 |
-| `qwen3.5-397b-int4.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound | dual-rdma TP2 | v021-ngc2603 |
-| `qwen3.5-397b-int4-tq.env` | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 + TurboQuant KV | dual-rdma TP2 | v021-tq |
-| `qwen3.6-35b-a3b.env` | Qwen/Qwen3.6-35B-A3B | BF16 hybrid MoE | single TP1 | v022-d568 |
-| `qwen3.6-35b-a3b-fi-aot-tp2.env` | Qwen/Qwen3.6-35B-A3B | BF16 hybrid MoE | dual-rdma TP2 | v022-d568-fi-aot |
-| `qwen3.6-27b-base-bf16-tp2.env` | Qwen/Qwen3.6-27B (base) | BF16 | dual-rdma TP2 | v021-ngc2603 |
-| `qwen3.6-27b-prismascout-nvfp4-tp2.env` | rdtand/Qwen3.6-27B-PrismaSCOUT-NVFP4 | NVFP4 mixed | dual-rdma TP2 | v021-ngc2603 |
-| `redhatai-122b-nvfp4.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 pre-quantized | single TP1 | v021-ngc2603 |
-| `redhatai-122b-nvfp4-tq.env` | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 + TurboQuant KV | single TP1 | v021-tq |
-| `wangzhang-122b-fp8.env` | wangzhang/…abliterated | FP8 text-only | dual-rdma TP2 | v021-ngc2603 |
-| `wangzhang-122b-nvfp4.env` | wangzhang/…abliterated-NVFP4 | NVFP4 text-only | single TP1 | v021-ngc2603 |
-| `wangzhang-122b-abliterix-fp8-tp2.env` | wangzhang/…abliterix | FP8 W8A8 text-only | dual-rdma TP2 | v021-ngc2603 |
-| `wangzhang-122b-abliterix-nvfp4-tp2.env` | wangzhang/…abliterix | NVFP4 W4A4 text-only | dual-rdma TP2 | v022-d568 |
-| `step37-flash-fp8-v023-tp2.env` | stepfun-ai/Step-3.7-Flash-FP8 | FP8 block · v0.23 tokenizer overlay | dual-rdma TP2 | v023-step3p7 |
-| `step37-flash-fp8-tp2.env` | stepfun-ai/Step-3.7-Flash-FP8 | FP8 block | dual-rdma TP2 | v022-d568…step3p7 |
+| Preset | Model | Quant / dtype | Topology | Base image | Launch / docs |
+|---|---|---|---|---|---|
+| [`gemma4-26b-a4b.env`](gemma4-26b-a4b.env) | google/gemma-4-26B-A4B-it | BF16 MoE | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
+| [`gemma4-26b-a4b-tq.env`](gemma4-26b-a4b-tq.env) | google/gemma-4-26B-A4B-it | BF16 + TurboQuant KV | single TP1 | v021-tq | [Generic TP1](#generic-tp1-launch) |
+| [`gemma4-31b-it.env`](gemma4-31b-it.env) | google/gemma-4-31B-it | BF16 dense multimodal | single TP1 | v022-d568 | [Generic TP1](#generic-tp1-launch) |
+| [`intel-122b-int4.env`](intel-122b-int4.env) | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
+| [`qwen3.5-122b-fp8.env`](qwen3.5-122b-fp8.env) | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 multimodal | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
+| [`qwen3.5-122b-nvfp4.env`](qwen3.5-122b-nvfp4.env) | Qwen/Qwen3.5-122B-A10B | NVFP4 runtime | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
+| [`qwen3.5-122b-nvfp4-tp2.env`](qwen3.5-122b-nvfp4-tp2.env) | Qwen/Qwen3.5-122B-A10B | NVFP4 runtime | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
+| [`qwen3.5-122b-prismaquant.env`](qwen3.5-122b-prismaquant.env) | rdtand/…PrismaQuant-4.75bit | PrismaQuant 4.76bpp mixed | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
+| [`qwen3.5-397b-int4.env`](qwen3.5-397b-int4.env) | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
+| [`qwen3.5-397b-int4-tq.env`](qwen3.5-397b-int4-tq.env) | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 + TurboQuant KV | dual-rdma TP2 | v021-tq | [Generic TP2](#generic-tp2-launch) |
+| [`qwen3.6-35b-a3b.env`](qwen3.6-35b-a3b.env) | Qwen/Qwen3.6-35B-A3B | BF16 hybrid MoE | single TP1 | v022-d568 | [Generic TP1](#generic-tp1-launch) |
+| [`qwen3.6-35b-a3b-fi-aot-tp2.env`](qwen3.6-35b-a3b-fi-aot-tp2.env) | Qwen/Qwen3.6-35B-A3B | BF16 hybrid MoE | dual-rdma TP2 | v022-d568-fi-aot | [AOT setup/recipe](../docs/flashinfer-aot-prebake.md) · [TP2](#generic-tp2-launch) |
+| [`qwen3.6-27b-base-bf16-tp2.env`](qwen3.6-27b-base-bf16-tp2.env) | Qwen/Qwen3.6-27B (base) | BF16 | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
+| [`qwen3.6-27b-prismascout-nvfp4-tp2.env`](qwen3.6-27b-prismascout-nvfp4-tp2.env) | rdtand/Qwen3.6-27B-PrismaSCOUT-NVFP4 | NVFP4 mixed | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
+| [`redhatai-122b-nvfp4.env`](redhatai-122b-nvfp4.env) | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 pre-quantized | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
+| [`redhatai-122b-nvfp4-tq.env`](redhatai-122b-nvfp4-tq.env) | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 + TurboQuant KV | single TP1 | v021-tq | [Generic TP1](#generic-tp1-launch) |
+| [`wangzhang-122b-fp8.env`](wangzhang-122b-fp8.env) | wangzhang/…abliterated | FP8 text-only | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
+| [`wangzhang-122b-nvfp4.env`](wangzhang-122b-nvfp4.env) | wangzhang/…abliterated-NVFP4 | NVFP4 text-only | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
+| [`wangzhang-122b-abliterix-fp8-tp2.env`](wangzhang-122b-abliterix-fp8-tp2.env) | wangzhang/…abliterix | FP8 W8A8 text-only | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
+| [`wangzhang-122b-abliterix-nvfp4-tp2.env`](wangzhang-122b-abliterix-nvfp4-tp2.env) | wangzhang/…abliterix | NVFP4 W4A4 text-only | dual-rdma TP2 | v022-d568 | [Generic TP2](#generic-tp2-launch) |
+| [`step37-flash-fp8-v023-tp2.env`](step37-flash-fp8-v023-tp2.env) | stepfun-ai/Step-3.7-Flash-FP8 | FP8 block · v0.23 tokenizer overlay | dual-rdma TP2 | v023-step3p7 | [Tokenizer-overlay runbook](../docs/step3.7-tokenizer-overlay.md#current-main-step-37-fp8-path-tracked-preset) |
+| [`step37-flash-fp8-tp2.env`](step37-flash-fp8-tp2.env) | stepfun-ai/Step-3.7-Flash-FP8 | FP8 block | dual-rdma TP2 | v022-d568…step3p7 | [FP8 serving guide](../docs/step3.7-flash-tp2.md) |
 
 ## 4. Experimental presets
 
 Not promoted; tuning/bring-up/A-B and stack-bisection variants. **None is a production path**, and
 each requires separate validation before any operational use.
 
-| Preset | Model / stack | Topology | Note |
-|---|---|---|---|
-| `step37-flash-nvfp4-tp2.env` | Step-3.7-Flash NVFP4 v0.22 (EP-on) | dual-rdma TP2 | Experimental long-context (`STAGE_D_PARTIALLY_VALIDATED_TO_245009`) |
-| `qwen3.6-35b-fp16.env` | Qwen/Qwen3.6-35B-A3B FP16 | single TP1 | Experimental FP16 |
-| `qwen3.6-27b-prismascout-nvfp4-tp2-v022.env` | Qwen3.6-27B PrismaSCOUT NVFP4 · v022 | dual-rdma TP2 | v022 stack A/B (requires `--mm-encoder-tp-mode data`) |
-| `qwen3.6-27b-prismascout-nvfp4-tp2-v022-fi0611.env` | …PrismaSCOUT NVFP4 · v022 FlashInfer 0.6.11 | dual-rdma TP2 | v022 stack-bisection variant |
-| `qwen3.6-27b-prismascout-nvfp4-tp2-v022-nccl234.env` | …PrismaSCOUT NVFP4 · v022 NCCL 2.34 | dual-rdma TP2 | v022 stack-bisection variant |
-| `qwen3.6-27b-prismascout-nvfp4-tp2-v022-ngc2604.env` | …PrismaSCOUT NVFP4 · v022 NGC 26.04 | dual-rdma TP2 | v022 stack-bisection variant |
-| `qwen3.6-27b-prismascout-nvfp4-tp2-v022-trt37.env` | …PrismaSCOUT NVFP4 · v022 TRT 3.7 | dual-rdma TP2 | v022 stack-bisection variant |
-| `qwen3.6-27b-prismascout-nvfp4-tp2-v022-tx581.env` | …PrismaSCOUT NVFP4 · v022 Transformers 5.8.1 | dual-rdma TP2 | v022 stack-bisection variant |
-| `qwen3.6-27b-prismascout-nvfp4-tp2-v022-d568.env` | …PrismaSCOUT NVFP4 · v022-d568 | dual-rdma TP2 | v022-d568 stack variant |
+| Preset | Model / stack | Topology | Note | Launch / docs |
+|---|---|---|---|---|
+| [`step37-flash-nvfp4-tp2.env`](step37-flash-nvfp4-tp2.env) | Step-3.7-Flash NVFP4 v0.22 (EP-on) | dual-rdma TP2 | Experimental long-context (`STAGE_D_PARTIALLY_VALIDATED_TO_245009`) | [Long-context evidence](../docs/benchmarks/step37-v022-long-context-validation.md) — validation/reproduction only |
+| [`qwen3.6-35b-fp16.env`](qwen3.6-35b-fp16.env) | Qwen/Qwen3.6-35B-A3B FP16 | single TP1 | Experimental FP16 | [Stack evidence](../docs/software-stack.md) — validation/reproduction only |
+| [`qwen3.6-27b-prismascout-nvfp4-tp2-v022.env`](qwen3.6-27b-prismascout-nvfp4-tp2-v022.env) | Qwen3.6-27B PrismaSCOUT NVFP4 · v022 | dual-rdma TP2 | v022 stack A/B (requires `--mm-encoder-tp-mode data`) | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |
+| [`qwen3.6-27b-prismascout-nvfp4-tp2-v022-fi0611.env`](qwen3.6-27b-prismascout-nvfp4-tp2-v022-fi0611.env) | …PrismaSCOUT NVFP4 · v022 FlashInfer 0.6.11 | dual-rdma TP2 | v022 stack-bisection variant | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |
+| [`qwen3.6-27b-prismascout-nvfp4-tp2-v022-nccl234.env`](qwen3.6-27b-prismascout-nvfp4-tp2-v022-nccl234.env) | …PrismaSCOUT NVFP4 · v022 NCCL 2.34 | dual-rdma TP2 | v022 stack-bisection variant | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |
+| [`qwen3.6-27b-prismascout-nvfp4-tp2-v022-ngc2604.env`](qwen3.6-27b-prismascout-nvfp4-tp2-v022-ngc2604.env) | …PrismaSCOUT NVFP4 · v022 NGC 26.04 | dual-rdma TP2 | v022 stack-bisection variant | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |
+| [`qwen3.6-27b-prismascout-nvfp4-tp2-v022-trt37.env`](qwen3.6-27b-prismascout-nvfp4-tp2-v022-trt37.env) | …PrismaSCOUT NVFP4 · v022 TRT 3.7 | dual-rdma TP2 | v022 stack-bisection variant | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |
+| [`qwen3.6-27b-prismascout-nvfp4-tp2-v022-tx581.env`](qwen3.6-27b-prismascout-nvfp4-tp2-v022-tx581.env) | …PrismaSCOUT NVFP4 · v022 Transformers 5.8.1 | dual-rdma TP2 | v022 stack-bisection variant | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |
+| [`qwen3.6-27b-prismascout-nvfp4-tp2-v022-d568.env`](qwen3.6-27b-prismascout-nvfp4-tp2-v022-d568.env) | …PrismaSCOUT NVFP4 · v022-d568 | dual-rdma TP2 | v022-d568 stack variant | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |
 
 ## 5. Historical reproduction presets
 
 Legacy / reproduction references for non-production-family models. Preserved for provenance;
 **not current, not recommended for new deployments.**
 
-| Preset | Model / stack | Topology | Note |
-|---|---|---|---|
-| `wangzhang-122b-abliterix-fp8-tp2-v022.env` | wangzhang/…abliterix FP8 · v022 | dual-rdma TP2 | v022 stack reproduction variant |
-| `wangzhang-122b-abliterix-fp8-tp2-v022-d568.env` | wangzhang/…abliterix FP8 · v022-d568 | dual-rdma TP2 | v022-d568 stack reproduction variant |
+| Preset | Model / stack | Topology | Note | Launch / docs |
+|---|---|---|---|---|
+| [`wangzhang-122b-abliterix-fp8-tp2-v022.env`](wangzhang-122b-abliterix-fp8-tp2-v022.env) | wangzhang/…abliterix FP8 · v022 | dual-rdma TP2 | v022 stack reproduction variant | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |
+| [`wangzhang-122b-abliterix-fp8-tp2-v022-d568.env`](wangzhang-122b-abliterix-fp8-tp2-v022-d568.env) | wangzhang/…abliterix FP8 · v022-d568 | dual-rdma TP2 | v022-d568 stack reproduction variant | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |
 
 ---
 
