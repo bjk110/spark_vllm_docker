@@ -4,9 +4,12 @@
 
 This Gate4 recipe pins local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610` and enables the deterministic `persistent_topk` kernel from vLLM PR #55122 (`1c4caa3dbe1c3c616f63810fd6fa60877105132d`). The kernel is pinned by SHA256 `803037813e307a7c5fa05efee5e874695a0620a336dd798800ccd51d566377b3`; patched QSA SHA256 is `7e6aff79a37b866b130de65bd483a6526d9e8ae14cc45733c2deb080ff2f2c47`.
 
+`MAIN_MERGE_APPROVED_OPT_IN` is retained as a historical repository-integration
+decision label. Integration is complete on main; it does not confer runtime promotion.
+
 ## Qualified envelope and exclusions
 
-TP2, `MAX_NUM_SEQS=2`, client concurrency **c1 only**, prefix cache OFF, MTP depth 1, and CUDA graph `FULL_DECODE_ONLY` capture `[1,2]`. MTP1 c2/c8, prefix-cache ON, and `MAX_NUM_SEQS=8` performance are excluded and are not production-qualified. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope.
+TP2, `MAX_NUM_SEQS=2`, client concurrency **c1 only**, prefix cache OFF, MTP depth 1, and CUDA graph `FULL_DECODE_ONLY` capture `[1,2]`. MTP1 c2/c8, prefix-cache ON, and `MAX_NUM_SEQS=8` performance are excluded and are not production-qualified. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope.
 
 ## Production suitability decision
 
@@ -21,7 +24,7 @@ TP2, `MAX_NUM_SEQS=2`, client concurrency **c1 only**, prefix cache OFF, MTP dep
 - Gate2 4-hour c1 soak PASS: `/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-soak4h-20260905-r1/` (`14400.000459282892s`, 800 request records, 0 fatal signal, MTP acceptance 1804/1828).
 - Gate3 three clean-boot cold-start epochs PASS: `/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-coldstart-e1-20260905-r1/`, `/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-coldstart-e2-20260906-r1/`, and `/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-coldstart-e3-20260906-r1/`.
 - Gate4 zero-start static closure PASS decision: `/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-gate4-20260906-r1/gate4-decision.json`, SHA256 `19520f6abaff5fb4a0bcad29e3afd78b131a2f732e397cc67eff5d22f8f275d5`; independent review: `/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-gate4-20260906-r1/gate4-independent-review.json`, SHA256 `b126037c2be0300c3fb62b2d6b3b5dca5fbfc6a1f141bdb3dce3274b8007f928`. The verifier performs no `up`, build, pull, tag, push, or service mutation.
-- Gate5 independent decision: `/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-gate5-20260906-r1/gate5-independent-review.json`, SHA256 `05feba33f0f68f0dd3802c442be56ed04986623640889ba949a286cfe2355680`. It qualified only explicit user decision for local working-tree product/config promotion; it did not authorize commit, push, release, image tag/publication, build, launch, or service activation. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope.
+- Gate5 independent decision: `/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-gate5-20260906-r1/gate5-independent-review.json`, SHA256 `05feba33f0f68f0dd3802c442be56ed04986623640889ba949a286cfe2355680`. It qualified only explicit user decision for local working-tree product/config promotion; it did not authorize commit, push, release, image tag/publication, build, launch, or service activation. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope.
 
 ## Provenance closure and unresolved upstream state
 
@@ -33,7 +36,7 @@ The reconstruction-only Dockerfile mirrors the authoritative Dockerfile's exact 
 
 ## Residuals and decision integrity
 
-Epoch 3 passed the scoped cold-start gate, but an `NV_ERR_NO_MEMORY` residual was observed and remains unresolved; the PASS must not erase or downgrade that residual. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. This remains opt-in interactive c1 only, is NOT the production default, and has no auto-start.
+Epoch 3 passed the scoped cold-start gate, but an `NV_ERR_NO_MEMORY` residual was observed and remains unresolved; the PASS must not erase or downgrade that residual. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. This remains opt-in interactive c1 only, is NOT the production default, and has no auto-start.
 
 ### Decision-integrity correction history
 
@@ -41,7 +44,7 @@ The Gate1 r1 run was a role-listener harness false negative; the corrected r2 ru
 
 Separately, after epoch 3 completed, its launcher-produced `decision-summary.json` was observed by the first independent reviewer at SHA256 `8404c8fc051d12e797d8dd61fba8682372661f6e3353317a9b7e96a1041bff40`. It was then accidentally overwritten by a manual summary that copied epoch 2 readiness `1056s` instead of epoch 3 raw readiness `1072s`. Those invalid bytes are preserved as `decision-summary.invalid-5deb6a53.json` at SHA256 `5deb6a537c3c6bf89807f5bbc4990d29676c9c1839f1b63c3549ca49a549e4cf`; the original launcher bytes could not be recovered and are not claimed restored. A corrected decision rebuilt from raw epoch 3 evidence has SHA256 `0d6ac07e1e7f5f28954e27fc22c1d436d15da20d378a90cfcb4e60a55a35bdab` and passed a fresh independent review. The separate three-epoch `gate3-overall-decision.json` is SHA256 `3253f2fa00b45e37c4cf1131a7303c6aa9ca5323d72bcde35b9152b161bd5777`.
 
-Gate0–Gate5 qualification and the explicit local promotion apply only to MTP1/c1 and do not authorize c2/c8, prefix-cache ON, or `MAX_NUM_SEQS=8` performance. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. The corrected record carries forward the upstream PR/pre-run-check limitations, unresolved base-image revision, and epoch-3 memory residual instead of treating a scoped PASS as global clearance.
+Gate0–Gate5 qualification and the explicit local promotion apply only to MTP1/c1 and do not authorize c2/c8, prefix-cache ON, or `MAX_NUM_SEQS=8` performance. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. The corrected record carries forward the upstream PR/pre-run-check limitations, unresolved base-image revision, and epoch-3 memory residual instead of treating a scoped PASS as global clearance.
 
 ## Gate4 vertical TDD evidence
 

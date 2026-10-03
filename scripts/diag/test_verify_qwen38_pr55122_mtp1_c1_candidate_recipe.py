@@ -16,7 +16,7 @@ _spec = importlib.util.spec_from_file_location("gate4_verifier", VERIFIER_PATH)
 verifier = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(verifier)
 AUTHORIZATION_STATEMENT = (
-    "Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, "
+    "Repository integration is complete on main. Image tag/publication, build, launch, "
     "service activation, auto-start, and production-default change remain out of scope."
 )
 PROMOTED_CONTENT_PATHS = (
@@ -250,7 +250,7 @@ class TestPresetMutations(MutationCase):
                 text = original.replace("# ", f"# {claim}\n# ", 1)
                 self.patch_path("PRESET_PATH", text, "candidate.env")
                 results = verifier.Results(); verifier.check_preset(results)
-                self.assertTrue(any("preset full-file SHA256" in f for f in results.failures))
+                self.assertTrue(any("preset contradictory claim" in f for f in results.failures))
 
     def test_bare_noncomment_directive_is_rejected(self):
         text = verifier.PRESET_PATH.read_text() + "\nBARE_DIRECTIVE\n"
@@ -310,7 +310,7 @@ class TestDocMutations(MutationCase):
             with self.subTest(claim=claim):
                 self.patch_path("DOC_PATH", original + f"\n{claim}\n", "candidate.md")
                 results = verifier.Results(); verifier.check_doc(results)
-                self.assertTrue(any("doc full-file SHA256" in f for f in results.failures))
+                self.assertTrue(any("contradictory positive claim" in f for f in results.failures))
 
     def test_status_downgrade_to_controlled_candidate_is_rejected(self):
         promoted = "**Status: MAIN_MERGE_APPROVED_OPT_IN — opt-in interactive c1 only; NOT the production default; no auto-start.**"
@@ -353,11 +353,11 @@ class TestDocMutations(MutationCase):
                 results = verifier.Results(); verifier.check_doc(results)
                 self.assertTrue(any("contradictory positive claim" in f for f in results.failures))
 
-    def test_appended_negative_scope_disclaimer_is_rejected(self):
+    def test_appended_negative_scope_disclaimer_is_allowed(self):
         text = verifier.DOC_PATH.read_text() + "\nNot PRODUCTION-PROMOTED; c2/c8 not authorized or qualified; prefix-cache ON is not qualified or authorized.\n"
         self.patch_path("DOC_PATH", text, "candidate.md")
         results = verifier.Results(); verifier.check_doc(results)
-        self.assertTrue(any("doc full-file SHA256" in f for f in results.failures))
+        self.assertEqual([], results.failures)
 
 class TestPromotionIndexes(MutationCase):
     def _patch_indexes(self, mutate=None):
@@ -380,6 +380,33 @@ class TestPromotionIndexes(MutationCase):
         paths[target] = path
         verifier.PROMOTION_INDEX_PATHS = paths
 
+    def test_harmless_link_and_column_changes_are_allowed(self):
+        target = "presets/README.md"
+        self.saved.setdefault("PROMOTION_INDEX_PATHS", verifier.PROMOTION_INDEX_PATHS)
+        paths = dict(verifier.PROMOTION_INDEX_PATHS)
+        path = self.root / "index.md"
+        text = paths[target].read_text().replace("[Manual opt-in runbook]", "[Opt-in documentation]")
+        text = text.replace("| Qwen/Qwen3.8-Flash-Next-FP8 |", "| Qwen/Qwen3.8-Flash-Next-FP8 | Extra column |")
+        path.write_text(text)
+        paths[target] = path
+        verifier.PROMOTION_INDEX_PATHS = paths
+        results = verifier.Results(); verifier.check_promotion_indexes(results)
+        self.assertEqual([], results.failures)
+
+    def test_operational_status_and_scope_drift_are_rejected(self):
+        target = "presets/README.md"
+        original = verifier.PROMOTION_INDEX_PATHS[target].read_text()
+        for phrase in ("NOT the production default", "no auto-start", "MTP1 c2/c8", "prefix-cache ON exact", "MAX_NUM_SEQS=8"):
+            with self.subTest(phrase=phrase):
+                self.saved.setdefault("PROMOTION_INDEX_PATHS", verifier.PROMOTION_INDEX_PATHS)
+                paths = dict(self.saved["PROMOTION_INDEX_PATHS"])
+                path = self.root / "mutated.md"
+                path.write_text(original.replace(phrase, "unsupported wording"))
+                paths[target] = path
+                verifier.PROMOTION_INDEX_PATHS = paths
+                results = verifier.Results(); verifier.check_promotion_indexes(results)
+                self.assertTrue(any("semantic requirement" in f for f in results.failures))
+
     def test_current_six_promotion_indexes_pass(self):
         results = verifier.Results(); verifier.check_promotion_indexes(results)
         self.assertEqual([], results.failures)
@@ -399,7 +426,7 @@ class TestPromotionIndexes(MutationCase):
                     self._patch_one_exact_index(target, f"\n{claim}\n")
                     results = verifier.Results(); verifier.check_promotion_indexes(results)
                     self.assertTrue(any(
-                        target in f and "full-file SHA256" in f
+                        target in f and "scope creep" in f
                         for f in results.failures
                     ))
                     verifier.PROMOTION_INDEX_PATHS = self.saved["PROMOTION_INDEX_PATHS"]
@@ -568,7 +595,7 @@ class TestRepositoryMergeAuthorizationState(unittest.TestCase):
     def test_current_product_surfaces_record_bounded_main_merge_authorization(self):
         required = (
             "MAIN_MERGE_APPROVED_OPT_IN",
-            "Commit, push, and main merge are explicitly authorized.",
+            "Repository integration is complete on main.",
             "production-default change remain out of scope",
         )
         forbidden = (

@@ -1,0 +1,59 @@
+name: Preset integrity
+on:
+  pull_request:
+    paths:
+      - 'presets/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'PATCH_STATUS.md'
+      - 'compose/**'
+      - 'docker-compose.yml'
+      - 'dockerfiles/**'
+      - 'patches/**'
+      - 'entrypoints/**'
+      - 'scripts/diag/verify_preset_catalog.py'
+      - 'scripts/diag/test_verify_preset_catalog.py'
+      - 'scripts/diag/test_solar_incremental_provenance.py'
+      - 'scripts/diag/*qwen38*'
+      - '.github/workflows/preset-integrity.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'presets/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'PATCH_STATUS.md'
+      - 'compose/**'
+      - 'docker-compose.yml'
+      - 'dockerfiles/**'
+      - 'patches/**'
+      - 'entrypoints/**'
+      - 'scripts/diag/verify_preset_catalog.py'
+      - 'scripts/diag/test_verify_preset_catalog.py'
+      - 'scripts/diag/test_solar_incremental_provenance.py'
+      - 'scripts/diag/*qwen38*'
+      - '.github/workflows/preset-integrity.yml'
+permissions:
+  contents: read
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest pyyaml
+      - name: Focused tests and mutations
+        run: >-
+          python -m pytest -q scripts/diag/test_verify_preset_catalog.py
+          scripts/diag/test_solar_incremental_provenance.py
+          scripts/diag/test_verify_qwen38_pr55122_mtp1_c1_candidate_recipe.py
+      - name: Static integrity and Compose rendering (no GPU/build/deploy)
+        env:
+          QWEN38_PR55122_REQUIRE_LOCAL_IMAGE_ID: '0'
+        run: |
+          python scripts/diag/verify_preset_catalog.py
+          python scripts/diag/verify_qwen38_flash_next_recipe.py
+          python scripts/diag/verify_qwen38_pr55122_mtp1_c1_candidate_recipe.py

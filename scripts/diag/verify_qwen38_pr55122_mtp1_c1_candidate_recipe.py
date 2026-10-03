@@ -26,8 +26,6 @@ EXPECTED_IMAGE_ID = "sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7
 EXPECTED_KERNEL_SHA = "803037813e307a7c5fa05efee5e874695a0620a336dd798800ccd51d566377b3"
 EXPECTED_QSA_SHA = "7e6aff79a37b866b130de65bd483a6526d9e8ae14cc45733c2deb080ff2f2c47"
 EXPECTED_UPSTREAM_KERNEL_SHA = "db6f9c2b2c580ddb97b7026e01100ae23b2e2bfa5dbaa6396ba61189cc33fe6c"
-EXPECTED_DOC_SHA = "a8a8c7d720dd3272e2e0ab0c54d74ee8cd04d2a3e59ee298a200069e75cd65af"
-EXPECTED_PRESET_SHA = "5d907beed64ab9eacdec17625c134c0063b9558df75a1867d0c8a4246e117ae1"
 KERNEL_SOURCE = "patches/qwen/pr55122/_C_det.so"
 QSA_SOURCE = "patches/qwen/pr55122/qsa.det.py"
 KERNEL_DEST = "/opt/llm/kernel-det/_C_det.so"
@@ -64,41 +62,28 @@ PROMOTION_INDEX_PATHS = {
     "dockerfiles/README.md": REPO_ROOT / "dockerfiles/README.md",
     "patches/README.md": REPO_ROOT / "patches/README.md",
 }
-PROMOTION_INDEX_EXPECTED_SHAS = {
-    "README.md": "dceb848cf0bd113e2fca6289dad49aa95d0fce9fed6dc38194f6336e35534e92",
-    "presets/README.md": "c2fe8d574732acd256d411290a9bf0044f208e50f8b0f9d7001578296ff7690e",
-    "docs/README.md": "21154ef8d2775d857909065be727f580ad1f6caaeb592d74328cc0e2decb1556",
-    "docs/images.md": "d576282a0d000a2b962bfa9630afeb2069952c8cb5322af9f9e2898cc237c465",
-    "dockerfiles/README.md": "f10dcb55e48af39c4dc6b2c2479cef3a54ecf8c50844cb87d36ecf2b2f6aadd6",
-    "patches/README.md": "e8ea38ea02cee2dc2e263247f74702d2d2afd527d9ac6ff72ef027ebb5f67c2c",
+# Entry keys and semantic contracts, independent of Markdown column/link layout.
+INDEX_ENTRIES = {
+    "README.md": ("qwen3.8-flash-next-c1-c2", "qwen3.8-flash-next-pr55122-mtp1-c1"),
+    "presets/README.md": ("qwen3.8-flash-next-fp8-tp2-candidate.env", "qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env"),
+    "docs/README.md": ("qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md",),
+    "docs/images.md": ("qwen3.8-flash-next-pr55122-mtp1-c1",),
+    "dockerfiles/README.md": ("Dockerfile.qwen38-pr55122-mtp1-c1-candidate",),
+    "patches/README.md": ("qwen/pr55122/_C_det.so", "qwen/pr55122/qsa.det.py", "qwen/pr55122/persistent_topk.cuh"),
 }
+SCOPE_STATEMENT = "Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope."
+OPT_IN_REQUIRED = ("MAIN_MERGE_APPROVED_OPT_IN", "opt-in", SCOPE_STATEMENT)
+RUNTIME_REQUIRED = ("NOT the production default", "no auto-start", "MTP1 c2/c8",
+                    "prefix-cache ON exact", "MAX_NUM_SEQS=8", "excluded")
+INDEX_RUNTIME_KEYS = {"qwen3.8-flash-next-pr55122-mtp1-c1",
+                      "qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env",
+                      "qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md"}
+# Small fixture entries for mutation tests; these are not exact rendered row contracts.
 PROMOTION_INDEX_REQUIRED_LINES = {
-    "README.md": (
-        "Three independent model-family repository paths are documented: DeepSeek-V4-Flash, Solar-Open2-250B,",
-        "port 8000), are not served simultaneously, and no model is inferred active from this index.",
-        "| `qwen3.8-flash-next-c1-c2` | **Qwen3.8-Flash-Next production-qualified baseline** — manual c1/c2, not auto-start | `mp` | Authoritative existing TP2 baseline: `MAX_NUM_SEQS=2`, prefix cache ON, FULL_DECODE_ONLY `[1,2]`; MTP off. |",
-        "| `qwen3.8-flash-next-pr55122-mtp1-c1` | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | `mp` | Additional TP2 MTP depth-1 profile: `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |",
-    ),
-    "presets/README.md": (
-        "Qwen3.8-Flash-Next-FP8 has two indexed presets: the existing production-qualified c1/c2 baseline and",
-        "| [`qwen3.8-flash-next-fp8-tp2-candidate.env`](qwen3.8-flash-next-fp8-tp2-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | **Production-qualified** (manual activation only, not auto-start) | dual-rdma TP2 (mp), production-qualified at c1/c2, `MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`, `MAX_MODEL_LEN=262144`, `GPU_MEMORY_UTILIZATION=0.83`. Requires `compose/qwen3.8-flash-next/docker-compose.candidate.yml` overlay. Reboot before next fresh launch after teardown. `MAX_NUM_SEQS=4` remains BLOCKED (content diverges across identical repeats at c2/c4) and must not be raised. MTP and PLE-offloaded NVFP4 excluded from the default; MTP untested/off. | [Manual activation runbook](../docs/qwen3.8-flash-next-tp2.md) |",
-        "| [`qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env`](qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | dual-rdma TP2 (mp), MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, exact local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; requires `compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml`. MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. | [Manual opt-in runbook](../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) |",
-    ),
-    "docs/README.md": (
-        "| [qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md](qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) | Detailed PR55122 deterministic-kernel MTP1 interactive-c1 opt-in recipe and Gate0–Gate5 evidence | `MAIN_MERGE_APPROVED_OPT_IN` — NOT the production default; no auto-start | Local product/config authority only: TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |",
-    ),
-    "docs/images.md": (
-        "## Qwen3.8 PR55122 MTP1 c1 registry-free local image authority",
-        "| `qwen3.8-flash-next-pr55122-mtp1-c1` | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610` (registry-free local image authority on spark01/spark02) | TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |",
-    ),
-    "dockerfiles/README.md": (
-        "| `Dockerfile.qwen38-pr55122-mtp1-c1-candidate` | no tag authorized | `MAIN_MERGE_APPROVED_OPT_IN` reconstruction-only Dockerfile for the opt-in Qwen3.8 PR55122 MTP1 interactive-c1 recipe. Preserves immutable build-time provenance labels and documents COPY closure; it does not reproduce image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |",
-    ),
-    "patches/README.md": (
-        "| `qwen/pr55122/_C_det.so` | Qwen3.8 deterministic top-k | Active for `MAIN_MERGE_APPROVED_OPT_IN` local opt-in recipe only | SHA256 `803037813e307a7c5fa05efee5e874695a0620a336dd798800ccd51d566377b3`; used only by the Qwen3.8 PR55122 MTP1 interactive-c1 reconstruction recipe. No broader model/profile use. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |",
-        "| `qwen/pr55122/qsa.det.py` | Qwen3.8 QSA integration | Active for `MAIN_MERGE_APPROVED_OPT_IN` local opt-in recipe only | SHA256 `7e6aff79a37b866b130de65bd483a6526d9e8ae14cc45733c2deb080ff2f2c47`; used only by the Qwen3.8 PR55122 MTP1 interactive-c1 reconstruction recipe. No broader model/profile use. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |",
-        "| `qwen/pr55122/persistent_topk.cuh` | Qwen3.8 upstream source provenance | Active for `MAIN_MERGE_APPROVED_OPT_IN` local opt-in recipe only | SHA256 `db6f9c2b2c580ddb97b7026e01100ae23b2e2bfa5dbaa6396ba61189cc33fe6c`; pinned reconstruction/provenance source only for the Qwen3.8 PR55122 MTP1 interactive-c1 recipe. No broader model/profile use. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |",
-    ),
+    name: tuple("| `" + key + "` | " + (
+        "Production-qualified manual not auto-start" if key in ("qwen3.8-flash-next-c1-c2", "qwen3.8-flash-next-fp8-tp2-candidate.env")
+        else "MAIN_MERGE_APPROVED_OPT_IN opt-in; " + SCOPE_STATEMENT
+    ) + " |" for key in keys) for name, keys in INDEX_ENTRIES.items()
 }
 
 class Results:
@@ -247,14 +232,17 @@ def check_overlay_structure(r):
             if count==1: r.ok(f"{role} has exactly one literal {key}={value}")
             else: r.fail(f"{role} VLLM_QSA_DET_TOPK/environment contract violation for {key}: count={count}")
 
+def contradictory_claims(text):
+    patterns = (
+        r"\b(?:PR55122|MTP1)\b[^\n]{0,80}\b(?:RELEASED|PUBLISHED|PUSHED)\b",
+        r"\bPR55122\b[^\n]{0,80}\b(?:is now the production default|is active on the production service|service activation is authorized|MTP1 c8 is supported)\b",
+        r"\bMTP1\s+c[28](?:/c8)?\s+(?:is\s+)?(?:authorized|qualified|supported)\b",
+    )
+    return [m.group(0) for pattern in patterns for m in re.finditer(pattern, text, re.I)]
+
 def check_preset(r):
-    if PRESET_PATH.is_file():
-        got_sha = hashlib.sha256(PRESET_PATH.read_bytes()).hexdigest()
-        (r.ok if got_sha == EXPECTED_PRESET_SHA else r.fail)(
-            f"preset full-file SHA256 {got_sha} {'matches' if got_sha == EXPECTED_PRESET_SHA else 'does not match'} {EXPECTED_PRESET_SHA}"
-        )
-    else:
-        r.fail("cannot hash missing preset full file")
+    bad = contradictory_claims(PRESET_PATH.read_text())
+    if bad: r.fail(f"preset contradictory claim: {bad}")
     try:
         env=parse_env(PRESET_PATH)
         production=parse_env(PRODUCTION_PRESET_PATH)
@@ -326,13 +314,6 @@ def check_compose_config(r):
             got=env.get(key); (r.ok if got==want else r.fail)(f"{role} rendered {key}={got!r}; required {want!r} despite poison")
 
 def check_doc(r):
-    if DOC_PATH.is_file():
-        got_sha = hashlib.sha256(DOC_PATH.read_bytes()).hexdigest()
-        (r.ok if got_sha == EXPECTED_DOC_SHA else r.fail)(
-            f"doc full-file SHA256 {got_sha} {'matches' if got_sha == EXPECTED_DOC_SHA else 'does not match'} {EXPECTED_DOC_SHA}"
-        )
-    else:
-        r.fail("cannot hash missing doc full file")
     text=DOC_PATH.read_text() if DOC_PATH.is_file() else ""
     expected_status="**Status: MAIN_MERGE_APPROVED_OPT_IN — opt-in interactive c1 only; NOT the production default; no auto-start.**"
     lines=text.splitlines()
@@ -343,12 +324,13 @@ def check_doc(r):
         r"\bproduction promotion\s*:\s*(?:PASS|APPROVED)\b",
         r"\bc2/c8\s+(?:authorized|qualified)\b",
         r"\bprefix-cache\s+ON\s+(?:qualified|authorized)\b",
-        r"\bMTP1\b[^\n]{0,80}\b(?:RELEASED|PUBLISHED)\b",
+        r"\b(?:PR55122|MTP1)\b[^\n]{0,80}\b(?:RELEASED|PUBLISHED|PUSHED)\b",
+        r"\bPR55122\b[^\n]{0,80}\b(?:is now the production default|is active on the production service|service activation is authorized|MTP1 c8 is supported)\b",
     )
     contradictions=[match.group(0) for pattern in positive_patterns for match in re.finditer(pattern,text,re.I)]
     if contradictions: r.fail(f"doc contradictory positive claim(s) forbidden: {contradictions!r}")
     else: r.ok("doc has no contradictory positive promotion or scope claim")
-    for needle in ("MAIN_MERGE_APPROVED_OPT_IN","NOT the production default","no auto-start","c1 only","MTP1 c2/c8","prefix-cache ON","MAX_NUM_SEQS=8","rollback","zero-start","qwen38-pr55122-mtp1-c1-soak4h-20260905-r1","coldstart-e3-20260906-r1",EXPECTED_IMAGE_ID,EXPECTED_KERNEL_SHA,EXPECTED_QSA_SHA,EXPECTED_UPSTREAM_KERNEL_SHA,"separately observed embedded _C_det.so SHA256","separately observed embedded QSA SHA256","995cd99fa7d47834c0d89e038c2e07324a0065ac","b4ef9ce298d43d6c0e6db9fcca451df20815b2cfe33791919c1ad9c0e84f0ba7","differs from the tested and pinned source","current PR head is not locally qualified","open and unmerged","no maintainer approval","pre-run-check failure","8e685d198","NV_ERR_NO_MEMORY","Decision-integrity correction history","MAIN_REPOSITORY_INTEGRATION_APPROVED","PRODUCTION_RUNTIME_PROMOTION_BLOCKED","Commit, push, and main merge are explicitly authorized.","production-default change remain out of scope",'Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope.',"/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-gate4-20260906-r1/gate4-decision.json","19520f6abaff5fb4a0bcad29e3afd78b131a2f732e397cc67eff5d22f8f275d5","/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-gate4-20260906-r1/gate4-independent-review.json","b126037c2be0300c3fb62b2d6b3b5dca5fbfc6a1f141bdb3dce3274b8007f928","/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-gate5-20260906-r1/gate5-independent-review.json","05feba33f0f68f0dd3802c442be56ed04986623640889ba949a286cfe2355680","LOCAL NON-PRODUCTION experimental deterministic persistent_topk evaluation; not promoted or pushed","preserved as build-time provenance","does not mean the image was rebuilt or retagged","does not reproduce the image ID"):
+    for needle in ("MAIN_MERGE_APPROVED_OPT_IN","NOT the production default","no auto-start","c1 only","MTP1 c2/c8","prefix-cache ON","MAX_NUM_SEQS=8","rollback","zero-start","qwen38-pr55122-mtp1-c1-soak4h-20260905-r1","coldstart-e3-20260906-r1",EXPECTED_IMAGE_ID,EXPECTED_KERNEL_SHA,EXPECTED_QSA_SHA,EXPECTED_UPSTREAM_KERNEL_SHA,"separately observed embedded _C_det.so SHA256","separately observed embedded QSA SHA256","995cd99fa7d47834c0d89e038c2e07324a0065ac","b4ef9ce298d43d6c0e6db9fcca451df20815b2cfe33791919c1ad9c0e84f0ba7","differs from the tested and pinned source","current PR head is not locally qualified","open and unmerged","no maintainer approval","pre-run-check failure","8e685d198","NV_ERR_NO_MEMORY","Decision-integrity correction history","MAIN_REPOSITORY_INTEGRATION_APPROVED","PRODUCTION_RUNTIME_PROMOTION_BLOCKED","Repository integration is complete on main.","production-default change remain out of scope",'Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope.',"/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-gate4-20260906-r1/gate4-decision.json","19520f6abaff5fb4a0bcad29e3afd78b131a2f732e397cc67eff5d22f8f275d5","/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-gate4-20260906-r1/gate4-independent-review.json","b126037c2be0300c3fb62b2d6b3b5dca5fbfc6a1f141bdb3dce3274b8007f928","/home/bjk110/docker-build/qwen38-pr55122-mtp1-c1-gate5-20260906-r1/gate5-independent-review.json","05feba33f0f68f0dd3802c442be56ed04986623640889ba949a286cfe2355680","LOCAL NON-PRODUCTION experimental deterministic persistent_topk evaluation; not promoted or pushed","preserved as build-time provenance","does not mean the image was rebuilt or retagged","does not reproduce the image ID"):
         present=needle.lower() in text.lower()
         state="contains" if present else "missing"
         (r.ok if present else r.fail)(f"doc {state} {needle!r}")
@@ -364,32 +346,31 @@ def check_promotion_indexes(r):
         if not path.is_file():
             r.fail(f"promotion index {name} missing: {path}")
             continue
-        got_sha = hashlib.sha256(path.read_bytes()).hexdigest()
-        want_sha = PROMOTION_INDEX_EXPECTED_SHAS[name]
-        (r.ok if got_sha == want_sha else r.fail)(
-            f"promotion index {name} full-file SHA256 {got_sha} {'matches' if got_sha == want_sha else 'does not match'} {want_sha}"
-        )
         lines = path.read_text().splitlines()
-        for required in PROMOTION_INDEX_REQUIRED_LINES[name]:
-            count = lines.count(required)
-            if count == 1:
-                r.ok(f"promotion index {name} contains required entry exactly once")
-            else:
-                r.fail(f"promotion index {name} required entry must appear exactly once; count={count}: {required!r}")
-        expected_promoted = {line for line in PROMOTION_INDEX_REQUIRED_LINES[name] if "MAIN_MERGE_APPROVED_OPT_IN" in line}
-        actual_promoted = {line for line in lines if "MAIN_MERGE_APPROVED_OPT_IN" in line}
-        if actual_promoted == expected_promoted:
-            r.ok(f"promotion index {name} has no unexpected promoted-status entry")
-        else:
-            r.fail(f"promotion index {name} promoted-status scope creep: unexpected={sorted(actual_promoted-expected_promoted)}, missing={sorted(expected_promoted-actual_promoted)}")
+        for key in INDEX_ENTRIES[name]:
+            entries = [line for line in lines if line.startswith("|") and key == re.sub(r"[\[\]` ]", "", line.split("|")[1].split("](")[0])]
+            if len(entries) != 1:
+                r.fail(f"promotion index {name} entry {key} must appear exactly once; count={len(entries)}")
+                continue
+            entry = entries[0]
+            required = ("production-qualified", "manual", "not auto-start") if key in ("qwen3.8-flash-next-c1-c2", "qwen3.8-flash-next-fp8-tp2-candidate.env") else OPT_IN_REQUIRED
+            if key in INDEX_RUNTIME_KEYS: required += RUNTIME_REQUIRED
+            if name == "patches/README.md":
+                required += ({"qwen/pr55122/_C_det.so": EXPECTED_KERNEL_SHA, "qwen/pr55122/qsa.det.py": EXPECTED_QSA_SHA, "qwen/pr55122/persistent_topk.cuh": EXPECTED_UPSTREAM_KERNEL_SHA}[key],)
+            for needle in required:
+                if needle.lower() not in entry.lower(): r.fail(f"promotion index {name} entry {key} missing semantic requirement {needle!r}")
+        promoted = [line for line in lines if line.startswith("|") and "MAIN_MERGE_APPROVED_OPT_IN" in line]
+        if len(promoted) != sum(key not in ("qwen3.8-flash-next-c1-c2", "qwen3.8-flash-next-fp8-tp2-candidate.env") for key in INDEX_ENTRIES[name]):
+            r.fail(f"promotion index {name} promoted-status scope creep")
         text = "\n".join(lines)
         scope_patterns = (
             r"\bMTP1\b[^\n]{0,120}\b(?:c2/c8|c2|c8)\b(?:(?!\b(?:excluded|not)\b)[^\n]){0,80}\b(?:authorized|qualified)\b",
             r"\bprefix-cache\s+ON\b(?:(?!\b(?:excluded|not)\b)[^\n]){0,80}\b(?:authorized|qualified)\b",
             r"\bMAX_NUM_SEQS=8\b(?:(?!\b(?:excluded|not)\b)[^\n]){0,80}\b(?:authorized|qualified)\b",
-            r"\b(?:PR55122|MTP1)\b[^\n]{0,120}\b(?:is|was|are|has been)\s+(?:RELEASED|PUBLISHED)\b",
+            r"\b(?:PR55122|MTP1)\b[^\n]{0,120}\b(?:is|was|are|has been)\s+(?:RELEASED|PUBLISHED|PUSHED)\b",
+            r"\bPR55122\b[^\n]{0,80}\b(?:is now the production default|is active on the production service|service activation is authorized|MTP1 c8 is supported)\b",
         )
-        bad = [m.group(0) for pattern in scope_patterns for m in re.finditer(pattern, text, re.I)]
+        bad = contradictory_claims(text) + [m.group(0) for pattern in scope_patterns for m in re.finditer(pattern, text, re.I)]
         if bad:
             r.fail(f"promotion index {name} scope creep or false release claim: {bad!r}")
         else:

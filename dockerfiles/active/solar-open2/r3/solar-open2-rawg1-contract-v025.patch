@@ -1,0 +1,19 @@
+--- a/vllm/model_executor/models/solar_open2.py
++++ b/vllm/model_executor/models/solar_open2.py
+@@ -414,9 +414,14 @@
+             g1 = self.f_proj(hidden_states)[0]
+         else:
+             g1 = self.f_b_proj(self.f_a_proj(hidden_states)[0])[0]
+-        g1 = fused_kda_gate(g1, self.A_log, self.head_dim, g_bias=self.dt_bias)
++        # C3 raw-g1 contract fix (vLLM v0.25.x line): the v0.25
++        # KimiGatedDeltaNetAttention._forward applies the KDA decay gate
++        # in-kernel (chunk_kda_with_fused_gate / fused_kda_gate), so the
++        # model must pass RAW g1, reshaped exactly like the parent
++        # forward. Pre-gating here (v0.22 contract) double-applies the
++        # gate (first divergent tensor: Layer 1 kda_attention output).
++        g1 = rearrange(g1, "n (h d) -> 1 n h d", d=self.head_dim)
+         beta = beta.unsqueeze(0)
+-        g1 = g1.unsqueeze(0)
+ 
+         if self.use_full_proj:
+             g_proj_states = self.g_proj(hidden_states)[0]

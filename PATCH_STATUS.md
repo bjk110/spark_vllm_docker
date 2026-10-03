@@ -132,14 +132,15 @@ production fast-track and promotion evidence.
 | `vllm-flashinfer-b12x-shared-workspace-env-gate.patch` (sha256 `2b31f3a873e7a29c991cefc39599b01b10f41f4dbdef096fc55f23c175382c83`) | **`VLLM_SPARK_B12X_SHARED_WORKSPACE` gate.** Opt-in sharing of FlashInfer `B12xMoEWrapper` pre-allocated scratch workspaces across MoE layers (default: one full scratch buffer per layer, ~27.9 GiB/rank for a 48-layer model; shared: one bounded set, ~0.6 GiB). | FlashInfer B12X MoE wrapper construction path | **Active in production** (`VLLM_SPARK_B12X_SHARED_WORKSPACE=1` in the production preset). Measured effect: torch allocated at engine-ready 103.5 -> 76.2 GiB/rank; deterministic output bit-identical to the unshared path (C3 conformance); decode throughput unchanged (2026-07-26 overlay validation). | Same as ST_PREAD — env-gated memory optimization, not a bug workaround; keep as long as the per-layer scratch allocation remains the FlashInfer default. |
 | `solar-open2-support-v0251.patch` (sha256 `1e73ef5b5d70aa29957975dab39ece83ec32b1e542f3d51cbb7c0e857d519575`) | General Solar-Open2 vLLM 0.25.1 support overlay (r2 lineage) — adds fused-MoE tuning configs and base model-class support, not one of the three named gates above. | `vllm/model_executor/...` (multiple files, largely new fused-MoE config JSONs) | **Active in production** (base layer all three gates above are built on). Not independently gated by an env var — always active for the Solar-Open2 architecture. | Not applicable — this is the base architecture-support overlay, not a point fix. |
 
-**Build-time provenance**: the r4 Dockerfile
-(`dockerfiles/active/Dockerfile.solar-open2-nvfp4-v0251-rawg1-pread-b12xsw-r4-exp`, local/untracked)
-applies these patches as `COPY` + in-image patch steps layered `r2 -> r3 (raw-g1 + ST_PREAD) -> r4
-(+ B12X shared-workspace)`. The Dockerfile itself remains **not tracked**, while the patches are tracked. It is real, exact
-build source for the production image (not merely a claim), but its
-promotion to tracked status was out of scope for this hygiene pass (image reproducibility from
-source was not requested and was not verified against a fresh rebuild, which this pass explicitly
-does not perform). If the implementation for any of the three gates above is ever needed and cannot
-be reconstructed from `patches/solar/` plus the Dockerfile, say so explicitly rather than assuming
-the repository can rebuild it — as of this audit, the source **does** exist locally for all three
-gates; only the *tracked* (in-Git) status is what's missing.
+**Build-time provenance:** exact incremental r3/r4 Dockerfiles and their SHA-verified
+patched Python COPY inputs are now repository artifacts under
+`dockerfiles/active/solar-open2/r3/` and `r4/`. Their `PROVENANCE.md` manifests identify
+read-only benchmark sources and copied-byte hashes; focused tests check all eight files.
+These recipes COPY externally patched sources and verify original/result SHA256 values;
+they do not apply patches in-image. Original experimental comments and local parent tags
+are preserved as historical build provenance. No build was performed. The r2 parent remains
+local-only: this is incremental source closure, **not** full public-base reconstruction or
+proof that rebuilding produces the recorded r4 image ID. The production and rollback preset
+assignments now directly pin their documented local IDs. Cache contents and production
+guard/kernel-event orchestration remain local-only; see the
+[portable launch reference](docs/solar-open2-launch-reference.md).

@@ -17,11 +17,13 @@ deployments use the **local-image-ID-pinned** production preset
 (`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`); the v0.22.1 KV4G matched preset
 (`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`) is the authoritative rollback.
 
-All three families are independent promoted baselines that currently share the same physical serving
+DeepSeek-V4 and Solar are promoted production; Qwen3.8 is production-qualified for manual activation,
+not promoted/current production. All three families share the same physical serving
 slot (spark01 head + spark02 worker, port 8000) rather than running simultaneously — this index
 does not track which one is deployed at this instant; check live container/health state for that.
 
-Groups: [Current production](#current-production) · [Rollback and operations](#rollback-and-operations)
+Groups: [Current production](#current-production) · [Production-qualified manual activation](#production-qualified-manual-activation)
+· [Rollback and operations](#rollback-and-operations)
 · [General stable stacks](#general-stable-stacks) · [Model guides](#model-guides)
 · [Diagnostics and troubleshooting](#diagnostics-and-troubleshooting) · [Benchmarks](#benchmarks)
 · [Validated alternatives](#validated-alternatives) · [Experimental work](#experimental-work)
@@ -29,10 +31,8 @@ Groups: [Current production](#current-production) · [Rollback and operations](#
 
 ## Current production
 
-Three independent model tracks are documented as "current production" below; each is authoritative
-for its own model, not for the physical port 8000 slot simultaneously — spark01/spark02 run one
-model at a time, and whichever track is not currently deployed remains stopped (see each document's
-own status banner for what is actually running right now).
+DeepSeek-V4 and Solar have promoted production tracks. Only one family can occupy the shared
+spark01/spark02 port 8000 slot at a time; this index does not establish live state.
 
 Runtime authority (DeepSeek-V4-Flash) = immutable manifest `sha256:7a005243…` (local image ID
 `sha256:a7f0f4b8…`). Deploy the v0.27/256K preset with its required health/prewarm overlay and immutable
@@ -46,8 +46,15 @@ to a registry). Deploy via the local-ID-pinned preset.
 | [deepseek-v4-production.md](deepseek-v4-production.md) | Canonical DeepSeek-V4 production operations — active v0.27 native DSpark k=7 256K/MS1 route, v0.25.0/64K primary rollback, MTP1 legacy rollback, startup/prewarm and qualification provenance | `Current production` | Authoritative operations, runtime contracts, rollback |
 | [deepseek-v4-v027-runtime-build-base.md](deepseek-v4-v027-runtime-build-base.md) | Frozen DSV4-specific NGC 26.07/vLLM 0.27 build base, GHCR identities, thin-derivative recipe | `Build/release reference` | Avoid rebuilding the validated common runtime closure |
 | [solar-open2-production.md](solar-open2-production.md) | Canonical Solar-Open2-250B production operations — active r4 BF16 (vLLM 0.25.1) route and v0.22.1 rollback, runtime contracts, activation/rollback with empirical reboot procedure, validation provenance (6-gate production fast-track 2026-08-08/09) | `Current production` | Authoritative operations, runtime contracts, rollback |
+
+## Production-qualified manual activation
+
+Qwen3.8 is qualified within its documented envelope, not promoted/current production.
+
+| Document | Subject | Status | Use |
+|---|---|---|---|
 | [qwen3.8-flash-next-tp2.md](qwen3.8-flash-next-tp2.md) | Qwen/Qwen3.8-Flash-Next-FP8 dual DGX Spark TP=2 recipe — production-qualified c1/c2 profile, `MAX_NUM_SEQS=2`, FULL_DECODE_ONLY capture sizes `[1,2]`, staged Gate0–Gate3 procedure, checksum/identity verification | `Production-qualified` (c1/c2; not auto-start) | Production-qualified c1/c2 route; not auto-started, activate manually |
-| [qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md](qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) | Detailed PR55122 deterministic-kernel MTP1 interactive-c1 opt-in recipe and Gate0–Gate5 evidence | `MAIN_MERGE_APPROVED_OPT_IN` — NOT the production default; no auto-start | Local product/config authority only: TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
+| [qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md](qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) | Detailed PR55122 deterministic-kernel MTP1 interactive-c1 opt-in recipe and Gate0–Gate5 evidence | `MAIN_MERGE_APPROVED_OPT_IN` — NOT the production default; no auto-start | Local product/config authority only: TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
 
 ## Rollback and operations
 
@@ -105,6 +112,7 @@ Validated, but not the current default serving path.
 | Document | Subject | Status | Use |
 |---|---|---|---|
 | [flashinfer-aot-prebake.md](flashinfer-aot-prebake.md) | FlashInfer AOT-prebaked image (`v022-d568-fi-aot`) validated specs | `Validated alternative` | Optional drop-in for `v022-d568` |
+| [step3.7-tokenizer-overlay.md](step3.7-tokenizer-overlay.md) | Step-3.7 non-mutating runtime tokenizer overlay | `Validated (non-production)` | Tokenizer-overlay technique |
 
 ## Experimental work
 
@@ -113,7 +121,6 @@ Not promoted. Reference/experimental only.
 | Document | Subject | Status | Use |
 |---|---|---|---|
 | [unholy-fusion-benchmark.md](unholy-fusion-benchmark.md) | `unholy-fusion` configuration, limits, and benchmark comparison | `Experimental` | Higher-prefill DSV4 experimental alternative (not a recommended production path) |
-| [step3.7-tokenizer-overlay.md](step3.7-tokenizer-overlay.md) | Step-3.7 non-mutating runtime tokenizer overlay | `Experimental` | Tokenizer-overlay technique |
 | [prometheus-routing-path-fix.md](prometheus-routing-path-fix.md) | Prometheus `routing.py` `.path` guard (experimental image) | `Experimental` | Monitoring routing-path fix notes |
 | [dsv4-dspark-speculative-decoding-72261a7-closure.md](dsv4-dspark-speculative-decoding-72261a7-closure.md) | DeepSeek-V4-Flash-DSpark speculative decoding on vLLM `72261a7` — DS2 arc closure (defects found and fixed; acceptance unmoved) | `Experimental` (investigation CLOSED, NOT VALIDATED) | DSpark experimental status: DS2D14 preferred baseline / DS2D13 fallback / DS2D12 rollback; k=3 only validated envelope; local-only images; production unaffected (speculative decoding not used) |
 

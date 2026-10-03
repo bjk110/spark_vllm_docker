@@ -99,7 +99,7 @@ provenance only — referenced below by content hash, not by claiming repository
 
 | Local artifact (untracked, not a repository path) | SHA-256 | Role |
 |---|---|---|
-| `solar-open2-250b-nota-nvfp4-v0251-r4-active-test-tp2.env` | `2c8b0b2c46c9633d37a4500db335db449860920c216904507d859a027d1a9125` | The validated active-test baseline the production preset was promoted from (2026-07-27 activation through 2026-08-09). Runtime values are byte-identical (0 functional diff) to the current production preset. |
+| `solar-open2-250b-nota-nvfp4-v0251-r4-active-test-tp2.env` | `2c8b0b2c46c9633d37a4500db335db449860920c216904507d859a027d1a9125` | The validated active-test baseline the production preset was promoted from (2026-07-27 activation through 2026-08-09). Runtime values matched the promotion preset before repository hardening; the current production preset now pins the documented local image ID directly instead of its mutable tag. |
 | `solar-open2-250b-nota-nvfp4-v0251-r4-b12xsw-kv4g-exp-tp2.env` | `d8285a4162e5ec2529a729ee0362f8e8fddfe73514a2f32337241dd89fa800fe` | Earlier r4 development preset; the active-test preset's runtime values are byte-identical to this one. |
 | `solar-open2-250b-nota-nvfp4-v0251-r4-b12xsw-kv4g-no-template-logits-exp-tp2.env` | (not re-verified this pass) | r4 development variant, superseded. |
 | `solar-open2-250b-nota-nvfp4-v0251-r3-pread-kv4g-exp-tp2.env` | (not re-verified this pass) | r3 development preset (pre-B12X-shared-workspace). |
@@ -140,7 +140,7 @@ plus one external environment value; see the
 reproducibility-limitation note below):
 
 ```bash
-export B12X_CACHE_DIR=$(cat /home/bjk110/docker-build/CW_EV_PATH)/cache/$(hostname)
+export B12X_CACHE_DIR=/absolute/node-local/solar-cache  # explicit operator prerequisite
 docker compose --env-file presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env \
   -f docker-compose.yml -f compose/solar-open2/docker-compose.r4-production.yml \
   -f compose/solar-open2/docker-compose.b12x-cache.yml --profile head up -d   # spark01
@@ -154,6 +154,15 @@ approximately 7 minutes (both TP ranks report "Model loading took 71.6 GiB memor
 serving.
 
 ### Reproducibility limitation: launcher orchestration remains local-only
+
+A sanitized [portable launch reference](solar-open2-launch-reference.md) now documents the
+tracked preset/overlays with an explicit node-local `B12X_CACHE_DIR` and shell overrides.
+It is a reference, not a promoted replacement for the production guard orchestration.
+The available benchmark launcher is an active-test snapshot, not proof of byte identity
+with the production launcher; its detached guard/watch processes and cache evidence pointer
+cannot be faithfully replaced within static validation. No launcher/fastguard executable
+was promoted and no runtime action was taken.
+
 
 The production preset is tracked (commit `d966925`). The two Solar-specific Compose files (under
 `compose/solar-open2/` as of the 2026-08-11 hygiene pass) and the rollback preset are
@@ -171,12 +180,11 @@ than an oversight:
   **timestamped diagnostic evidence directory** from the 2026-07-26 b12x cold/warm cache experiment,
   containing per-node FlashInfer/Triton/CUDA-driver JIT compilation caches (binary, large,
   non-portable, GB10-arch/build-specific).
-- Tracking the launcher as-is would silently embed a dependency on that one evidence directory
+- Tracking the historical launcher as-is would silently embed a dependency on that one evidence directory
   continuing to exist at that exact path — not reproducible from a fresh clone.
-- Changing the launcher to point at a new, stable, git-tracked-adjacent cache location would fix
-  reproducibility but would refactor the validated launch behavior (a cold cache changes startup
-  timing) — explicitly out of scope for this hygiene pass, which must preserve exact validated
-  behavior.
+- A portable cache path can be supplied explicitly in the reference below, but it does not
+  reproduce the recorded warm cache or validate new guard/watch orchestration. A cold cache
+  changes startup timing; warm-cache contents remain local-only.
 - The overlay also mounts `/home/bjk110/docker-build/c2-obs` (an observability/telemetry sink) —
   also local-only, also not required for correctness, only for diagnostics.
 
@@ -340,3 +348,22 @@ production status and would otherwise contradict this document.
   shared-workspace, ST_PREAD) are recorded by hash in section 3; their original detailed local
   documents (`docs/solar-open2-st-pread.md`, `docs/solar-open2-b12x-shared-workspace.md`) remain
   untracked build-host artifacts (see the note in section 6).
+
+## 8. Repository recipe closure (no runtime change)
+
+Both production and rollback `VLLM_IMAGE` assignments now directly pin their documented
+local Docker image IDs (`ecb7bfe3978a…` / `1873d2174691…`); mutable tags remain provenance
+names only. This intentional recipe hardening changes the repository configuration, not
+which family is activated or any auto-start/default deployment.
+
+Exact r3/r4 incremental build contexts are now under `dockerfiles/active/solar-open2/r3/`
+and `r4/`: two original Dockerfiles, three patched Python inputs and three canonical patch
+copies. Each `PROVENANCE.md` records SHA256 and the read-only benchmark source. Copied
+bytes match the source evidence and the post-patch hashes embedded in the Dockerfiles;
+no fresh build was run. Historical EXPERIMENTAL comments are original build-time labels,
+not current operational status. The r2 parent remains a local image dependency; full
+reconstruction from a public base and reproducibility of the exact r4 image ID are not proved.
+Warm cache binaries, kernel-event watcher, and production guard orchestration remain
+local-only. The cache overlay still mounts `/home/bjk110/docker-build/c2-obs` as `/obs`;
+this observability prerequisite is not portable and was not changed. See the
+[portable launch reference](solar-open2-launch-reference.md) for configuration preflight.

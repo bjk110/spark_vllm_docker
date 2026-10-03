@@ -33,13 +33,26 @@ Both image IDs were independently re-verified identical on both nodes as part of
 production fast-track (Gate 5/6) and the subsequent hygiene pass. Full runtime contracts, activation,
 and rollback procedure: [`docs/solar-open2-production.md`](solar-open2-production.md).
 
+## Qwen3.8 production-qualified baseline
+
+The base c1/c2 profile is production-qualified for **manual activation**, not promoted/current
+production and not auto-started. The tracked mapping is:
+
+| Preset | Required overlay | Mutable tag | Immutable registry manifest |
+|---|---|---|---|
+| `presets/qwen3.8-flash-next-fp8-tp2-candidate.env` | `compose/qwen3.8-flash-next/docker-compose.candidate.yml` with `docker-compose.yml` | `vllm/vllm-openai:qwen38-flash-next` | `sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e` |
+
+The preset's exact `VLLM_IMAGE` is
+`vllm/vllm-openai:qwen38-flash-next@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e`.
+The digest controls content; the tag alone is mutable. See the [manual activation runbook](qwen3.8-flash-next-tp2.md).
+
 ## Qwen3.8 PR55122 MTP1 c1 registry-free local image authority
 
 This authority is a local Docker image ID, not a pullable registry manifest. Repository integration approval did not rebuild, retag, publish, or release the image. The immutable `LOCAL NON-PRODUCTION...not promoted` image/Dockerfile label is retained as build-time provenance and is not a statement that a rebuild or retag occurred.
 
 | Path | Status | Local image ID | Config authority |
 |---|---|---|---|
-| `qwen3.8-flash-next-pr55122-mtp1-c1` | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610` (registry-free local image authority on spark01/spark02) | TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
+| `qwen3.8-flash-next-pr55122-mtp1-c1` | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610` (registry-free local image authority on spark01/spark02) | TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
 
 ## DeepSeek-V4-Flash-0731 / vLLM 0.27 — active production (published to GHCR, task B4.4C)
 
@@ -96,3 +109,20 @@ this table when you need to reproduce or roll back to a specific image.
 - Do not infer current recommended runtime settings from raw image tags alone.
 - For maintainer-only Git tag creation and archived branch notes, see
   [`docs/release-management.md`](release-management.md).
+
+## General and validated configuration image mapping
+
+Derived from tracked preset assignments and metadata, without registry queries. Tags are mutable;
+local image IDs identify locally available content and are **not** pullable registry manifests.
+“not recorded” means the tracked preset does not record that identity. Supported configuration
+references without validation evidence are not production-qualified.
+
+| Exact mutable tag/reference | Immutable manifest | Local image ID | Tracked presets |
+|---|---|---|---|
+| `ghcr.io/bjk110/vllm-spark:v021-ngc2603` | not recorded | not recorded | [`gemma4-26b-a4b.env`](../presets/gemma4-26b-a4b.env), [`intel-122b-int4.env`](../presets/intel-122b-int4.env), [`qwen3.5-122b-fp8.env`](../presets/qwen3.5-122b-fp8.env), [`qwen3.5-122b-nvfp4-tp2.env`](../presets/qwen3.5-122b-nvfp4-tp2.env), [`qwen3.5-122b-nvfp4.env`](../presets/qwen3.5-122b-nvfp4.env), [`qwen3.5-122b-prismaquant.env`](../presets/qwen3.5-122b-prismaquant.env), [`qwen3.5-397b-int4.env`](../presets/qwen3.5-397b-int4.env), [`qwen3.6-27b-base-bf16-tp2.env`](../presets/qwen3.6-27b-base-bf16-tp2.env), [`qwen3.6-27b-prismascout-nvfp4-tp2.env`](../presets/qwen3.6-27b-prismascout-nvfp4-tp2.env), [`redhatai-122b-nvfp4.env`](../presets/redhatai-122b-nvfp4.env), [`wangzhang-122b-abliterix-fp8-tp2.env`](../presets/wangzhang-122b-abliterix-fp8-tp2.env), [`wangzhang-122b-fp8.env`](../presets/wangzhang-122b-fp8.env), [`wangzhang-122b-nvfp4.env`](../presets/wangzhang-122b-nvfp4.env) |
+| `ghcr.io/bjk110/vllm-spark:v021-tq` | not recorded | not recorded | [`gemma4-26b-a4b-tq.env`](../presets/gemma4-26b-a4b-tq.env), [`qwen3.5-397b-int4-tq.env`](../presets/qwen3.5-397b-int4-tq.env), [`redhatai-122b-nvfp4-tq.env`](../presets/redhatai-122b-nvfp4-tq.env) |
+| `ghcr.io/bjk110/vllm-spark:v022-d568` | not recorded | not recorded | [`gemma4-31b-it.env`](../presets/gemma4-31b-it.env), [`qwen3.6-35b-a3b.env`](../presets/qwen3.6-35b-a3b.env), [`wangzhang-122b-abliterix-nvfp4-tp2.env`](../presets/wangzhang-122b-abliterix-nvfp4-tp2.env) |
+| `ghcr.io/bjk110/vllm-spark:v022-d568-fi-aot` | not recorded | not recorded | [`qwen3.6-35b-a3b-fi-aot-tp2.env`](../presets/qwen3.6-35b-a3b-fi-aot-tp2.env) |
+| `ghcr.io/bjk110/vllm-spark:v023-step37-tokenizer-overlay-exp-07a2722` | `sha256:1c987173177a69d58d2ce61babf874f1a7c6c9a2830dcd33b180f2d81c9fde1e` | `sha256:f195d6e15041743c6b8bb95dfbf47305fa3c11b60d1272c4001baf877ab6e1fa` | [`step37-flash-fp8-v023-tp2.env`](../presets/step37-flash-fp8-v023-tp2.env) |
+| `vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7` | not recorded | not recorded | [`step37-flash-fp8-tp2.env`](../presets/step37-flash-fp8-tp2.env) |
+| `vllm-spark:v023-step3p7-fixed-kv-profile-skip-candidate` | not recorded | `5c2c74f54872` (short ID) | [`step37-flash-nvfp4-v023-tp2-latency.env`](../presets/step37-flash-nvfp4-v023-tp2-latency.env) |

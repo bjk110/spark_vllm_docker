@@ -1,0 +1,97 @@
+--- a/vllm/model_executor/model_loader/weight_utils.py
++++ b/vllm/model_executor/model_loader/weight_utils.py
+@@ -817,6 +817,74 @@
+     threading.Thread(target=_run_prefetch, daemon=True).start()
+ 
+ 
++# ---------------------------------------------------------------------------
++# Local spark_vllm_docker experimental patch: VLLM_SPARK_ST_PREAD env gate.
++# Opt-in (default OFF) selection of the safetensors "pread" backend for the
++# lazy safetensors iterator below. Motivation: on unified-memory hosts the
++# default mmap read path promotes checkpoint pages onto the active file LRU
++# during weight loading, which can evict anonymous memory to swap; the pread
++# backend reads tensors without mapping the checkpoint files. Strictly
++# scoped: only the lazy branch of safetensors_weights_iterator is affected
++# and default behavior is unchanged when the variable is unset or false.
++# ---------------------------------------------------------------------------
++_ST_PREAD_ENV = "VLLM_SPARK_ST_PREAD"
++_ST_PREAD_TRUE_VALUES = ("1", "true", "yes", "on")
++_ST_PREAD_FALSE_VALUES = ("", "0", "false", "no", "off")
++_st_pread_logged = False
++
++
++def _st_pread_enabled() -> bool:
++    """Strictly parse VLLM_SPARK_ST_PREAD; invalid values fail fast."""
++    raw = os.getenv(_ST_PREAD_ENV)
++    if raw is None:
++        return False
++    value = raw.strip().lower()
++    if value in _ST_PREAD_FALSE_VALUES:
++        return False
++    if value in _ST_PREAD_TRUE_VALUES:
++        return True
++    raise ValueError(
++        f"Invalid {_ST_PREAD_ENV}={raw!r}. Accepted true values: "
++        "1/true/yes/on; accepted false values: unset/empty/0/false/no/off."
++    )
++
++
++def _st_pread_safe_open_kwargs() -> dict[str, str]:
++    """Kwargs for the lazy-branch safe_open call.
++
++    Returns {} when the gate is off (default: unchanged mmap behavior).
++    When enabled, requires safetensors>=0.8.0 (the first release providing
++    safe_open(..., backend="pread")) and never falls back silently.
++    """
++    global _st_pread_logged
++    if not _st_pread_enabled():
++        return {}
++    import safetensors
++    from packaging.version import InvalidVersion, Version
++
++    installed = getattr(safetensors, "__version__", "unknown")
++    try:
++        supported = Version(installed) >= Version("0.8.0")
++    except InvalidVersion:
++        supported = False
++    if not supported:
++        raise RuntimeError(
++            f"{_ST_PREAD_ENV}=1 requires safetensors>=0.8.0 with "
++            'safe_open(..., backend="pread") support, but installed '
++            f"safetensors=={installed} does not provide it. Unset "
++            f"{_ST_PREAD_ENV} to use the default mmap loader."
++        )
++    if not _st_pread_logged:
++        logger.info(
++            '%s enabled: lazy safetensors loader uses backend="pread" '
++            "(experimental non-mmap read path).",
++            _ST_PREAD_ENV,
++        )
++        _st_pread_logged = True
++    return {"backend": "pread"}
++
++
++
+ def safetensors_weights_iterator(
+     hf_weights_files: list[str],
+     use_tqdm_on_load: bool,
+@@ -903,6 +971,10 @@
+         )
+ 
+     leftover_state_dict: dict[str, torch.Tensor] = {}
++    # VLLM_SPARK_ST_PREAD: resolved once per call, before any checkpoint
++    # file is opened, so a misconfigured value or an unsupported
++    # safetensors runtime fails fast (no silent fallback).
++    st_pread_kwargs = _st_pread_safe_open_kwargs()
+     for st_file in tqdm(
+         sorted_files,
+         desc=loading_desc,
+@@ -946,7 +1018,7 @@
+                 )
+             yield from unflattened_state_dict.items()
+         else:
+-            with safe_open(st_file, framework="pt") as f:
++            with safe_open(st_file, framework="pt", **st_pread_kwargs) as f:
+                 for name in f.keys():  # noqa: SIM118
+                     if should_skip_weight(name, local_expert_ids):
+                         continue

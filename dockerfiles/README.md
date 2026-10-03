@@ -19,7 +19,7 @@ dockerfiles/
 | `Dockerfile.v022-d568-fi-aot` | `v022-d568-fi-aot` | `FROM v022-d568` + FlashInfer SM120/SM121 AOT kernel prebake (7 specs, AOT-promoted to skip runtime ninja). Drop-in replacement for `v022-d568`. See [`docs/flashinfer-aot-prebake.md`](../docs/flashinfer-aot-prebake.md). |
 | `Dockerfile.v022-d568-fi-aot-extra` | `v022-d568-fi-aot` | Idempotent addendum on top of `Dockerfile.v022-d568-fi-aot` (re-promotes 2 general FA2/sampling specs). Same output tag — strict superset. |
 | `Dockerfile.v027-ngc2607-dsv4-from-runtime-base` | local derivative tag chosen by caller | `FROM` the immutable DSV4-specific NGC 26.07/vLLM 0.27 frozen build base; validates package/import/dispatch pins without rebuilding the 37.1GB common stack. Use `scripts/build/build-dsv4-v027-from-runtime-base.sh`. |
-| `Dockerfile.qwen38-pr55122-mtp1-c1-candidate` | no tag authorized | `MAIN_MERGE_APPROVED_OPT_IN` reconstruction-only Dockerfile for the opt-in Qwen3.8 PR55122 MTP1 interactive-c1 recipe. Preserves immutable build-time provenance labels and documents COPY closure; it does not reproduce image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
+| `Dockerfile.qwen38-pr55122-mtp1-c1-candidate` | no tag authorized | `MAIN_MERGE_APPROVED_OPT_IN` reconstruction-only Dockerfile for the opt-in Qwen3.8 PR55122 MTP1 interactive-c1 recipe. Preserves immutable build-time provenance labels and documents COPY closure; it does not reproduce image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
 
 Build commands (always build from **repo root** with `.` as context):
 
@@ -76,3 +76,14 @@ docker buildx build -f dockerfiles/legacy/Dockerfile.v022-nccl234  -t vllm-spark
   be coordinated with the full runtime verification procedure.
 - Any change to an active Dockerfile should update this document and `README.md` in the
   same commit.
+
+## Solar incremental provenance
+
+`active/solar-open2/r3/` and `active/solar-open2/r4/` contain exact available incremental
+Dockerfiles, canonical patch copies, and patched Python COPY inputs. Each directory is its
+original build context, with byte hashes/source paths in `PROVENANCE.md`; the eight-file
+SHA256 test checks identity without importing runtime code or building. Historical
+EXPERIMENTAL comments are retained unchanged. The promoted production image remains the
+local ID in the [Solar runbook](../docs/solar-open2-production.md). The r2 parent is local-only;
+these artifacts do not establish full public-base reconstruction or reproduce an image ID.
+No image build, tag, publication or activation accompanies this repository change.

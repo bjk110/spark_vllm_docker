@@ -19,7 +19,7 @@ All commands run from the **repository root** on the indicated node. Replace `<p
 selected filename (without `.env`), resolve `MODEL_PATH` and model weights, network/RDMA settings,
 and the required image identity/availability before launch. See [image prerequisites](../docs/images.md)
 and [architecture/network setup](../docs/architecture.md). For TP2, resolve prerequisites on both nodes.
-Generic snippets apply only to general supported presets whose header documents no required overlay;
+Generic snippets apply only to general or validated configuration references whose header documents no required overlay;
 follow the linked runbook for production, tokenizer-overlay, Step-3.7, and FlashInfer-AOT setup.
 
 ### Generic TP1 launch
@@ -48,8 +48,8 @@ legacy, deep-recovery, historical) are **not** retained in the active preset dir
 family's subsection below for where that provenance actually lives (Git history for DeepSeek-V4,
 local/untracked build-host artifacts referenced by hash for Solar-Open2).
 
-**DeepSeek-V4, Solar-Open2, and Qwen3.8-Flash-Next are independent production baselines**, each
-promoted and rolled back on its own schedule. They are not served simultaneously: all currently
+**DeepSeek-V4 and Solar-Open2 are independently promoted production baselines.**
+Qwen3.8-Flash-Next is production-qualified for manual activation, not promoted/current production. They are not served simultaneously: all currently
 target the same physical serving slot (spark01 head + spark02 worker, port 8000), so only one
 family's containers run at any given moment. Which one is *actually* running right now is **not**
 determined by this index or by either family's production document — check live container/health
@@ -98,23 +98,26 @@ retained in this directory — unlike DeepSeek-V4, this provenance is not recove
 (those files were never committed). They remain as local, untracked, validated-in-place artifacts
 on the build hosts (spark01/spark02) and are referenced by content hash only in
 [`docs/solar-open2-production.md` section 3](../docs/solar-open2-production.md#3-preset-retention-policy-and-status).
-This is a local-only reproducibility limitation for the historical/intermediate development path
-only — both production and rollback presets are tracked in `origin/main`. The rollback preset
+Exact available r3/r4 incremental Dockerfiles and COPY inputs are now repository artifacts
+under `dockerfiles/active/solar-open2/`; the r2 parent, warm caches and launcher orchestration
+remain local-only. This is an incremental reproducibility limitation — both production and rollback presets are tracked in `origin/main`. The rollback preset
 and both `compose/solar-open2/` overlays have latest introducing/consolidating commit `357929a`
 (see `docs/solar-open2-production.md` sections 1-2).
 
-### 1c. Qwen3.8-Flash-Next production presets
+### 1c. Qwen3.8-Flash-Next production-qualified/manual opt-in presets
 
 Qwen3.8-Flash-Next-FP8 has two indexed presets: the existing production-qualified c1/c2 baseline and
 an additional main-merge-approved opt-in MTP1 interactive-c1 profile that is not the production default. Both use
 `MAX_NUM_SEQS=2` and `FULL_DECODE_ONLY` capture sizes `[1,2]`. Manual activation only — not
 wired into any auto-start path; after teardown, reboot the node before the next fresh launch.
+The MTP status label `MAIN_MERGE_APPROVED_OPT_IN` is historical; repository integration
+is complete on main and does not confer runtime promotion.
 Full gate ledger: [`docs/qwen3.8-flash-next-tp2.md`](../docs/qwen3.8-flash-next-tp2.md).
 
 | Preset | Model | Status | Notes | Launch / docs |
 |---|---|---|---|---|
 | [`qwen3.8-flash-next-fp8-tp2-candidate.env`](qwen3.8-flash-next-fp8-tp2-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | **Production-qualified** (manual activation only, not auto-start) | dual-rdma TP2 (mp), production-qualified at c1/c2, `MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`, `MAX_MODEL_LEN=262144`, `GPU_MEMORY_UTILIZATION=0.83`. Requires `compose/qwen3.8-flash-next/docker-compose.candidate.yml` overlay. Reboot before next fresh launch after teardown. `MAX_NUM_SEQS=4` remains BLOCKED (content diverges across identical repeats at c2/c4) and must not be raised. MTP and PLE-offloaded NVFP4 excluded from the default; MTP untested/off. | [Manual activation runbook](../docs/qwen3.8-flash-next-tp2.md) |
-| [`qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env`](qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | dual-rdma TP2 (mp), MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, exact local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; requires `compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml`. MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Commit, push, and main merge are explicitly authorized. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. | [Manual opt-in runbook](../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) |
+| [`qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env`](qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | dual-rdma TP2 (mp), MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, exact local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; requires `compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml`. MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. | [Manual opt-in runbook](../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) |
 
 ## 2. Validated presets (non-production)
 
@@ -123,10 +126,16 @@ Validated, but **not** the current default serving path for any production model
 | Preset | Model / stack | Topology | Status | Use | Launch / docs |
 |---|---|---|---|---|---|
 | [`step37-flash-nvfp4-v023-tp2-latency.env`](step37-flash-nvfp4-v023-tp2-latency.env) | Step-3.7-Flash NVFP4 · v0.23 (EP-off, MARLIN, TRITON_ATTN) | dual-rdma TP=2 | Validated (Step-3.7 NVFP4 path) | Recommended Step-3.7 NVFP4 latency path ([bench](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md)) | [Latency recipe/benchmark](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md) |
+| [`step37-flash-fp8-v023-tp2.env`](step37-flash-fp8-v023-tp2.env) | Step-3.7 FP8 v023 tokenizer overlay; 8192 context, c1 | dual-rdma TP=2 | Validated (non-production) | Bounded validation evidence; no production promotion | [Tokenizer-overlay runbook](../docs/step3.7-tokenizer-overlay.md#validated-non-production-step-37-fp8-baseline-tracked-preset) |
+| [`gemma4-31b-it.env`](gemma4-31b-it.env) | Gemma 4 31B; verified 2026-05-20 | single TP=1 | Validated (non-production) | Bounded validation evidence; no production promotion | [Validation evidence](../docs/model-serving-validation-history.md) · [Generic TP1](#generic-tp1-launch) |
+| [`qwen3.6-35b-a3b.env`](qwen3.6-35b-a3b.env) | Qwen3.6 35B; verified 2026-05-20 | single TP=1 | Validated (non-production) | Bounded validation evidence; no production promotion | [Validation evidence](../docs/model-serving-validation-history.md) · [Generic TP1](#generic-tp1-launch) |
+| [`qwen3.6-35b-a3b-fi-aot-tp2.env`](qwen3.6-35b-a3b-fi-aot-tp2.env) | Qwen3.6 35B FlashInfer-AOT; bounded prebaked specs | dual-rdma TP=2 | Validated (non-production) | Bounded validation evidence; no production promotion | [AOT setup/recipe](../docs/flashinfer-aot-prebake.md) |
+| [`step37-flash-fp8-tp2.env`](step37-flash-fp8-tp2.env) | Step-3.7 FP8 v022; verified 32768 context | dual-rdma TP=2 | Validated (non-production) | Bounded validation evidence; no production promotion | [FP8 serving guide](../docs/step3.7-flash-tp2.md) |
 
 ## 3. General supported presets
 
-Production-usable presets for non-DeepSeek-V4/non-Solar-Open2 models on the stable/forward stacks.
+Supported configuration references on the stable/forward stacks. Entries without recorded
+validation evidence are not production-qualified. Evidence-backed validated rows are listed separately above.
 Image bases: `v021-ngc2603` / `v021-tq` / `v022-d568` / `v022-d568-fi-aot` / step3p7 (see
 [`docs/software-stack.md`](../docs/software-stack.md)).
 
@@ -134,7 +143,6 @@ Image bases: `v021-ngc2603` / `v021-tq` / `v022-d568` / `v022-d568-fi-aot` / ste
 |---|---|---|---|---|---|
 | [`gemma4-26b-a4b.env`](gemma4-26b-a4b.env) | google/gemma-4-26B-A4B-it | BF16 MoE | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
 | [`gemma4-26b-a4b-tq.env`](gemma4-26b-a4b-tq.env) | google/gemma-4-26B-A4B-it | BF16 + TurboQuant KV | single TP1 | v021-tq | [Generic TP1](#generic-tp1-launch) |
-| [`gemma4-31b-it.env`](gemma4-31b-it.env) | google/gemma-4-31B-it | BF16 dense multimodal | single TP1 | v022-d568 | [Generic TP1](#generic-tp1-launch) |
 | [`intel-122b-int4.env`](intel-122b-int4.env) | Intel/Qwen3.5-122B-A10B-int4-AutoRound | INT4 AutoRound (Marlin) | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
 | [`qwen3.5-122b-fp8.env`](qwen3.5-122b-fp8.env) | Qwen/Qwen3.5-122B-A10B-FP8 | FP8 multimodal | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
 | [`qwen3.5-122b-nvfp4.env`](qwen3.5-122b-nvfp4.env) | Qwen/Qwen3.5-122B-A10B | NVFP4 runtime | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
@@ -142,8 +150,6 @@ Image bases: `v021-ngc2603` / `v021-tq` / `v022-d568` / `v022-d568-fi-aot` / ste
 | [`qwen3.5-122b-prismaquant.env`](qwen3.5-122b-prismaquant.env) | rdtand/…PrismaQuant-4.75bit | PrismaQuant 4.76bpp mixed | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
 | [`qwen3.5-397b-int4.env`](qwen3.5-397b-int4.env) | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 AutoRound | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
 | [`qwen3.5-397b-int4-tq.env`](qwen3.5-397b-int4-tq.env) | Intel/Qwen3.5-397B-A17B-int4-AutoRound | INT4 + TurboQuant KV | dual-rdma TP2 | v021-tq | [Generic TP2](#generic-tp2-launch) |
-| [`qwen3.6-35b-a3b.env`](qwen3.6-35b-a3b.env) | Qwen/Qwen3.6-35B-A3B | BF16 hybrid MoE | single TP1 | v022-d568 | [Generic TP1](#generic-tp1-launch) |
-| [`qwen3.6-35b-a3b-fi-aot-tp2.env`](qwen3.6-35b-a3b-fi-aot-tp2.env) | Qwen/Qwen3.6-35B-A3B | BF16 hybrid MoE | dual-rdma TP2 | v022-d568-fi-aot | [AOT setup/recipe](../docs/flashinfer-aot-prebake.md) · [TP2](#generic-tp2-launch) |
 | [`qwen3.6-27b-base-bf16-tp2.env`](qwen3.6-27b-base-bf16-tp2.env) | Qwen/Qwen3.6-27B (base) | BF16 | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
 | [`qwen3.6-27b-prismascout-nvfp4-tp2.env`](qwen3.6-27b-prismascout-nvfp4-tp2.env) | rdtand/Qwen3.6-27B-PrismaSCOUT-NVFP4 | NVFP4 mixed | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
 | [`redhatai-122b-nvfp4.env`](redhatai-122b-nvfp4.env) | RedHatAI/Qwen3.5-122B-A10B-NVFP4 | NVFP4 pre-quantized | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
@@ -152,8 +158,6 @@ Image bases: `v021-ngc2603` / `v021-tq` / `v022-d568` / `v022-d568-fi-aot` / ste
 | [`wangzhang-122b-nvfp4.env`](wangzhang-122b-nvfp4.env) | wangzhang/…abliterated-NVFP4 | NVFP4 text-only | single TP1 | v021-ngc2603 | [Generic TP1](#generic-tp1-launch) |
 | [`wangzhang-122b-abliterix-fp8-tp2.env`](wangzhang-122b-abliterix-fp8-tp2.env) | wangzhang/…abliterix | FP8 W8A8 text-only | dual-rdma TP2 | v021-ngc2603 | [Generic TP2](#generic-tp2-launch) |
 | [`wangzhang-122b-abliterix-nvfp4-tp2.env`](wangzhang-122b-abliterix-nvfp4-tp2.env) | wangzhang/…abliterix | NVFP4 W4A4 text-only | dual-rdma TP2 | v022-d568 | [Generic TP2](#generic-tp2-launch) |
-| [`step37-flash-fp8-v023-tp2.env`](step37-flash-fp8-v023-tp2.env) | stepfun-ai/Step-3.7-Flash-FP8 | FP8 block · v0.23 tokenizer overlay | dual-rdma TP2 | v023-step3p7 | [Tokenizer-overlay runbook](../docs/step3.7-tokenizer-overlay.md#current-main-step-37-fp8-path-tracked-preset) |
-| [`step37-flash-fp8-tp2.env`](step37-flash-fp8-tp2.env) | stepfun-ai/Step-3.7-Flash-FP8 | FP8 block | dual-rdma TP2 | v022-d568…step3p7 | [FP8 serving guide](../docs/step3.7-flash-tp2.md) |
 
 ## 4. Experimental presets
 
@@ -205,12 +209,19 @@ duplicating them here.
 ## Where to store model weights
 
 Keep model weights outside this repository (e.g. `/mnt/data/llm-models/<org>/<model>` or
-`/home/<user>/Documents/Models/<model>`). Point the preset to that location by editing `MODEL_PATH`:
+`/home/<user>/Documents/Models/<model>`). Use a shell override to preserve clean Git state:
 
 ```bash
-sed -i 's|/path/to/model|/mnt/data/llm-models/deepseek-ai/DeepSeek-V4-Flash|' \
-  presets/deepseek-v4-flash-mtp1-production-tp2.env
+MODEL_PATH=/mnt/data/llm-models/google/gemma-4-31B-it \
+  docker compose --env-file presets/gemma4-31b-it.env --profile head config
 ```
+
+Export the same `MODEL_PATH` before a separately authorized launch, or use an ignored
+`.env` / `docker-compose.override.yml` for local settings. Resolve model weights, per-node
+network/RDMA values, image availability and required overlays first. Shell environment values
+win over `--env-file` without changing tracked files. The read-only catalog preflight is
+`python scripts/diag/verify_preset_catalog.py`; it renders configuration with safe placeholders,
+never pulls images or starts containers. `--skip-compose` checks static integrity without Docker.
 
 ## Directory name
 

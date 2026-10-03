@@ -1,7 +1,7 @@
 # Step-3.7 FP8 — non-mutating runtime tokenizer overlay
 
-**Status: EXPERIMENTAL.** Not a production or promoted image. The overlay is
-opt-in and disabled by default.
+**Status: Validated non-production baseline.** Not a production or promoted image. The overlay is
+enabled by the tracked validated preset; the wrapper defaults to disabled outside that preset.
 
 ## Problem statement
 
@@ -199,11 +199,11 @@ hashes, Prometheus patched-source hash `a3addfd9…`, and the tokenizer
 source/overlay label hashes all matched, with no model load. Pull by immutable
 digest (or the immutable tag above), never `latest`.
 
-## Current main Step-3.7 FP8 path (tracked preset)
+## Validated non-production Step-3.7 FP8 baseline (tracked preset)
 
-This configuration is the **current validated Step-3.7 FP8 baseline** — the main
-Step-3.7 *FP8* serving path on vLLM 0.23. It is **not** a global production
-default for all models, and it does **not** supersede the Step-3.7 NVFP4 path
+This configuration is the **validated non-production Step-3.7 FP8 baseline** — a bounded
+Step-3.7 *FP8* reference on vLLM 0.23. It is **not** production or promoted, and it
+does **not** supersede the Step-3.7 NVFP4 path
 (NVFP4 remains a separate, unchanged preset; FP8 is not claimed to beat NVFP4 on
 memory efficiency, long context, throughput, production suitability, or
 correctness outside the validated test scope below).
@@ -219,7 +219,7 @@ correctness outside the validated test scope below).
 | Context | 8192 (validated; larger is unvalidated) |
 | Concurrency | 1 (validated; higher is unvalidated) |
 | Tokenizer overlay | enabled (required) |
-| Status | current validated baseline |
+| Status | Validated non-production baseline; not promoted |
 
 The NVFP4 preset (`presets/step37-flash-nvfp4-v023-tp2-latency.env`) and the
 historical v0.22 FP8 preset (`presets/step37-flash-fp8-tp2.env`) are unchanged.
