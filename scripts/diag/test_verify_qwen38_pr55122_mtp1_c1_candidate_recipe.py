@@ -300,6 +300,7 @@ class TestDocMutations(MutationCase):
         claims = (
             "PR55122 profile was PUSHED.",
             "PR55122 profile RELEASED.",
+            "PR55122 is production promoted and approved for deployment.",
             "PR55122 is now the production default.",
             "PR55122 is active on the production service.",
             "PR55122 service activation is authorized.",
@@ -354,7 +355,7 @@ class TestDocMutations(MutationCase):
                 self.assertTrue(any("contradictory positive claim" in f for f in results.failures))
 
     def test_appended_negative_scope_disclaimer_is_allowed(self):
-        text = verifier.DOC_PATH.read_text() + "\nNot PRODUCTION-PROMOTED; c2/c8 not authorized or qualified; prefix-cache ON is not qualified or authorized.\n"
+        text = verifier.DOC_PATH.read_text() + "\nNot PRODUCTION-PROMOTED; PR55122 is not approved for deployment; c2/c8 not authorized or qualified; prefix-cache ON is not qualified or authorized.\n"
         self.patch_path("DOC_PATH", text, "candidate.md")
         results = verifier.Results(); verifier.check_doc(results)
         self.assertEqual([], results.failures)
@@ -415,6 +416,7 @@ class TestPromotionIndexes(MutationCase):
         claims = (
             "PR55122 profile was PUSHED.",
             "PR55122 profile RELEASED.",
+            "PR55122 is production promoted and approved for deployment.",
             "PR55122 is now the production default.",
             "PR55122 is active on the production service.",
             "PR55122 service activation is authorized.",

@@ -3,6 +3,7 @@
 import argparse
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from urllib.parse import unquote
@@ -57,9 +58,11 @@ def verify(root, skip_compose=False, expected_count=42):
         if rel not in tracked or not dest.is_file(): fail(f'unresolved tracked README link: {target}')
         elif anchor and anchor not in anchors(dest.read_text()): fail(f'unresolved README anchor: {target}')
     available = False
+    trusted_path = os.environ.get('PATH', os.defpath)
+    docker = shutil.which('docker', path=trusted_path)
     if not skip_compose:
         try:
-            available = subprocess.run(['docker', 'compose', 'version'], capture_output=True,
+            available = bool(docker) and subprocess.run([docker, 'compose', 'version'], capture_output=True,
                                        timeout=20).returncode == 0
         except (OSError, subprocess.TimeoutExpired): pass
         if not available: fail('docker compose unavailable; explicitly use --skip-compose for static checks')
@@ -110,13 +113,14 @@ def verify(root, skip_compose=False, expected_count=42):
             if re.search(r'(?:^|_)(?:TOKEN|PASSWORD|SECRET|API_KEY|ACCESS_KEY)(?:_|$)', key) and value and not value.startswith(('$', '<', '[', 'placeholder', '\"\"', "''")):
                 fail(f'{path}: obvious credential assignment ({key})')
         if available:
-            # Whitelist process necessities; do not inherit preset/Compose overrides or credentials.
-            render_env = {key: os.environ[key] for key in ('PATH', 'HOME', 'DOCKER_CONFIG') if key in os.environ}
-            render_env.update(env)
+            # Presets are untrusted PR input. Compose reads values from --env-file;
+            # never copy preset process-control variables into this subprocess.
+            render_env = {key: os.environ[key] for key in ('HOME', 'DOCKER_CONFIG') if key in os.environ}
+            render_env['PATH'] = trusted_path
             render_env.update(MODEL_PATH='/tmp/preset-integrity-model', HEAD_ROCE_IP='192.0.2.1',
                               WORKER_ROCE_IP='192.0.2.2', ROCE_IF_NAME='eth0', IB_HCA_NAME='mlx5_0',
                               B12X_CACHE_DIR='/tmp/preset-integrity-cache', COMPOSE_PROJECT_NAME='preset-integrity')
-            cmd = ['docker', 'compose', '--env-file', path]
+            cmd = [docker, 'compose', '--env-file', path]
             for file in ['docker-compose.yml', *overlays]: cmd.extend(['-f', file])
             cmd.extend(['--profile', 'head', '--profile', 'worker', 'config', '--quiet'])
             try:

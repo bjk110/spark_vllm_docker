@@ -235,6 +235,7 @@ def check_overlay_structure(r):
 def contradictory_claims(text):
     patterns = (
         r"\b(?:PR55122|MTP1)\b[^\n]{0,80}\b(?:RELEASED|PUBLISHED|PUSHED)\b",
+        r"\b(?:PR55122|MTP1)\b[^\n]{0,120}\b(?:(?<!not )(?<!non-)production[- ]promoted|(?<!not )approved for (?:production )?deployment)\b",
         r"\bPR55122\b[^\n]{0,80}\b(?:is now the production default|is active on the production service|service activation is authorized|MTP1 c8 is supported)\b",
         r"\bMTP1\s+c[28](?:/c8)?\s+(?:is\s+)?(?:authorized|qualified|supported)\b",
     )
@@ -321,6 +322,7 @@ def check_doc(r):
     else: r.fail(f"doc exact status line location mismatch: line 3 is {lines[2] if len(lines)>2 else None!r}, required {expected_status!r}")
     positive_patterns=(
         r"(?<!not )(?<!non-)\bPRODUCTION-PROMOTED\b",
+        r"\b(?:PR55122|MTP1)\b[^\n]{0,120}\b(?<!not )approved for (?:production )?deployment\b",
         r"\bproduction promotion\s*:\s*(?:PASS|APPROVED)\b",
         r"\bc2/c8\s+(?:authorized|qualified)\b",
         r"\bprefix-cache\s+ON\s+(?:qualified|authorized)\b",

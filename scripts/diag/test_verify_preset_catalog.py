@@ -38,6 +38,10 @@ DISTRIBUTED_BACKEND=ray
 def check(repo):
     return catalog.verify(repo, skip_compose=True, expected_count=1)[0]
 
+@pytest.fixture
+def docker_path(monkeypatch):
+    monkeypatch.setattr(catalog.shutil, 'which', lambda *args, **kwargs: '/usr/bin/docker')
+
 def test_pass_and_ignore_untracked(repo):
     (repo / 'presets/untracked.env').write_text('bad')
     assert check(repo) == []
@@ -73,11 +77,11 @@ def test_catalog_mutations(repo, mutation, needle):
     path.write_text(text)
     assert any(needle in error for error in check(repo))
 
-def test_compose_render_is_config_only_and_isolated(repo, monkeypatch):
+def test_compose_render_is_config_only_and_isolated(repo, monkeypatch, docker_path):
     calls = []
     real_run = catalog.subprocess.run
     def run(args, **kwargs):
-        if args[:2] == ['docker', 'compose']:
+        if args[0].endswith('docker') and args[1:2] == ['compose']:
             calls.append((args, kwargs))
             return subprocess.CompletedProcess(args, 0, '{}', '')
         return real_run(args, **kwargs)
@@ -88,8 +92,44 @@ def test_compose_render_is_config_only_and_isolated(repo, monkeypatch):
     assert rendered == 1
     args, kwargs = calls[-1]
     assert args[-2:] == ['config', '--quiet']
-    assert kwargs['env']['VLLM_IMAGE'] == 'example:tag'
+    assert 'VLLM_IMAGE' not in kwargs['env']
     assert kwargs['env']['MODEL_PATH'].startswith('/tmp/')
+
+def test_preset_cannot_control_docker_executable_or_process_environment(repo, monkeypatch, docker_path):
+    attacker = repo / 'attacker-bin'
+    attacker.mkdir()
+    path = repo / 'presets/a.env'
+    path.write_text(path.read_text() + '''PATH={attacker}
+HOME=/tmp/attacker-home
+DOCKER_CONFIG=/tmp/attacker-docker-config
+LD_PRELOAD=/tmp/attacker.so
+PYTHONPATH=/tmp/attacker-python
+DOCKER_HOST=tcp://attacker.invalid:2375
+DOCKER_CONTEXT=attacker
+COMPOSE_FILE=/tmp/attacker-compose.yml
+COMPOSE_PROFILES=attacker
+'''.format(attacker=attacker))
+    calls = []
+    real_run = catalog.subprocess.run
+    def run(args, **kwargs):
+        if args[0].endswith('docker'):
+            calls.append((args, kwargs))
+            return subprocess.CompletedProcess(args, 0, '{}', '')
+        return real_run(args, **kwargs)
+    monkeypatch.setattr(catalog.subprocess, 'run', run)
+    monkeypatch.setenv('HOME', '/home/trusted')
+    monkeypatch.setenv('DOCKER_CONFIG', '/home/trusted/.docker')
+    errors, rendered = catalog.verify(repo, expected_count=1)
+    assert errors == []
+    assert rendered == 1
+    args, kwargs = calls[-1]
+    assert Path(args[0]).is_absolute()
+    assert kwargs['env']['HOME'] == '/home/trusted'
+    assert kwargs['env']['DOCKER_CONFIG'] == '/home/trusted/.docker'
+    for key in ('LD_PRELOAD', 'PYTHONPATH', 'DOCKER_HOST', 'DOCKER_CONTEXT',
+                'COMPOSE_FILE', 'COMPOSE_PROFILES'):
+        assert key not in kwargs['env']
+    assert kwargs['env']['PATH'] != str(attacker)
 
 def test_token_counts_are_not_credentials(repo):
     path = repo / 'presets/a.env'
@@ -125,7 +165,7 @@ def test_model_specific_entrypoint_cannot_use_generic_launch(repo):
     path.write_text(path.read_text() + 'ENTRYPOINT_FILE=./wrapper.sh\n')
     assert any('generic' in error for error in check(repo))
 
-def test_production_overlay_is_declared_and_rendered(repo, monkeypatch):
+def test_production_overlay_is_declared_and_rendered(repo, monkeypatch, docker_path):
     (repo / 'compose').mkdir()
     (repo / 'compose/a.yml').write_text('services: {}\n')
     subprocess.run(['git', '-C', str(repo), 'add', 'compose/a.yml'], check=True)
@@ -138,7 +178,7 @@ def test_production_overlay_is_declared_and_rendered(repo, monkeypatch):
     calls = []
     real_run = catalog.subprocess.run
     def run(args, **kwargs):
-        if args[:2] == ['docker', 'compose']:
+        if args[0].endswith('docker') and args[1:2] == ['compose']:
             calls.append(args)
             return subprocess.CompletedProcess(args, 0, '', '')
         return real_run(args, **kwargs)
