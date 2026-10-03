@@ -10,7 +10,7 @@ production-operable — see section 3 for the retention policy.
 
 - **Preset:** `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` (tracked since
   commit `d966925fa4c6e5b270c37047b8c8ea000a57c9a9`; comment-only corrections from the 2026-08-09
-  hygiene pass are pending in the working tree, not yet committed — zero functional/runtime diff,
+  hygiene pass were subsequently committed — zero functional/runtime diff,
   see section 7).
 - **Status:** Promoted to production 2026-08-09 (spark01 head + spark02 worker, port 8000).
 - **Model:** `nota-ai/Solar-Open2-250B-Nota-NVFP4`, pinned HF revision
@@ -32,7 +32,7 @@ production-operable — see section 3 for the retention policy.
   10.10.10.2 (worker) over `enp1s0f0np0`/`rocep1s0f0`.
 - **Policy adapter:** port 8011, 4 served aliases (`solar-open2-250b`,
   `solar-open2-250b-bounded-low`, `solar-open2-250b-exact`, `solar-open2-250b-evidence-bound`).
-- **Compose overlays (working-tree-ready, not yet staged/committed):** `docker-compose.yml`
+- **Compose overlays (tracked in `origin/main`, consolidated in commit `357929a`):** `docker-compose.yml`
   (already tracked) + `compose/solar-open2/docker-compose.r4-production.yml` +
   `compose/solar-open2/docker-compose.b12x-cache.yml`. The two Solar-specific overlays live under
   `compose/solar-open2/` as of the 2026-08-11 repository hygiene pass, which consolidated the four
@@ -55,8 +55,8 @@ production-operable — see section 3 for the retention policy.
 
 ## 2. Production rollback — v0.22.1 KV4G matched baseline
 
-- **Preset:** `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` (working-tree-ready,
-  not yet staged/committed — hash-verified against the validated rollback evidence during the
+- **Preset:** `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` (tracked in `origin/main`, latest
+  introducing/consolidating commit `357929a` — hash-verified against the validated rollback evidence during the
   2026-08-09 hygiene pass, sha256
   `9ff168273617f749e289934a138aeef46fae406cb592f4c7cc7fef46d0977b33`, exact match). Contents are
   immutable and must not be modified.
@@ -86,9 +86,8 @@ Two Solar-Open2 presets are the only production-operable presets for this family
 - `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` — active production. Tracked
   since commit `d966925fa4c6e5b270c37047b8c8ea000a57c9a9`.
 - `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` — production rollback.
-  Working-tree-ready and hash-verified as of the 2026-08-09 hygiene pass, but not yet staged or
-  committed — see the "recommended commit boundary" in that pass's report for the follow-up
-  action.
+  Tracked in `origin/main`, latest introducing/consolidating commit `357929a`; hash-verified
+  during the 2026-08-09 hygiene pass, which originally left it uncommitted.
 
 This mirrors the DeepSeek-V4 retention policy exactly (see `presets/README.md`): only the active
 production preset and its authoritative rollback are retained as production-operable presets, with
@@ -111,8 +110,8 @@ None of the presets in this table exists in the Git repository. If exact byte-fo
 reproduction of one of these intermediate steps is ever required, it must be sourced from the
 original build hosts (spark01/spark02, `presets/` directory, untracked) — not from `git log` or
 `origin/main`. This is a **local-only reproducibility limitation** for the historical/intermediate
-development path only — the production preset is tracked and the rollback preset is
-working-tree-ready and hash-verified (see section 1/2 above), neither depends on this table.
+development path only — both production and rollback presets are tracked in `origin/main`,
+and the rollback preset is hash-verified (see section 1/2 above), neither depends on this table.
 
 ## 4. Production status matrix
 
@@ -136,8 +135,8 @@ Both presets launch through the established production launcher
 /home/bjk110/docker-build/c2-instr/launch-at.sh worker <evidence-dir>
 ```
 
-This resolves to (equivalent, direct form, using only repository files — one tracked, two
-working-tree-ready pending a future commit — plus one external environment value; see the
+This resolves to (equivalent, direct form, using tracked repository files
+plus one external environment value; see the
 reproducibility-limitation note below):
 
 ```bash
@@ -158,8 +157,8 @@ serving.
 
 The production preset is tracked (commit `d966925`). The two Solar-specific Compose files (under
 `compose/solar-open2/` as of the 2026-08-11 hygiene pass) and the rollback preset are
-working-tree-ready and hash-verified but not yet staged or committed; once committed, all three
-plus the production preset will be reproducible from a fresh clone. The **launcher orchestration
+tracked in `origin/main` (latest introducing/consolidating commit `357929a`); all three
+plus the production preset are available from a fresh clone. The **launcher orchestration
 layer** (`launch-at.sh`, `fastguard3.py`, the
 kernel-event watcher, and the `B12X_CACHE_DIR` / `CW_EV_PATH` cache-warm wiring) is **not** tracked,
 is **not** working-tree-ready in this repository (it lives entirely outside the repository, under
@@ -181,7 +180,7 @@ than an oversight:
 - The overlay also mounts `/home/bjk110/docker-build/c2-obs` (an observability/telemetry sink) —
   also local-only, also not required for correctness, only for diagnostics.
 
-**Consequence:** once the working-tree-ready assets above are committed, a fresh clone of this
+**Consequence:** a fresh clone of this
 repository will be able to reproduce the exact configuration (image reference, both presets, all
 Compose overlays) but will not be able to reproduce a *warm-cache* launch without also
 recreating (or accepting a cold, slower first start from) the `B12X_CACHE_DIR` target directory
@@ -313,7 +312,7 @@ production status and would otherwise contradict this document.
   `SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_PROMOTED`, then pushed to `origin/main`
   (`SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_PROMOTION_PUSHED`). No image rebuild, no model change, zero
   functional difference between the promoted production preset and the validated active-test preset.
-- **Repository hygiene and reproducibility pass (2026-08-09)** — verified and left
+- **Repository hygiene and reproducibility pass (2026-08-09)** — originally verified and left
   working-tree-ready (not staged, not committed) the rollback preset, four Solar-specific Compose
   overlays, and the four Solar patch-provenance files (`patches/solar/`); made comment-only
   corrections to the production preset (zero functional diff); corrected this document's
@@ -321,7 +320,9 @@ production status and would otherwise contradict this document.
   section 5); updated `presets/README.md`, root `README.md`, `docs/README.md`, `docs/images.md`,
   `docs/software-stack.md`, `PATCH_STATUS.md`, and `CHANGELOG.md` for consistency. No runtime
   change; no image rebuild; no additional validation performed; nothing staged, committed, or
-  pushed — see that pass's report for the recommended commit boundary.
+  pushed during that pass. Commit `282e656` later tracked the four `patches/solar/` files
+  and the hygiene corrections; the rollback preset and current Compose overlays are tracked in
+  `origin/main`, with latest introducing/consolidating commit `357929a`.
 - **Repository hygiene pass — Compose consolidation (2026-08-11)** — relocated the four root-level
   Solar-specific Compose overlays into `compose/solar-open2/`, consolidating the three
   correctness/runtime-required overlays (health-check tolerance, ST_PREAD, B12X shared-workspace —
@@ -332,7 +333,9 @@ production status and would otherwise contradict this document.
   the move. Also removed `.env.unholy-fusion` and `compose/docker-compose.unholy.yml` from the
   active tree (historical/experimental, per the existing README classification; recoverable from
   Git history) and updated all affected documentation. No runtime change; no image rebuild; no
-  containers started, stopped, or restarted; nothing staged, committed, or pushed.
+  containers started, stopped, or restarted; nothing staged, committed, or pushed during the
+  pass itself. The consolidated overlays and rollback preset were subsequently committed in
+  `357929a` and are tracked in `origin/main`.
 - Earlier validation arcs (r2/r3/r4 development, MI/AC/FIA-C multi-instance benchmarking, b12x
   shared-workspace, ST_PREAD) are recorded by hash in section 3; their original detailed local
   documents (`docs/solar-open2-st-pread.md`, `docs/solar-open2-b12x-shared-workspace.md`) remain

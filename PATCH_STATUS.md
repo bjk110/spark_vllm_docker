@@ -112,7 +112,7 @@ Kept in `patches/` for archeology.
 |---|---|
 | `flashinfer_cache.patch` | Optional patch applied to the FlashInfer source tree during the FlashInfer wheel build (Stage 1 of `Dockerfile.gemma4`). Adds an offline cubin checksum check that skips re-download when the cubin already exists. Non-fatal — the build silently skips it if it does not apply. |
 
-## Solar-Open2 r4 BF16 production patches (`patches/solar/`, not yet tracked)
+## Solar-Open2 r4 BF16 production patches (`patches/solar/`, tracked in `origin/main`)
 
 These four patches are the source-level provenance for the three named production gates in the
 promoted Solar-Open2 r4 BF16 image
@@ -120,8 +120,8 @@ promoted Solar-Open2 r4 BF16 image
 `sha256:ecb7bfe3978a5241c5c304d52ce91e061e22b750178d21a4ef7788a08e86e774`). They exist locally at
 `patches/solar/` on the build hosts (spark01/spark02), following the repository's established
 per-vendor `patches/<vendor>/` convention (same pattern as `patches/dsv4/`, `patches/sm121/`,
-`patches/qwen/`), but are **not yet added to Git** as of this hygiene pass — they are
-working-tree-ready, hash-verified, and staged for a future tracking commit, not fabricated: content
+`patches/qwen/`), and are **tracked in `origin/main`**, introduced in commit `282e656`. The original
+hygiene pass left them uncommitted but hash-verified; the later commit added all four files to Git. Content
 was read directly from the build hosts and matched to the exact gate names cited throughout the
 production fast-track and promotion evidence.
 
@@ -135,8 +135,8 @@ production fast-track and promotion evidence.
 **Build-time provenance**: the r4 Dockerfile
 (`dockerfiles/active/Dockerfile.solar-open2-nvfp4-v0251-rawg1-pread-b12xsw-r4-exp`, local/untracked)
 applies these patches as `COPY` + in-image patch steps layered `r2 -> r3 (raw-g1 + ST_PREAD) -> r4
-(+ B12X shared-workspace)`. The Dockerfile itself, like the patches, is **not tracked** as of this
-pass — it is real, exact build source for the production image (not merely a claim), but its
+(+ B12X shared-workspace)`. The Dockerfile itself remains **not tracked**, while the patches are tracked. It is real, exact
+build source for the production image (not merely a claim), but its
 promotion to tracked status was out of scope for this hygiene pass (image reproducibility from
 source was not requested and was not verified against a fresh rebuild, which this pass explicitly
 does not perform). If the implementation for any of the three gates above is ever needed and cannot

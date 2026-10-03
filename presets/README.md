@@ -77,8 +77,9 @@ retained in this directory — unlike DeepSeek-V4, this provenance is not recove
 on the build hosts (spark01/spark02) and are referenced by content hash only in
 [`docs/solar-open2-production.md` section 3](../docs/solar-open2-production.md#3-preset-retention-policy-and-status).
 This is a local-only reproducibility limitation for the historical/intermediate development path
-only — the production preset is tracked and the rollback preset is working-tree-ready and
-hash-verified (not yet staged/committed; see `docs/solar-open2-production.md` sections 1-2).
+only — both production and rollback presets are tracked in `origin/main`. The rollback preset
+and both `compose/solar-open2/` overlays have latest introducing/consolidating commit `357929a`
+(see `docs/solar-open2-production.md` sections 1-2).
 
 ### 1c. Qwen3.8-Flash-Next production presets
 
