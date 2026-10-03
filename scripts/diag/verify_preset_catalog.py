@@ -58,8 +58,12 @@ def verify(root, skip_compose=False, expected_count=42):
         if rel not in tracked or not dest.is_file(): fail(f'unresolved tracked README link: {target}')
         elif anchor and anchor not in anchors(dest.read_text()): fail(f'unresolved README anchor: {target}')
     available = False
-    trusted_path = os.environ.get('PATH', os.defpath)
-    docker = shutil.which('docker', path=trusted_path)
+    ambient_path = os.environ.get('PATH', os.defpath)
+    absolute_entries = [entry for entry in ambient_path.split(os.pathsep)
+                        if entry and Path(entry).is_absolute()]
+    trusted_path = os.pathsep.join(absolute_entries) or os.defpath
+    candidate = shutil.which('docker', path=trusted_path)
+    docker = str(Path(candidate).resolve()) if candidate and Path(candidate).is_absolute() else None
     if not skip_compose:
         try:
             available = bool(docker) and subprocess.run([docker, 'compose', 'version'], capture_output=True,

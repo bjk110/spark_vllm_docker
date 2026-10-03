@@ -131,6 +131,37 @@ COMPOSE_PROFILES=attacker
         assert key not in kwargs['env']
     assert kwargs['env']['PATH'] != str(attacker)
 
+def test_relative_ambient_path_cannot_select_repository_docker(repo, monkeypatch):
+    git_executable = catalog.shutil.which('git')
+    assert git_executable and Path(git_executable).is_absolute()
+    attacker = repo / 'attacker-bin'
+    attacker.mkdir()
+    fake = attacker / 'docker'
+    fake.write_text('#!/bin/sh\nexit 0\n')
+    fake.chmod(0o755)
+    trusted = repo / 'trusted-bin'
+    trusted.mkdir()
+    trusted_docker = trusted / 'docker'
+    trusted_docker.write_text('#!/bin/sh\nexit 0\n')
+    trusted_docker.chmod(0o755)
+    monkeypatch.setattr(catalog.os, 'defpath', str(trusted))
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv('PATH', 'attacker-bin')
+    calls = []
+    real_run = catalog.subprocess.run
+    def run(args, **kwargs):
+        if args[0] == 'git':
+            return real_run([git_executable, *args[1:]], **kwargs)
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, '{}', '')
+    monkeypatch.setattr(catalog.subprocess, 'run', run)
+    errors, rendered = catalog.verify(repo, expected_count=1)
+    assert errors == []
+    assert rendered == 1
+    assert calls
+    assert all(Path(args[0]).is_absolute() for args in calls)
+    assert all(Path(args[0]).resolve() != fake.resolve() for args in calls)
+
 def test_token_counts_are_not_credentials(repo):
     path = repo / 'presets/a.env'
     path.write_text(path.read_text() + 'MAX_NUM_BATCHED_TOKENS=8192\n')

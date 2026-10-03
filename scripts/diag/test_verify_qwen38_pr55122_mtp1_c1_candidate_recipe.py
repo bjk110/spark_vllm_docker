@@ -355,10 +355,23 @@ class TestDocMutations(MutationCase):
                 self.assertTrue(any("contradictory positive claim" in f for f in results.failures))
 
     def test_appended_negative_scope_disclaimer_is_allowed(self):
-        text = verifier.DOC_PATH.read_text() + "\nNot PRODUCTION-PROMOTED; PR55122 is not approved for deployment; c2/c8 not authorized or qualified; prefix-cache ON is not qualified or authorized.\n"
+        text = verifier.DOC_PATH.read_text() + "\nNot PRODUCTION-PROMOTED; PR55122 is not approved for deployment; PR55122 has not been production promoted; c2/c8 not authorized or qualified; prefix-cache ON is not qualified or authorized.\n"
         self.patch_path("DOC_PATH", text, "candidate.md")
         results = verifier.Results(); verifier.check_doc(results)
         self.assertEqual([], results.failures)
+
+    def test_each_bounded_negative_promotion_claim_is_allowed(self):
+        original = verifier.DOC_PATH.read_text()
+        claims = (
+            "PR55122 is not approved for deployment.",
+            "PR55122 has not been production promoted.",
+            "PR55122 is not production-promoted.",
+        )
+        for claim in claims:
+            with self.subTest(claim=claim):
+                self.patch_path("DOC_PATH", original + f"\n{claim}\n", "candidate.md")
+                results = verifier.Results(); verifier.check_doc(results)
+                self.assertEqual([], results.failures)
 
 class TestPromotionIndexes(MutationCase):
     def _patch_indexes(self, mutate=None):
