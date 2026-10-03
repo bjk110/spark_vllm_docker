@@ -1,5 +1,7 @@
 """Byte identity of the available Solar incremental build evidence (no imports/builds)."""
 import hashlib
+import json
+import re
 from pathlib import Path
 import pytest
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,3 +17,19 @@ ROOT = Path(__file__).resolve().parents[2]
 ])
 def test_incremental_build_bytes(path, digest):
     assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest
+
+def test_archived_source_paths_are_covered_by_recipe_evidence_ledger():
+    manifest = json.loads((ROOT / 'benchmarks/evidence/manifest.json').read_text())
+    archive_id = manifest['archive']['archive_id']
+    ledger = {
+        line.split('  ', 1)[1]
+        for line in (ROOT / manifest['archive']['manifest']).read_text().splitlines()
+    }
+    sources = []
+    for rel in ('dockerfiles/active/solar-open2/r3/PROVENANCE.md',
+                'dockerfiles/active/solar-open2/r4/PROVENANCE.md'):
+        text = (ROOT / rel).read_text()
+        sources.extend(re.findall(r'archive:([^/]+)/([^`|]+)', text))
+    assert sources
+    assert all(source_archive_id == archive_id for source_archive_id, _ in sources)
+    assert all(source_path in ledger for _, source_path in sources)

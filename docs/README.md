@@ -102,6 +102,7 @@ Benchmark documents index existing results only; they are not production-configu
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
+| [Recipe evidence catalog](../benchmarks/evidence/README.md) | Canonical evidence map for the 14 production/rollback/production-qualified and validated non-production presets | `Evidence authority` | Find retained gate summaries, explicit limits, immutable hashes, and the external raw-archive ledger |
 | [benchmarks/bt-matrix-step37-nvfp4-v023.md](benchmarks/bt-matrix-step37-nvfp4-v023.md) | Step-3.7-NVFP4 v0.23 `MAX_NUM_BATCHED_TOKENS` matrix benchmark | `Benchmark` | bt-matrix reference for the Step-3.7 NVFP4 path |
 | [benchmarks/step37-v022-long-context-validation.md](benchmarks/step37-v022-long-context-validation.md) | Step-3.7-NVFP4 v0.22 long-context validation (to 245009 tokens) | `Benchmark` (experimental) | Long-context envelope evidence |
 

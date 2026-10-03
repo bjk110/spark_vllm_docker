@@ -11,8 +11,11 @@ on:
       - 'dockerfiles/**'
       - 'patches/**'
       - 'entrypoints/**'
+      - 'benchmarks/evidence/**'
       - 'scripts/diag/verify_preset_catalog.py'
       - 'scripts/diag/test_verify_preset_catalog.py'
+      - 'scripts/diag/verify_recipe_evidence.py'
+      - 'scripts/diag/test_verify_recipe_evidence.py'
       - 'scripts/diag/test_solar_incremental_provenance.py'
       - 'scripts/diag/*qwen38*'
       - '.github/workflows/preset-integrity.yml'
@@ -28,8 +31,11 @@ on:
       - 'dockerfiles/**'
       - 'patches/**'
       - 'entrypoints/**'
+      - 'benchmarks/evidence/**'
       - 'scripts/diag/verify_preset_catalog.py'
       - 'scripts/diag/test_verify_preset_catalog.py'
+      - 'scripts/diag/verify_recipe_evidence.py'
+      - 'scripts/diag/test_verify_recipe_evidence.py'
       - 'scripts/diag/test_solar_incremental_provenance.py'
       - 'scripts/diag/*qwen38*'
       - '.github/workflows/preset-integrity.yml'
@@ -48,6 +54,7 @@ jobs:
       - name: Focused tests and mutations
         run: >-
           python -m pytest -q scripts/diag/test_verify_preset_catalog.py
+          scripts/diag/test_verify_recipe_evidence.py
           scripts/diag/test_solar_incremental_provenance.py
           scripts/diag/test_verify_qwen38_pr55122_mtp1_c1_candidate_recipe.py
       - name: Static integrity and Compose rendering (no GPU/build/deploy)
@@ -55,5 +62,6 @@ jobs:
           QWEN38_PR55122_REQUIRE_LOCAL_IMAGE_ID: '0'
         run: |
           python scripts/diag/verify_preset_catalog.py
+          python scripts/diag/verify_recipe_evidence.py
           python scripts/diag/verify_qwen38_flash_next_recipe.py
           python scripts/diag/verify_qwen38_pr55122_mtp1_c1_candidate_recipe.py

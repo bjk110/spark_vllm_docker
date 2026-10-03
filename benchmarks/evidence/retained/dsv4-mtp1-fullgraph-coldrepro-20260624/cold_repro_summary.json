@@ -1,0 +1,19 @@
+{
+  "phase": "r4",
+  "classification": "MTP1_FULLGRAPH_COLD_REPRO_PASS",
+  "stop_reason": "duration_complete",
+  "duration_s": 3606.1,
+  "duration_min": 60.1,
+  "attempted": 507,
+  "successful": 507,
+  "cycles": 26,
+  "min_mem_avail": 31.7,
+  "max_swap_used": 2.8,
+  "fallback_total": 0,
+  "recapture_total": 0,
+  "reject_cycles": 25,
+  "global_drafts": 20555.0,
+  "global_draft_tokens": 20555.0,
+  "global_accepted": 17811.0,
+  "global_acceptance": 0.8665
+}

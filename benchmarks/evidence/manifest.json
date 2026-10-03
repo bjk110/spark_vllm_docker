@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "scope": "catalog-sections-1-and-2",
+  "recipe_count": 14,
+  "recipes": [
+    {
+      "preset": "presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env",
+      "status_class": "production",
+      "evidence": [
+        "docs/deepseek-v4-production.md",
+        "docs/deepseek-v4-v027-b43s-promotion-candidate.md"
+      ],
+      "known_limits": [
+        "MAX_NUM_SEQS=1 is the automatic production default; 256K coverage and startup prewarm constraints remain authoritative in the runbook."
+      ]
+    },
+    {
+      "preset": "presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env",
+      "status_class": "production-qualified",
+      "evidence": [
+        "docs/deepseek-v4-production.md",
+        "docs/deepseek-v4-v027-b43s-promotion-candidate.md"
+      ],
+      "known_limits": [
+        "Attended-use optional profile only; MAX_NUM_SEQS=4 global-topk is not wired into automatic startup prewarm."
+      ]
+    },
+    {
+      "preset": "presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "status_class": "rollback",
+      "evidence": [
+        "docs/deepseek-v4-production.md"
+      ],
+      "known_limits": [
+        "Primary rollback is bounded to 64K; LC131 and unrestricted 135168 operation are not approved."
+      ]
+    },
+    {
+      "preset": "presets/deepseek-v4-flash-mtp1-production-tp2.env",
+      "status_class": "rollback",
+      "evidence": [
+        "docs/deepseek-v4-production.md",
+        "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-coldrepro-20260624/cold_repro_summary.json",
+        "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longsoak-20260623-133120/soak_out/soak_summary.json",
+        "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx16k-20260624/stage_summary.json",
+        "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx32k-20260624-lc1/stage_summary.json",
+        "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx64k-20260624-lc2/stage_summary.json"
+      ],
+      "known_limits": [
+        "Legacy second-tier rollback; retained cold/soak and staged long-context evidence does not authorize repeated large-context production operation."
+      ]
+    },
+    {
+      "preset": "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "status_class": "production",
+      "evidence": [
+        "docs/solar-open2-production.md",
+        "dockerfiles/active/solar-open2/r4/PROVENANCE.md",
+        "benchmarks/evidence/retained/solar-open2-v0251-b12x-cold-warm-20260726T013344Z/report.md",
+        "benchmarks/evidence/retained/solar-open2-v0251-b12xsw-r4-20260726T053457Z/report.md",
+        "benchmarks/evidence/retained/solar-open2-v0251-pread-complete-20260725T225149Z/report.md",
+        "benchmarks/evidence/retained/solar-open2-v0251-pread-r3-build-20260726T002411Z/report.md",
+        "benchmarks/evidence/retained/solar-open2-v0251-promotion-readiness-20260727T065646Z/01_provenance/provenance.md",
+        "benchmarks/evidence/retained/solar-open2-v0251-promotion-readiness-20260727T065646Z/09_final/report.md",
+        "benchmarks/evidence/retained/solar-open2-v0251-r4-acceptance-20260726T121058Z/report.md",
+        "benchmarks/evidence/retained/solar-open2-v0251-multi-instance-lowconc-20260727T004456Z/09_final/report.md"
+      ],
+      "known_limits": [
+        "Local image identity and local cache/launcher prerequisites remain environment-specific; retained July evidence predates the authoritative August six-gate promotion recorded in the runbook."
+      ]
+    },
+    {
+      "preset": "presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env",
+      "status_class": "rollback",
+      "evidence": [
+        "docs/solar-open2-production.md",
+        "benchmarks/evidence/retained/solar-open2-nvfp4-fullbench-20260724-213546/summary.md",
+        "benchmarks/evidence/retained/solar-open2-v0251-r4-acceptance-20260726T121058Z/report.md"
+      ],
+      "known_limits": [
+        "Authoritative rollback only; local image ID and matched 4 GiB KV scheduler footprint must be preserved."
+      ]
+    },
+    {
+      "preset": "presets/qwen3.8-flash-next-fp8-tp2-candidate.env",
+      "status_class": "production-qualified",
+      "evidence": [
+        "docs/qwen3.8-flash-next-tp2.md"
+      ],
+      "known_limits": [
+        "Manual activation only; validated at c1/c2, MAX_NUM_SEQS=4 remains blocked, and no auto-start is authorized."
+      ]
+    },
+    {
+      "preset": "presets/qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env",
+      "status_class": "production-qualified",
+      "evidence": [
+        "docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md"
+      ],
+      "known_limits": [
+        "Opt-in interactive c1 only; not the production default, no auto-start, and MTP1 c2/c8 plus prefix-cache ON exactness are excluded."
+      ]
+    },
+    {
+      "preset": "presets/step37-flash-nvfp4-v023-tp2-latency.env",
+      "status_class": "validated-non-production",
+      "evidence": [
+        "docs/benchmarks/bt-matrix-step37-nvfp4-v023.md"
+      ],
+      "known_limits": [
+        "Validated latency path only; not production. Raw dry-run and repeated bt-matrix outputs are archived rather than tracked."
+      ]
+    },
+    {
+      "preset": "presets/step37-flash-fp8-v023-tp2.env",
+      "status_class": "validated-non-production",
+      "evidence": [
+        "docs/step3.7-tokenizer-overlay.md"
+      ],
+      "known_limits": [
+        "Bounded 8192-context c1 validation; tokenizer overlay is required and no production promotion is claimed."
+      ]
+    },
+    {
+      "preset": "presets/gemma4-31b-it.env",
+      "status_class": "validated-non-production",
+      "evidence": [
+        "docs/model-serving-validation-history.md"
+      ],
+      "known_limits": [
+        "Bounded historical validation only; not a production serving path."
+      ]
+    },
+    {
+      "preset": "presets/qwen3.6-35b-a3b.env",
+      "status_class": "validated-non-production",
+      "evidence": [
+        "docs/model-serving-validation-history.md"
+      ],
+      "known_limits": [
+        "Bounded single-node validation only; not a production serving path."
+      ]
+    },
+    {
+      "preset": "presets/qwen3.6-35b-a3b-fi-aot-tp2.env",
+      "status_class": "validated-non-production",
+      "evidence": [
+        "docs/flashinfer-aot-prebake.md"
+      ],
+      "known_limits": [
+        "Validated only for the documented prebaked FlashInfer AOT specifications; not production."
+      ]
+    },
+    {
+      "preset": "presets/step37-flash-fp8-tp2.env",
+      "status_class": "validated-non-production",
+      "evidence": [
+        "docs/step3.7-flash-tp2.md"
+      ],
+      "known_limits": [
+        "Validated v0.22 FP8 path through the documented 32768-context envelope; not production."
+      ]
+    }
+  ],
+  "retained_files": {
+    "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-coldrepro-20260624/cold_repro_summary.json": "ebcef1874d46602a77d217a0687461bec3160004ec41cfdc9f97476baeda34bc",
+    "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx16k-20260624/stage_summary.json": "1d1a2c3e6942f04460aa788790c4075b088535a9f0b6d1cfb13a43ad451b54d0",
+    "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx32k-20260624-lc1/stage_summary.json": "ab4ff9d0b75ecbce8ca0fc7309595991c609deae59cdbaf6a315243d91da210f",
+    "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx64k-20260624-lc2/stage_summary.json": "9cde8f8e9d9a5ad3cb69b319fcf344065a309a0456257ce95e4b2307a543e4bf",
+    "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longsoak-20260623-133120/soak_out/soak_summary.json": "016e1859ee7e7eede6cde57e245ce28fa13620b81169126f40de06b4c28aa455",
+    "benchmarks/evidence/retained/solar-open2-nvfp4-fullbench-20260724-213546/summary.md": "bf58e2e672f777d4022a2305895e5124e2d15c4734864795a06cc78fa3770d8b",
+    "benchmarks/evidence/retained/solar-open2-v0251-b12x-cold-warm-20260726T013344Z/report.md": "0d5235708e119160d99a870d467ec547b697b7311284d72a789ebc940ba99a6a",
+    "benchmarks/evidence/retained/solar-open2-v0251-b12xsw-r4-20260726T053457Z/report.md": "c8a1ec0a3e68f05d6764f08a75d446f545575ee717481ad2664dae745614e67f",
+    "benchmarks/evidence/retained/solar-open2-v0251-multi-instance-lowconc-20260727T004456Z/09_final/report.md": "d112908312df5ae9a212efa9a21a8d6f78985796eab519f4e3b1a42b41c4551e",
+    "benchmarks/evidence/retained/solar-open2-v0251-pread-complete-20260725T225149Z/report.md": "dc68f2cc5a93c0cf64b09908e8cef64f4d0eee2187fce99e48a59e8dda43afa9",
+    "benchmarks/evidence/retained/solar-open2-v0251-pread-r3-build-20260726T002411Z/report.md": "67ba9c6b95fa5bca0cd33fbaac4d559ce64b59a88ee18042ddab36071a598e7a",
+    "benchmarks/evidence/retained/solar-open2-v0251-promotion-readiness-20260727T065646Z/01_provenance/provenance.md": "904e223977dd0b4ea3ca1309688fdd720f8d4255ce62f01534382887c21dbee7",
+    "benchmarks/evidence/retained/solar-open2-v0251-promotion-readiness-20260727T065646Z/09_final/report.md": "fb045e7e97c0e5adf70274be5d788e9ddf8d26a0bec16b80a802350c7ab65270",
+    "benchmarks/evidence/retained/solar-open2-v0251-r4-acceptance-20260726T121058Z/report.md": "2178556ee6a01c4c411f90ad22c3c18d4601d21a48cd90919a162ea1a333b5c6"
+  },
+  "archive": {
+    "archive_id": "2026-10-03-final-recipe-curation",
+    "manifest": "benchmarks/evidence/archive-manifest.sha256",
+    "file_count": 5135,
+    "total_bytes": 388800633
+  }
+}

@@ -1,16 +1,17 @@
-# Benchmark Artifacts
+# Benchmark and recipe evidence
 
-This directory stores raw benchmark artifacts and experiment outputs.
+This directory distinguishes **canonical recipe evidence** from historical benchmark output.
 
-Raw benchmark files are preserved for traceability. They should not be treated as
-recommended runtime settings by filename alone.
+- [`evidence/`](evidence/README.md) — authority for the 14 production/rollback/production-qualified and
+  validated non-production presets in catalog sections 1–2. It contains a per-recipe evidence map,
+  small retained decision summaries, immutable hashes, and the external-archive ledger.
+- [`llama-benchy/`](llama-benchy/README.md) — tracked historical benchmark summaries. They remain contextual
+  records and must not be treated as recommended runtime settings by filename alone.
 
-Interpreted benchmark analysis and model-serving result summaries live under `docs/`.
+Raw benchmark runs, repeated dry runs, logs, profiler captures, and superseded experiment trees are
+not stored in the active Git working tree. They are preserved in an external archive whose file-level
+SHA-256 ledger is tracked at [`evidence/archive-manifest.sha256`](evidence/archive-manifest.sha256).
 
-For the interpreted unholy-fusion / DSV4 comparison, see:
-
-- [`docs/unholy-fusion-benchmark.md`](../docs/unholy-fusion-benchmark.md)
-
-Current raw artifact areas:
-
-- `benchmarks/llama-benchy/` — raw llama-benchy output files and filename legend
+Interpreted model-serving results and operational status remain under [`docs/`](../docs/README.md). For the
+interpreted unholy-fusion / DSV4 comparison, see
+[`docs/unholy-fusion-benchmark.md`](../docs/unholy-fusion-benchmark.md).

@@ -1,0 +1,57 @@
+{
+  "stage": "lc0",
+  "phase": "repeat",
+  "max_model_len": 18432,
+  "kv_gib": 2,
+  "depths": [
+    8192,
+    16384
+  ],
+  "rc": 0,
+  "reason": "ok",
+  "MemAvailable": 32.2,
+  "SwapUsed": 2.88,
+  "disk_free_gib": 30.7,
+  "extra": [
+    {
+      "i": 0,
+      "ttft_ms": 10475.9,
+      "decode_tps": 21.86,
+      "ntok": 70,
+      "mem_after": 32.18352508544922,
+      "swap_after": 2.883209228515625
+    },
+    {
+      "i": 1,
+      "ttft_ms": 10459.0,
+      "decode_tps": 21.75,
+      "ntok": 68,
+      "mem_after": 32.1847038269043,
+      "swap_after": 2.8832015991210938
+    },
+    {
+      "i": 2,
+      "ttft_ms": 10468.7,
+      "decode_tps": 21.63,
+      "ntok": 70,
+      "mem_after": 32.184715270996094,
+      "swap_after": 2.883197784423828
+    },
+    {
+      "i": 3,
+      "ttft_ms": 10487.2,
+      "decode_tps": 22.06,
+      "ntok": 68,
+      "mem_after": 32.184730529785156,
+      "swap_after": 2.883197784423828
+    },
+    {
+      "i": 4,
+      "ttft_ms": 10471.5,
+      "decode_tps": 21.37,
+      "ntok": 65,
+      "mem_after": 32.18450164794922,
+      "swap_after": 2.883197784423828
+    }
+  ]
+}

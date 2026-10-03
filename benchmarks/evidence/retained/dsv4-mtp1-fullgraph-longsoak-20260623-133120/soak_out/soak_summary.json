@@ -1,0 +1,128 @@
+{
+  "classification": "MTP1_FULLGRAPH_LONG_SOAK_PASS",
+  "stop_reason": "duration_complete",
+  "duration_s": 14414.1,
+  "duration_h": 4.004,
+  "attempted": 2040,
+  "successful": 2040,
+  "cycles": 102,
+  "min_mem_avail": 32.0,
+  "max_swap_used": 2.87,
+  "fallback_total": 0,
+  "recapture_total": 0,
+  "reject_cycles_with_rejection": 102,
+  "sentinels": [
+    {
+      "idx": 1,
+      "ts": "23:33:00",
+      "d0": {
+        "decode_tps": 21.61,
+        "ttft_ms": 227.9,
+        "ntok": 65
+      },
+      "d4096": {
+        "decode_tps": 21.58,
+        "ttft_ms": 3273.2,
+        "ntok": 69
+      }
+    },
+    {
+      "idx": 2,
+      "ts": "00:02:58",
+      "d0": {
+        "decode_tps": 21.59,
+        "ttft_ms": 225.9,
+        "ntok": 65
+      },
+      "d4096": {
+        "decode_tps": 21.63,
+        "ttft_ms": 3256.3,
+        "ntok": 68
+      }
+    },
+    {
+      "idx": 3,
+      "ts": "00:32:55",
+      "d0": {
+        "decode_tps": 21.63,
+        "ttft_ms": 194.9,
+        "ntok": 65
+      },
+      "d4096": {
+        "decode_tps": 21.7,
+        "ttft_ms": 3265.9,
+        "ntok": 68
+      }
+    },
+    {
+      "idx": 4,
+      "ts": "01:02:55",
+      "d0": {
+        "decode_tps": 21.49,
+        "ttft_ms": 213.7,
+        "ntok": 65
+      },
+      "d4096": {
+        "decode_tps": 21.66,
+        "ttft_ms": 3256.2,
+        "ntok": 68
+      }
+    },
+    {
+      "idx": 5,
+      "ts": "01:33:00",
+      "d0": {
+        "decode_tps": 21.58,
+        "ttft_ms": 225.6,
+        "ntok": 65
+      },
+      "d4096": {
+        "decode_tps": 21.61,
+        "ttft_ms": 3258.0,
+        "ntok": 69
+      }
+    },
+    {
+      "idx": 6,
+      "ts": "02:03:00",
+      "d0": {
+        "decode_tps": 21.7,
+        "ttft_ms": 188.6,
+        "ntok": 65
+      },
+      "d4096": {
+        "decode_tps": 21.87,
+        "ttft_ms": 3269.8,
+        "ntok": 68
+      }
+    },
+    {
+      "idx": 7,
+      "ts": "02:32:57",
+      "d0": {
+        "decode_tps": 21.66,
+        "ttft_ms": 187.2,
+        "ntok": 65
+      },
+      "d4096": {
+        "decode_tps": 21.81,
+        "ttft_ms": 3251.2,
+        "ntok": 67
+      }
+    },
+    {
+      "idx": 8,
+      "ts": "03:02:53",
+      "d0": {
+        "decode_tps": 21.73,
+        "ttft_ms": 216.6,
+        "ntok": 65
+      },
+      "d4096": {
+        "decode_tps": 21.87,
+        "ttft_ms": 3261.3,
+        "ntok": 67
+      }
+    }
+  ]
+}
