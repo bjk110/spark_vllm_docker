@@ -10,6 +10,12 @@
 | Compose overlay (required) | [`compose/qwen3.8-flash-next/docker-compose.candidate.yml`](../compose/qwen3.8-flash-next/docker-compose.candidate.yml) |
 | Static verifier | [`scripts/diag/verify_qwen38_flash_next_recipe.py`](../scripts/diag/verify_qwen38_flash_next_recipe.py) |
 
+> **Optional cold-start companion:**
+> [`qwen3.8-flash-next-gb10-prefault.md`](qwen3.8-flash-next-gb10-prefault.md) defines a separately
+> validated GB10 safetensors copy-site prefault mechanism. It does not silently alter this official
+> checkpoint preset: each checkpoint must pass its own clean-boot safety/correctness gate, and the
+> measured deployment's Graph-NONE and fixed 8 GiB KV settings are explicitly not universalized.
+
 > **Status note:** Gate 0/1/2 were executed at c1 (`MAX_NUM_SEQS=1`) on 2026-08-29 -- see the ledger
 > in §5.5 for the raw evidence pointer. The `MAX_NUM_SEQS=2` CUDA-graph production requalification
 > (§5.8) is a separate, later, bounded runtime result (2026-08-31 -> 2026-09-01) with its own full

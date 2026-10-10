@@ -1,0 +1,17 @@
+services:
+  head:
+    volumes:
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/utils.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/utils.py:ro
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/parameter.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/parameter.py:ro
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/layers/linear.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/linear.py:ro
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/layers/vocab_parallel_embedding.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/vocab_parallel_embedding.py:ro
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/layers/fused_moe/routed_experts.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/routed_experts.py:ro
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/model_loader/weight_utils.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/model_loader/weight_utils.py:ro
+  worker:
+    volumes:
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/utils.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/utils.py:ro
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/parameter.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/parameter.py:ro
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/layers/linear.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/linear.py:ro
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/layers/vocab_parallel_embedding.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/vocab_parallel_embedding.py:ro
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/layers/fused_moe/routed_experts.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/routed_experts.py:ro
+      - ${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}/model_executor/model_loader/weight_utils.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/model_loader/weight_utils.py:ro

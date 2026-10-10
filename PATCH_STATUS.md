@@ -73,6 +73,12 @@ backend) with `num_speculative_tokens=3`.
 - English generation: `4` (for "What is 2+2?") — PASS
 - Benchmark: depth sweep pp2048@d0/4096/8192/16384, tg32, runs3 — see `benchmarks/llama-benchy/results_step37-flash-nvfp4-tp2-mtp3-DEPTH.md`
 
+## Runtime source overlays (Compose opt-in)
+
+| Patch root | Purpose | Applies to | Required for | Upstream status | Removal condition |
+|---|---|---|---|---|---|
+| `qwen/prefault-pr58868/` | Prefaults mmap-backed CPU source pages immediately before rank-local weight copies on integrated CUDA GPUs; avoids a persistent clone/full-checkpoint prefetch | Exact qualified Qwen3.8 Flash Next vLLM image/source ABI, mounted read-only by `compose/qwen3.8-flash-next/docker-compose.prefault-pr58868.yml` | Optional GB10 cold-start recipe after per-checkpoint qualification; not part of the existing official-checkpoint preset by default | PR #58868 commit `857f70df4b7f3d96e19dc2b7361b56130bbe79b1` was open/unmerged when qualified | Rebase to a release containing an equivalent upstream implementation, then repeat source-level and clean-boot qualification before removing the overlay |
+
 ## Conditional / opt-in patches (applied at runtime via `entrypoint.sh`)
 
 | Patch file | Purpose | Applies to | Required for | Upstream status | Removal condition |

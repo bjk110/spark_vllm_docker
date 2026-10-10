@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "status": "VALIDATED_MECHANISM_PER_CHECKPOINT_QUALIFICATION_REQUIRED",
+  "scope": "GB10 integrated-GPU vLLM default safetensors mmap loading",
+  "source_runtime": {
+    "image": "vllm-local:qwen38-flash-next-arm64-3b0e188f",
+    "image_id": "sha256:d464f3b466fa9c45ddbff8a812e80564503b6879a9fd95c1a47514f3f0df5a4a",
+    "vllm_version": "0.1.dev20073+g8e685d198",
+    "python_site_packages": "/usr/local/lib/python3.12/dist-packages"
+  },
+  "upstream": {
+    "pull_request": "https://github.com/vllm-project/vllm/pull/58868",
+    "commit": "857f70df4b7f3d96e19dc2b7361b56130bbe79b1",
+    "state_when_qualified": "open-unmerged"
+  },
+  "files": {
+    "model_executor/utils.py": "1aa6481c55748812e8c172d59b1947eaed087cfb36fad6939281a7bfe235a193",
+    "model_executor/parameter.py": "0492e4591461fd473f713621b8f195f4a3551fb9e5eabd76dd5a59b9671f0a34",
+    "model_executor/layers/linear.py": "00cebf7c7cb17c52f243a2deebd379b4bacead20f582dcd96eb5bb8b22fd1e01",
+    "model_executor/layers/vocab_parallel_embedding.py": "c5527a3a2682351f6410f35b7e0e2fee0369d0d36f2bce71f9c52571c106ddfc",
+    "model_executor/layers/fused_moe/routed_experts.py": "ab401b07d84f1527c8759ab6b5fadde94b6eb2f8425049deb4f8823150d2885a",
+    "model_executor/model_loader/weight_utils.py": "087ae28d5c251325b8942016a973415ad0594880ccc87563f6006784e6600faf"
+  },
+  "measured_reference": {
+    "checkpoint_family": "Qwen3.8-Flash-Next FP8 derivative",
+    "architecture": "Qwen4ExpForConditionalGeneration",
+    "model_type": "qwen4_exp",
+    "topology": "dual GB10, TP=2, expert parallel",
+    "baseline_mean_readiness_seconds": 3452.30,
+    "prefault_mean_readiness_seconds": 1810.15,
+    "mean_reduction_percent": 47.567,
+    "operational_source_clean_boot_seconds": 1845.7,
+    "minimum_mem_available_GiB": {
+      "spark01": 9.244,
+      "spark02": 12.271
+    },
+    "maximum_swap_growth_GiB": {
+      "spark01": 4.051,
+      "spark02": 2.474
+    },
+    "capacity_262144_concurrency": 2.44,
+    "deterministic_c1": "5/5",
+    "deterministic_content_sha256": "223af11cb89e535933eeddbb49bfddcc734cfe6c2d829ba4cde297805a338fc9"
+  }
+}
