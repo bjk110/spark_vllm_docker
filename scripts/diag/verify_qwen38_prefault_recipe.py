@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PATCH_ROOT_REL = Path("patches/qwen/prefault-pr58868")
 OVERLAY_REL = Path("compose/qwen3.8-flash-next/docker-compose.prefault-pr58868.yml")
@@ -29,6 +31,40 @@ EXPECTED_FILES = (
 DEST_PREFIX = "/usr/local/lib/python3.12/dist-packages/vllm/"
 EXPECTED_IMAGE_ID = "sha256:d464f3b466fa9c45ddbff8a812e80564503b6879a9fd95c1a47514f3f0df5a4a"
 EXPECTED_UPSTREAM_COMMIT = "857f70df4b7f3d96e19dc2b7361b56130bbe79b1"
+
+
+class UniqueKeyLoader(yaml.SafeLoader):
+    """Safe YAML loader that fails closed on duplicate mapping keys."""
+
+
+def _construct_unique_mapping(loader, node, deep=False):
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            hash(key)
+        except TypeError as exc:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"invalid overlay YAML key: {key!r} is unhashable",
+                key_node.start_mark,
+            ) from exc
+        if key in mapping:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"duplicate YAML key: {key!r}",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
 
 
 def sha256(path: Path) -> str:
@@ -112,13 +148,51 @@ def verify(root: Path = REPO_ROOT) -> list[str]:
 
     overlay = overlay_path.read_text()
     root_expr = "${QWEN38_PREFAULT_ROOT:-./patches/qwen/prefault-pr58868}"
-    for rel in EXPECTED_FILES:
-        mount = f"{root_expr}/{rel}:{DEST_PREFIX}{rel}:ro"
-        count = overlay.count(mount)
-        if count != 2:
-            errors.append(f"expected two read-only head/worker mounts for {rel}, found {count}")
-    if overlay.count("volumes:") != 2:
-        errors.append("overlay must define exactly one volumes block per head/worker role")
+    expected_mounts = [
+        f"{root_expr}/{rel}:{DEST_PREFIX}{rel}:ro" for rel in EXPECTED_FILES
+    ]
+    try:
+        overlay_doc = yaml.load(overlay, Loader=UniqueKeyLoader)
+    except yaml.YAMLError as exc:
+        errors.append(f"invalid overlay YAML: {exc}")
+        overlay_doc = None
+    if isinstance(overlay_doc, dict):
+        if not all(isinstance(key, str) for key in overlay_doc):
+            errors.append("overlay top-level keys must be strings")
+        if set(overlay_doc) != {"services"}:
+            errors.append(
+                "overlay must contain exact top-level keys ['services'], "
+                f"got {sorted(repr(key) for key in overlay_doc)}"
+            )
+        services = overlay_doc.get("services")
+        if not isinstance(services, dict):
+            errors.append("overlay services must be an object")
+        else:
+            if not all(isinstance(key, str) for key in services):
+                errors.append("overlay service keys must be strings")
+            if set(services) != {"head", "worker"}:
+                errors.append(
+                    "overlay must define exact services ['head', 'worker'], "
+                    f"got {sorted(repr(key) for key in services)}"
+                )
+            for service in ("head", "worker"):
+                config = services.get(service)
+                if not isinstance(config, dict):
+                    errors.append(f"overlay service {service} must be an object")
+                    continue
+                if not all(isinstance(key, str) for key in config):
+                    errors.append(f"overlay service {service} keys must be strings")
+                if set(config) != {"volumes"}:
+                    errors.append(
+                        f"overlay service {service} must contain exact keys ['volumes'], "
+                        f"got {sorted(repr(key) for key in config)}"
+                    )
+                if config.get("volumes") != expected_mounts:
+                    errors.append(
+                        f"overlay service {service} must contain exact volumes {expected_mounts!r}"
+                    )
+    else:
+        errors.append("overlay root must be an object")
 
     doc = doc_path.read_text()
     for needle in (
