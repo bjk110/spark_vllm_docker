@@ -82,6 +82,11 @@ def test_valid_manifest_passes(repo):
     assert recipe_evidence.verify(repo, expected_count=2) == []
 
 
+def test_repository_default_scope_is_complete():
+    root = Path(__file__).resolve().parents[2]
+    assert recipe_evidence.verify(root) == []
+
+
 def test_catalog_scope_must_match_exactly(repo):
     manifest = repo / "benchmarks/evidence/manifest.json"
     data = json.loads(manifest.read_text())

@@ -28,7 +28,7 @@ def anchors(text):
     result.update(re.findall(r'(?:id|name)=["\']([^"\']+)', text))
     return result
 
-def verify(root, skip_compose=False, expected_count=43):
+def verify(root, skip_compose=False, expected_count=44):
     root = Path(root).resolve()
     tracked = tracked_files(root)
     presets = sorted(p for p in tracked if p.startswith('presets/') and p.endswith('.env'))
@@ -165,7 +165,7 @@ def main():
     args = parser.parse_args()
     errors, rendered = verify(args.root, args.skip_compose)
     for error in errors: print(f'[FAIL] {error}')
-    print(f'{"FAIL" if errors else "PASS"}: 43 tracked presets; compose rendered {rendered}/43' + (' (explicitly skipped)' if args.skip_compose else ''))
+    print(f'{"FAIL" if errors else "PASS"}: 44 tracked presets; compose rendered {rendered}/44' + (' (explicitly skipped)' if args.skip_compose else ''))
     return bool(errors)
 
 if __name__ == '__main__': raise SystemExit(main())

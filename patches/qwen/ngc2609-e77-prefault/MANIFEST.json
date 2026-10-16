@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "status": "VALIDATED_MANUAL_RECIPE",
+  "scope": "Exact source overlay for orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8 on dual GB10",
+  "source_runtime": {
+    "registry_manifest": "ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6",
+    "published_image_id": "sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4",
+    "qualified_rootfs_source_image_id": "sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4",
+    "base_image_id": "sha256:2f1553f270c9bb44403ad7c4d9afb2d45ff1fb1cd9cf61df7de3385fb8cd11af",
+    "vllm_commit": "e77daef89e18e08321ae7b8b24827eedd5fe8673",
+    "vllm_wheel_sha256": "7da1b0e1b1bda500b81f644851a96e971d502a0dd9f4b9a33e9f7e5550a5b2f5",
+    "python_site_packages": "/usr/local/lib/python3.12/dist-packages",
+    "nvidia_pytorch": "26.09"
+  },
+  "model": {
+    "repo": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+    "revision": "8bebbc05cbe65099f37c520865463c1377d8050d"
+  },
+  "files": {
+    "model_executor/utils.py": "f2ceb4e5f0ea30fd7e1a4fb5906f4be700df15e6d5cbbbf248860630e2e0097a",
+    "model_executor/parameter.py": "0492e4591461fd473f713621b8f195f4a3551fb9e5eabd76dd5a59b9671f0a34",
+    "model_executor/layers/linear.py": "9ea1bcde15f7385b1666dae6f97ff952107c897d98600693b96a274f58e9efb1",
+    "model_executor/layers/vocab_parallel_embedding.py": "d9711761b0546bce60a25f75098c3d9b5a30554c136cede77f78942556b053a6",
+    "model_executor/layers/fused_moe/routed_experts.py": "2a20e0a5b4e67bb79ffee52dd716a661b5a15961a7ffe151ac7112b97eaff7a3",
+    "model_executor/model_loader/weight_utils.py": "53a3455799b832b44d8a54308f63c8c406e0050669869e9a043424d38669de21"
+  },
+  "measured_contract": {
+    "topology": "dual GB10, TP=2, EP=2, mp/RoCE",
+    "max_model_len": 262144,
+    "max_num_seqs": 2,
+    "max_num_batched_tokens": 8192,
+    "kv_cache_memory_bytes": 8589934592,
+    "mtp_depth": 2,
+    "kv_capacity_tokens": 548909,
+    "actual_262k_pair": "PASS",
+    "server_running_peak": 2,
+    "status": "VALIDATED_MTP_K2_C2_WITH_STARTUP_MEMORY_WARNING"
+  }
+}

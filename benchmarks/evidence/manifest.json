@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "catalog-sections-1-and-2",
-  "recipe_count": 14,
+  "recipe_count": 15,
   "recipes": [
     {
       "preset": "presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env",
@@ -99,6 +99,17 @@
       ],
       "known_limits": [
         "Opt-in interactive c1 only; not the production default, no auto-start, and MTP1 c2/c8 plus prefix-cache ON exactness are excluded."
+      ]
+    },
+    {
+      "preset": "presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env",
+      "status_class": "validated-non-production",
+      "evidence": [
+        "docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md",
+        "patches/qwen/ngc2609-e77-prefault/MANIFEST.json"
+      ],
+      "known_limits": [
+        "Manual activation only; not auto-started. Readiness-time memory warnings remain a documented operational warning, and changing the pinned image, model revision, overlay, MTP depth, concurrency, context, KV budget, or scheduler cap requires requalification."
       ]
     },
     {

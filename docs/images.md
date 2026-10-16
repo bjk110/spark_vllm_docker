@@ -10,6 +10,7 @@ document provides the detailed image-tag history.
 
 | Path | Status | Config | Image source |
 |---|---|---|---|
+| `qwen38-ngc2609-e77-k2c2` | Validated Qwen3.8 manual recipe — 262K, MTP k=2, C2 | `presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env` + matching Compose overlay | immutable manifest `ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6` |
 | `dsv4-v027-0731` | **DeepSeek-V4 active production** — NGC 26.07/vLLM 0.27, native DSpark k=7, 256K/MS1 | `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` + health/prewarm overlay | immutable manifest `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c…`; same manifest released under the frozen DSV4 build-base aliases below |
 | `dsv4-d568` | Frozen legacy/historical DSV4 baseline (NOT rebased onto NGC 26.05) | historical preset removed from the active surface; Git history | `ghcr.io/bjk110/vllm-spark:dsv4-d568` — reproduction only |
 | `unholy-fusion` | Historical/experimental high-prefill DSV4 path (config removed from the active surface 2026-08-11; Git history) | formerly `.env.unholy-fusion` + `compose/docker-compose.unholy.yml` | External/upstream image (`aidendle94/sparkrun-vllm-ds4-gb10:production-ready`) or GHCR mirror — see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md) |

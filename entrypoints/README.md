@@ -7,6 +7,7 @@ This directory contains the container entrypoint scripts used by `docker-compose
 | File | Used by | Notes |
 |---|---|---|
 | `entrypoint.sh` | Standard path (`dsv4-d568` and general) | CLUSTER_MODE-aware; handles single / dual-rdma / Ray / mp dispatch |
+| `qwen38-ngc2609-mtp-k2-c2.sh` | Uncensored Qwen3.8 NGC 26.09/e77 opt-in recipe | Exact eager MTP k=2/C2 argv; preserves multimodal support; manual activation only |
 
 `entrypoint.unholy.sh` (the `unholy-fusion` path's entrypoint) was removed from the active tree
 2026-08-11 along with its remaining config (`.env.unholy-fusion`,

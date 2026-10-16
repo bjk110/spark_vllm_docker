@@ -106,10 +106,11 @@ and both `compose/solar-open2/` overlays have latest introducing/consolidating c
 
 ### 1c. Qwen3.8-Flash-Next production-qualified/manual opt-in presets
 
-Qwen3.8-Flash-Next-FP8 has two indexed presets: the existing production-qualified c1/c2 baseline and
-an additional main-merge-approved opt-in MTP1 interactive-c1 profile that is not the production default. Both use
-`MAX_NUM_SEQS=2` and `FULL_DECODE_ONLY` capture sizes `[1,2]`. Manual activation only — not
-wired into any auto-start path; after teardown, reboot the node before the next fresh launch.
+Qwen3.8-Flash-Next has three indexed presets: the official production-qualified c1/c2 baseline,
+the PR55122 MTP1 interactive-c1 profile, and the independently qualified uncensored NGC 26.09
+MTP k=2/C2 profile. All are manual activation only and are not wired into auto-start. The profiles
+use different model revisions, images, graph modes, source overlays, and qualification contracts;
+do not mix their files or flags. Reboot after teardown before the next fresh launch.
 The MTP status label `MAIN_MERGE_APPROVED_OPT_IN` is historical; repository integration
 is complete on main and does not confer runtime promotion.
 Full gate ledger: [`docs/qwen3.8-flash-next-tp2.md`](../docs/qwen3.8-flash-next-tp2.md).
@@ -125,6 +126,7 @@ Validated, but **not** the current default serving path for any production model
 
 | Preset | Model / stack | Topology | Status | Use | Launch / docs |
 |---|---|---|---|---|---|
+| [`qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) | orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8 · NGC 26.09/e77 immutable GHCR manifest | dual-rdma TP2/EP2 | **Validated (non-production)** — manual activation; not auto-started | Recommended profile for this checkpoint: MTP k=2/C2, eager, fixed 8 GiB KV, 262,144 context, actual 262K×2 retrieval PASS. | [Step-by-step recipe](../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) |
 | [`step37-flash-nvfp4-v023-tp2-latency.env`](step37-flash-nvfp4-v023-tp2-latency.env) | Step-3.7-Flash NVFP4 · v0.23 (EP-off, MARLIN, TRITON_ATTN) | dual-rdma TP=2 | Validated (Step-3.7 NVFP4 path) | Recommended Step-3.7 NVFP4 latency path ([bench](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md)) | [Latency recipe/benchmark](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md) |
 | [`step37-flash-fp8-v023-tp2.env`](step37-flash-fp8-v023-tp2.env) | Step-3.7 FP8 v023 tokenizer overlay; 8192 context, c1 | dual-rdma TP=2 | Validated (non-production) | Bounded validation evidence; no production promotion | [Tokenizer-overlay runbook](../docs/step3.7-tokenizer-overlay.md#validated-non-production-step-37-fp8-baseline-tracked-preset) |
 | [`gemma4-31b-it.env`](gemma4-31b-it.env) | Gemma 4 31B; verified 2026-05-20 | single TP=1 | Validated (non-production) | Bounded validation evidence; no production promotion | [Validation evidence](../docs/model-serving-validation-history.md) · [Generic TP1](#generic-tp1-launch) |

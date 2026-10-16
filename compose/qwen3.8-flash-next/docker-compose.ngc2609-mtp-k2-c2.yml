@@ -1,0 +1,66 @@
+# Exact opt-in overlay for the qualified NGC 26.09/e77 Qwen3.8 MTP k=2/C2 profile.
+# Use with docker-compose.yml and the matching preset. It does not add restart/autostart policy.
+services:
+  head:
+    environment:
+      - KV_CACHE_MEMORY_BYTES=${KV_CACHE_MEMORY_BYTES:-8589934592}
+      - KV_CACHE_DTYPE=${KV_CACHE_DTYPE:-auto}
+      - MODEL_REVISION=${MODEL_REVISION}
+      - NNODES=2
+      - VLLM_ALL2ALL_BACKEND=${VLLM_ALL2ALL_BACKEND:-allgather_reducescatter}
+      - UCX_NET_DEVICES=${ROCE_IF_NAME}
+      - HF_HOME=/cache/huggingface
+      - XDG_CACHE_HOME=/cache/xdg
+      - VLLM_CACHE_ROOT=/cache/vllm
+      - TRITON_CACHE_DIR=/cache/triton
+      - TORCHINDUCTOR_CACHE_DIR=/cache/torchinductor
+      - TOKENIZERS_PARALLELISM=false
+    volumes:
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/utils.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/utils.py:ro
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/parameter.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/parameter.py:ro
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/layers/linear.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/linear.py:ro
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/layers/vocab_parallel_embedding.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/vocab_parallel_embedding.py:ro
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/layers/fused_moe/routed_experts.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/routed_experts.py:ro
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/model_loader/weight_utils.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/model_loader/weight_utils.py:ro
+      - ./cache/qwen38-ngc2609-e77:/cache:rw
+    cap_add: [SYS_PTRACE, IPC_LOCK]
+    security_opt: [label=disable]
+    oom_score_adj: 1000
+    shm_size: 32gb
+    ulimits:
+      stack: 67108864
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 160
+      start_period: 3600s
+
+  worker:
+    environment:
+      - KV_CACHE_MEMORY_BYTES=${KV_CACHE_MEMORY_BYTES:-8589934592}
+      - KV_CACHE_DTYPE=${KV_CACHE_DTYPE:-auto}
+      - MODEL_REVISION=${MODEL_REVISION}
+      - NNODES=2
+      - VLLM_ALL2ALL_BACKEND=${VLLM_ALL2ALL_BACKEND:-allgather_reducescatter}
+      - UCX_NET_DEVICES=${ROCE_IF_NAME}
+      - HF_HOME=/cache/huggingface
+      - XDG_CACHE_HOME=/cache/xdg
+      - VLLM_CACHE_ROOT=/cache/vllm
+      - TRITON_CACHE_DIR=/cache/triton
+      - TORCHINDUCTOR_CACHE_DIR=/cache/torchinductor
+      - TOKENIZERS_PARALLELISM=false
+    volumes:
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/utils.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/utils.py:ro
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/parameter.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/parameter.py:ro
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/layers/linear.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/linear.py:ro
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/layers/vocab_parallel_embedding.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/vocab_parallel_embedding.py:ro
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/layers/fused_moe/routed_experts.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/routed_experts.py:ro
+      - ${QWEN38_NGC2609_OVERLAY_ROOT:-./patches/qwen/ngc2609-e77-prefault}/model_executor/model_loader/weight_utils.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/model_loader/weight_utils.py:ro
+      - ./cache/qwen38-ngc2609-e77:/cache:rw
+    cap_add: [SYS_PTRACE, IPC_LOCK]
+    security_opt: [label=disable]
+    oom_score_adj: 1000
+    shm_size: 32gb
+    ulimits:
+      stack: 67108864
