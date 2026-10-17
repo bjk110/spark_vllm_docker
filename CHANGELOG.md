@@ -4,6 +4,24 @@ All notable changes to `vllm-spark` (GHCR image + repo presets). Most recent on
 top. See `git log` for the full commit history; this file is curated to describe
 what users see (image tag, behavior, breaking changes) rather than every commit.
 
+## Qwen3.8 Flash Next Uncensored FP8 validated recipe completed (2026-10-17)
+
+- Finalized the followable dual-DGX-Spark manual recipe for
+  `orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8` at model revision
+  `8bebbc05cbe65099f37c520865463c1377d8050d`.
+- Pinned the pullable immutable image manifest
+  `ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6`
+  (image ID `sha256:8bb958ff…`, vLLM `e77daef…`) and the exact read-only source overlay.
+- Qualified eager TP=2/EP=2, MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, and
+  `MAX_MODEL_LEN=262144`, with vision/multimodal, tool calling, structured output, and simultaneous
+  262,112-token retrieval coverage.
+- Completed the full `llama-benchy 0.4.0` matrix with 12/12 benchmark objects, 24 consolidated pp/tg
+  rows, 135/135 requests, and zero errors. The recipe remains manual activation only and does not
+  change autostart or any repository-wide production default.
+- Updated the top-level guide, documentation/preset/image/entrypoint/patch indexes, evidence authority,
+  and post-start hard-failure boundary. Unqualified tuning variants are intentionally absent from the
+  public recipe surface.
+
 ## DeepSeek-V4 v0.27 frozen runtime build base released (2026-08-28)
 
 - Published `v027-ngc2607-dsv4-runtime-base-20260828` and stable alias

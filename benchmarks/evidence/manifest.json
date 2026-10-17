@@ -106,10 +106,11 @@
       "status_class": "validated-non-production",
       "evidence": [
         "docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md",
-        "patches/qwen/ngc2609-e77-prefault/MANIFEST.json"
+        "patches/qwen/ngc2609-e77-prefault/MANIFEST.json",
+        "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md"
       ],
       "known_limits": [
-        "Manual activation only; not auto-started. Readiness-time memory warnings remain a documented operational warning, and changing the pinned image, model revision, overlay, MTP depth, concurrency, context, KV budget, or scheduler cap requires requalification."
+        "Manual activation only; not auto-started. The qualified contract is eager TP=2/EP=2, MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262144 context, and retained multimodal/tool support. Readiness-time memory warnings remain a documented operational warning, and changing the pinned image, model revision, overlay, MTP depth, concurrency, context, KV budget, scheduler cap, or multimodal path requires requalification."
       ]
     },
     {
@@ -179,6 +180,7 @@
     "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx32k-20260624-lc1/stage_summary.json": "ab4ff9d0b75ecbce8ca0fc7309595991c609deae59cdbaf6a315243d91da210f",
     "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx64k-20260624-lc2/stage_summary.json": "9cde8f8e9d9a5ad3cb69b319fcf344065a309a0456257ce95e4b2307a543e4bf",
     "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longsoak-20260623-133120/soak_out/soak_summary.json": "016e1859ee7e7eede6cde57e245ce28fa13620b81169126f40de06b4c28aa455",
+    "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md": "f9bc5d2057552d96af566c61e91c7c2f06d5abe82065060c4946d82c94724d44",
     "benchmarks/evidence/retained/solar-open2-nvfp4-fullbench-20260724-213546/summary.md": "bf58e2e672f777d4022a2305895e5124e2d15c4734864795a06cc78fa3770d8b",
     "benchmarks/evidence/retained/solar-open2-v0251-b12x-cold-warm-20260726T013344Z/report.md": "0d5235708e119160d99a870d467ec547b697b7311284d72a789ebc940ba99a6a",
     "benchmarks/evidence/retained/solar-open2-v0251-b12xsw-r4-20260726T053457Z/report.md": "c8a1ec0a3e68f05d6764f08a75d446f545575ee717481ad2664dae745614e67f",

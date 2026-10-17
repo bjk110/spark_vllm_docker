@@ -19,21 +19,54 @@ and pins the runtime image by a pullable immutable GHCR manifest digest.
 
 ## 1. What was qualified
 
+- Execution contract: eager, TP=2/EP=2, MTP k=2, `MAX_NUM_SEQS=2`, BT8K, fixed 8 GiB KV/rank.
 - KV capacity: 548,909 tokens; nominal 262K concurrency 2.09×.
-- Canonical, reasoning, coding, tool calls, and 10/10 tool continuation checks passed.
-- One 262,112-token prompt and an actual pair of simultaneous 262,112-token prompts both returned HTTP 200 and recovered `KESTREL-74291`.
-- Every synchronized performance pair reached server-side `running=2`.
-- MTP workload acceptance: 74.56%; 1.491 accepted tokens/iteration.
+- Vision primitive/compositional requests, canonical text, reasoning, coding, required tool calls,
+  structured output, and 10/10 tool continuation checks passed. This is not a text-only recipe.
+- One 262,112-token prompt and an actual pair of simultaneous 262,112-token prompts both returned
+  HTTP 200 and recovered `KESTREL-74291` with exact token accounting.
+- Actual C2 was measured from the server: synchronized pairs reached
+  `vllm:num_requests_running=2`. `MAX_NUM_SEQS=2` alone is not evidence of C2 execution.
+- Full `llama-benchy 0.4.0` matrix: `pp512/2048/8192 × tg128 × c1/c2/c4/c8 × 3`, 12/12
+  benchmark objects (24 consolidated pp/tg rows), 135/135 requests, errors 0. Because the server cap
+  is C2, c4/c8 characterize client overlap and queue pressure, not four- or eight-request engine
+  execution.
+- Request count: `3 repeats × (1+2+4+8 requests) × 3 prompt sizes = 135`.
+- Full-matrix MTP acceptance: 60.70%; accepted tokens/iteration: 1.214. Acceptance is activation
+  evidence, not a standalone performance claim.
 - No Docker/kernel OOM, `OOMKilled`, restart, CUDA/NCCL/engine fatal, Xid, or request failure occurred.
-- Two readiness-time `NV_ERR_NO_MEMORY` messages were recorded on the worker node. They did not continue after readiness and did not coincide with an OOM, restart, fatal error, request error, or increasing idle memory use; they remain a warning, not a clean-start claim.
+- Readiness-time `NV_ERR_NO_MEMORY` messages were observed in qualified cold-start epochs. They did
+  not continue after readiness and did not coincide with OOM, restart, fatal, request failure, or
+  increasing idle memory use. Treat them as startup warnings only under those same conditions.
 
-The published profile is **k=2/C2**. Its measured aggregate decode throughput was 58.94 tok/s
-for prose, 73.87 tok/s for code, and 78.14 tok/s for JSON workloads.
+### Full-matrix performance reference
 
-C2 is an aggregate-throughput profile. Relative to C1, aggregate throughput increased about
-50–53%, while per-request decode throughput fell about 22% and TTFT increased about 54–61%.
-Choose it when two-request aggregate throughput matters; do not present it as a single-request
-latency improvement.
+Each row below summarizes one benchmark object by showing its prompt-processing and generation
+metrics together. The standard consolidated report contains the corresponding 24 pp/tg rows. These
+are measured end-to-end reference values for the exact pinned profile, not universal targets:
+
+| Prompt | Client concurrency | Prefill tok/s | Aggregate decode tok/s | Per-request decode tok/s | TTFT ms |
+|---:|---:|---:|---:|---:|---:|
+| 512 | 1 | 1294.41 | 20.70 | 20.70 | 637.40 |
+| 512 | 2 | 1179.94 | 40.16 | 20.79 | 801.51 |
+| 512 | 4 | 225.86 | 36.49 | 19.96 | 4372.31 |
+| 512 | 8 | 167.07 | 34.80 | 19.94 | 10631.60 |
+| 2048 | 1 | 1844.11 | 22.38 | 22.38 | 1358.18 |
+| 2048 | 2 | 1721.30 | 37.48 | 20.13 | 2120.88 |
+| 2048 | 4 | 715.12 | 32.37 | 19.18 | 6248.33 |
+| 2048 | 8 | 567.83 | 30.75 | 18.64 | 14588.99 |
+| 8192 | 1 | 1795.29 | 21.21 | 21.21 | 4810.60 |
+| 8192 | 2 | 1717.02 | 27.79 | 18.19 | 7652.42 |
+| 8192 | 4 | 1289.02 | 21.89 | 17.19 | 15843.16 |
+| 8192 | 8 | 1153.52 | 18.20 | 15.24 | 30522.97 |
+
+Best observed rows were 1844.11 prefill tok/s at pp2048/C1, 40.16 aggregate decode tok/s at
+pp512/C2, 22.38 per-request decode tok/s at pp2048/C1, and 637.40 ms TTFT at pp512/C1. The c4/c8
+rows show that pressure above the two-slot server cap increases queueing and tail latency; use C2 as
+the qualified operating envelope.
+
+The byte-pinned public summary is
+[`benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md`](../benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md).
 
 ## 2. Prerequisites
 
@@ -139,7 +172,9 @@ env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"
   --profile head up -d
 ```
 
-Cold readiness was about 31–33 minutes with the qualified prefault overlay. Do not infer failure from elapsed time alone; require forward progress, bounded memory, and no hard-failure signal.
+Recent qualified clean-boot and rollback epochs reached readiness in roughly 40–46 minutes. Do not
+infer failure from elapsed time alone; require forward progress, bounded memory, and no hard-failure
+signal. A materially different host/cache state can change this duration.
 
 ## 6. Required post-start checks
 
@@ -158,6 +193,62 @@ Confirm:
 - a short non-thinking request succeeds;
 - MTP draft and accepted-token counters increase;
 - no post-readiness OOM/fatal/Xid/request error appears.
+
+Run a canonical non-thinking request so a short output limit cannot be consumed by hidden reasoning:
+
+```bash
+curl -fsS http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model":"orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+    "messages":[{"role":"user","content":"Reply with exactly QWEN38_BASELINE_OK"}],
+    "temperature":0,
+    "max_tokens":32,
+    "chat_template_kwargs":{"enable_thinking":false}
+  }'
+```
+
+Require HTTP 200, `finish_reason="stop"`, and exact content `QWEN38_BASELINE_OK`.
+
+Use a forced tool call to verify the tool path:
+
+```bash
+curl -fsS http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model":"orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+    "messages":[{"role":"user","content":"Call record_marker with marker KESTREL-74291."}],
+    "tools":[{"type":"function","function":{"name":"record_marker","description":"Record a marker","parameters":{"type":"object","properties":{"marker":{"type":"string"}},"required":["marker"]}}}],
+    "tool_choice":{"type":"function","function":{"name":"record_marker"}},
+    "temperature":0,
+    "max_tokens":128,
+    "chat_template_kwargs":{"enable_thinking":false}
+  }'
+```
+
+Require HTTP 200, a `record_marker` tool call, and JSON arguments containing
+`"marker":"KESTREL-74291"`. For structured output, send the same marker task with an OpenAI
+`response_format` JSON schema and require schema-valid JSON; do not accept free-form prose as a
+structured-output pass.
+
+For a multimodal smoke test, set `IMAGE_URL` to a locally controlled image reachable from the serving
+container and ask a known-answer question using an OpenAI content array with one `image_url` item and
+one text item. Require HTTP 200, nonempty content, and the expected image-specific answer. Do not use
+`--language-model-only`; that would create a different profile.
+
+For an operational C2 claim, launch two bounded overlapping requests and sample the exact
+`vllm:num_requests_running` series while they are active; require a nonempty sample with peak 2 and
+validate both responses independently. Changing a local path, image, source, model, or multimodal
+setting requires re-running the applicable checks; the retained qualification does not cover modified
+bytes.
+
+### Hard-failure boundary
+
+Stop and investigate if any of the following occurs: Docker/kernel OOM, `OOMKilled`, restart,
+userspace CUDA allocation fatal, engine/NCCL fatal, Xid, fallen-off GPU, node unresponsiveness,
+health/readiness/API failure, correctness/tool/context failure, repeated post-readiness allocation
+errors, or continuously increasing memory/swap. A bounded readiness-time allocation warning without
+any of those symptoms is a warning, not by itself a failed epoch.
 
 ## 7. Stop and rollback
 

@@ -62,6 +62,15 @@ Full operations, activation, rollback (including the empirically required physic
 sequence), and validation provenance (6-gate production fast-track):
 [`docs/solar-open2-production.md`](docs/solar-open2-production.md).
 
+**Qwen3.8 Flash Next Uncensored FP8 validated manual recipe** uses the immutable NGC 26.09/e77 image
+manifest, exact source overlay, eager execution, TP=2/EP=2, MTP k=2, `MAX_NUM_SEQS=2`, BT8K, fixed
+8 GiB KV/rank, and `MAX_MODEL_LEN=262144`. Qualification included vision/multimodal requests,
+tool calling, structured output, a simultaneous 262,112-token pair, and a complete `llama-benchy`
+matrix (12/12 benchmark objects; 24 consolidated pp/tg rows). It is not an autostart or
+repository-wide production default. Follow the dedicated
+[step-by-step recipe](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md); do not combine it
+with the official-checkpoint Qwen profiles or their overlays.
+
 > **`dsv4-d568` is intentionally frozen** and will not be rebased onto NGC 26.05+. `dsv4-d568`
 > (JASL-era) and `unholy-fusion` are historical/experimental references, not recommended production paths.
 
@@ -197,6 +206,7 @@ production, rollback and operations, general stable stacks, model guides, diagno
 validated alternatives, experimental, historical/superseded). Start there. Frequently used:
 
 - DeepSeek-V4 production (active DSpark + MTP1 rollback, activation/rollback, provenance): [`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md)
+- Qwen3.8 Uncensored FP8 validated manual recipe (eager k2/C2, 262K, multimodal/tool): [`docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md`](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md)
 - Stack lineage / images: [`docs/software-stack.md`](docs/software-stack.md), [`docs/images.md`](docs/images.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)
 - Troubleshooting: [`docs/troubleshooting.md`](docs/troubleshooting.md)
