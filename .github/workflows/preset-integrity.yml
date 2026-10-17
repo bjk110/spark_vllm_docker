@@ -56,6 +56,7 @@ jobs:
           python -m pytest -q scripts/diag/test_verify_preset_catalog.py
           scripts/diag/test_verify_recipe_evidence.py
           scripts/diag/test_solar_incremental_provenance.py
+          scripts/diag/test_verify_qwen38_flash_next_recipe.py
           scripts/diag/test_verify_qwen38_pr55122_mtp1_c1_candidate_recipe.py
       - name: Static integrity and Compose rendering (no GPU/build/deploy)
         env:

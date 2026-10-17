@@ -336,10 +336,26 @@ BIC_PREFLIGHT_EVIDENCE_PATH = (
 )
 
 
+def find_unexpected_followup_c2_presets(presets_dir):
+    """Return c2 presets belonging to the base Flash-Next FP8 recipe family.
+
+    The follow-up ledger governs ``qwen3.8-flash-next-fp8-*`` only. Separately
+    qualified variants such as ``qwen3.8-flash-next-uncensored-*`` are outside
+    this invariant and have their own verifier.
+    """
+    if not presets_dir.is_dir():
+        return []
+    return sorted(
+        p.name
+        for p in presets_dir.glob("qwen3.8-flash-next-fp8-*.env")
+        if "c2" in p.stem.split("-")
+    )
+
+
 def check_followup_ledger(r):
     """Fail-closed checks for the 2026-08-29 32K/c2 follow-up (doc §5.6):
     the doc must cite every evidence path and the explicit stopping-point
-    disclaimer, and no c2-oriented preset may exist as a result of it."""
+    disclaimer, and no base-recipe c2 preset may exist as a result of it."""
     if not DOC_PATH.is_file():
         return
     text = DOC_PATH.read_text()
@@ -363,16 +379,15 @@ def check_followup_ledger(r):
     else:
         r.fail("doc does not explicitly disclaim c2-preset promotion from the 32K/c2 follow-up")
 
-    # No c2-oriented preset file should exist as a result of this follow-up --
-    # promotion requires separate explicit authorization, not this ledger.
+    # No c2-oriented preset file in this base recipe family should exist as a
+    # result of this follow-up. Separately qualified variants have independent
+    # evidence and verifiers and must not be rejected by this ledger.
     presets_dir = REPO_ROOT / "presets"
-    c2_candidates = sorted(
-        p.name for p in presets_dir.glob("qwen3.8-flash-next*c2*")
-    ) if presets_dir.is_dir() else []
+    c2_candidates = find_unexpected_followup_c2_presets(presets_dir)
     if c2_candidates:
-        r.fail(f"found unexpected c2-oriented Qwen3.8-Flash-Next preset file(s): {c2_candidates}")
+        r.fail(f"found unexpected base Qwen3.8-Flash-Next FP8 c2 preset file(s): {c2_candidates}")
     else:
-        r.ok("no c2-oriented Qwen3.8-Flash-Next preset file exists (no premature promotion)")
+        r.ok("no base Qwen3.8-Flash-Next FP8 c2 preset exists (no premature promotion)")
 
     # This preset's MAX_NUM_SEQS pin is 2 in production, but it must be
     # justified by the separate, later §5.8 CUDA-graph production
