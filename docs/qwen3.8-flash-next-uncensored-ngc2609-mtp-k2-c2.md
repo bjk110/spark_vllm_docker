@@ -5,10 +5,11 @@
 | Status | **Validated; manual activation only; not auto-started** |
 | Model | `orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8` |
 | Model revision | `8bebbc05cbe65099f37c520865463c1377d8050d` |
-| Image | `ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6` |
-| Image ID after pull | `sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4` |
+| Image | `ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5` |
+| Image ID after pull | `sha256:518c1b8f9bdaca735d793ffef1c7d6e050bdb62e6ffc9730e9428052cbc59512` |
 | vLLM | commit `e77daef89e18e08321ae7b8b24827eedd5fe8673` |
-| Topology | two DGX Spark nodes, TP=2, EP=2, `mp` over RoCE |
+| Ray | `2.59.0` with `cgraph` extra |
+| Topology | two DGX Spark nodes, TP=2, EP=2, `ray` over RoCE |
 | Serving contract | MTP k=2, `MAX_NUM_SEQS=2`, `MAX_MODEL_LEN=262144`, batched tokens 8192 |
 | Preset | [`presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](../presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) |
 | Compose overlay | [`compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml`](../compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml) |
@@ -19,7 +20,22 @@ and pins the runtime image by a pullable immutable GHCR manifest digest.
 
 ## 1. What was qualified
 
+### Ray canonical arm — 2026-10-18
+
 - Execution contract: eager, TP=2/EP=2, MTP k=2, `MAX_NUM_SEQS=2`, BT8K, fixed 8 GiB KV/rank.
+- Two-node Ray readiness, deterministic short/tool calls, and MTP draft/accepted-token activity passed.
+- A 262,112-token semantic retrieval replay returned HTTP 200 and recovered `KESTREL-74291`.
+- Nine synchronized C2 pairs passed across prose, code, and JSON; every pair reached
+  `vllm:num_requests_running=2`.
+- No Docker/kernel OOM, `OOMKilled`, restart, CUDA/NCCL fatal, Xid, traceback, or request failure
+  occurred. Four `triton_kernels.matmul_ogs` optional-import warnings matched an over-broad scanner
+  pattern but also occur on MP and did not coincide with an EngineCore death or service failure.
+- The matched Ray/MP C2 gate passed for every workload. Ray retained 95.47–98.96% of MP aggregate
+  decode, with E2E ratios 100.97–102.82% and TTFT ratios 96.18–98.40%. See the
+  [matched report](../benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/report.md).
+
+### MP rollback arm — 2026-10-16
+
 - KV capacity: 548,909 tokens; nominal 262K concurrency 2.09×.
 - Vision primitive/compositional requests, canonical text, reasoning, coding, required tool calls,
   structured output, and 10/10 tool continuation checks passed. This is not a text-only recipe.
@@ -35,15 +51,16 @@ and pins the runtime image by a pullable immutable GHCR manifest digest.
 - Full-matrix MTP acceptance: 60.70%; accepted tokens/iteration: 1.214. Acceptance is activation
   evidence, not a standalone performance claim.
 - No Docker/kernel OOM, `OOMKilled`, restart, CUDA/NCCL/engine fatal, Xid, or request failure occurred.
-- Readiness-time `NV_ERR_NO_MEMORY` messages were observed in qualified cold-start epochs. They did
+- Readiness-time `NV_ERR_NO_MEMORY` messages were observed in the MP cold-start epochs. They did
   not continue after readiness and did not coincide with OOM, restart, fatal, request failure, or
   increasing idle memory use. Treat them as startup warnings only under those same conditions.
 
-### Full-matrix performance reference
+### MP rollback full-matrix performance reference
 
-Each row below summarizes one benchmark object by showing its prompt-processing and generation
-metrics together. The standard consolidated report contains the corresponding 24 pp/tg rows. These
-are measured end-to-end reference values for the exact pinned profile, not universal targets:
+Each row below summarizes one MP rollback benchmark object by showing its prompt-processing and
+generation metrics together. The standard consolidated report contains the corresponding 24 pp/tg rows. These
+are measured end-to-end reference values for the exact pinned MP rollback profile, not the Ray image
+and not universal targets:
 
 | Prompt | Client concurrency | Prefill tok/s | Aggregate decode tok/s | Per-request decode tok/s | TTFT ms |
 |---:|---:|---:|---:|---:|---:|
@@ -112,12 +129,12 @@ On both nodes, pull and verify the image and model before launch:
 
 ```bash
 docker pull \
-  ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6
+  ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5
 
 test "$(docker image inspect \
-  ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6 \
+  ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5 \
   --format '{{.Id}}')" = \
-  sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4
+  sha256:518c1b8f9bdaca735d793ffef1c7d6e050bdb62e6ffc9730e9428052cbc59512
 
 test -f /mnt/data/llm-models/orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8/config.json
 test "$(cat /mnt/data/llm-models/orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8/.hf-revision)" = \
@@ -148,20 +165,9 @@ strictly for parity with the container configuration that was qualified. They in
 privilege. Use these settings only on trusted serving nodes with trusted model artifacts. Removing
 either setting creates a different, unqualified profile and requires a new validation run.
 
-## 5. Worker-first launch
+## 5. Ray head-first launch
 
-Run the worker command on the worker node first:
-
-```bash
-env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
-  docker compose \
-  --env-file presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env \
-  -f docker-compose.yml \
-  -f compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml \
-  --profile worker up -d
-```
-
-Then run the head command on the head node:
+Start the head first. Its entrypoint starts the Ray control plane and waits for both nodes:
 
 ```bash
 env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
@@ -170,6 +176,17 @@ env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"
   -f docker-compose.yml \
   -f compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml \
   --profile head up -d
+```
+
+Then join the worker before the head's bounded join timeout expires:
+
+```bash
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose \
+  --env-file presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env \
+  -f docker-compose.yml \
+  -f compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml \
+  --profile worker up -d
 ```
 
 Recent qualified clean-boot and rollback epochs reached readiness in roughly 40–46 minutes. Do not
@@ -268,4 +285,24 @@ env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"
   --profile worker down
 ```
 
-This recipe does not alter repository defaults or configure autostart. Reboot before switching to another large model if UMA/swap pressure remains.
+After an authorized clean reboot, launch MP rollback worker-first by substituting the rollback preset
+in the same Compose commands:
+
+```bash
+# spark02 — MP worker first
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose \
+  --env-file presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env \
+  -f docker-compose.yml -f compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml \
+  --profile worker up -d
+
+# spark01 — MP head second
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose \
+  --env-file presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env \
+  -f docker-compose.yml -f compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml \
+  --profile head up -d
+```
+
+Neither preset configures autostart. Reboot before switching backend or another large model when
+UMA/swap pressure remains.

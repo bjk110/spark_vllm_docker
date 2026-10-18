@@ -27,9 +27,9 @@ diagrams, and the backend comparison are in [`docs/architecture.md`](docs/archit
 
 ## Representative serving paths
 
-The top-level README shows one representative path for each primary model family. These entries
-describe repository recipes, not live process state; all use the same dual-Spark serving slot and are
-not intended to run simultaneously. See [`presets/README.md`](presets/README.md) for rollback,
+The top-level README shows selected representative paths for primary model families; checkpoints with
+distinct runtime contracts may have separate entries. These entries describe repository recipes, not
+live process state; all use the same dual-Spark serving slot and are not intended to run simultaneously. See [`presets/README.md`](presets/README.md) for rollback,
 validated, experimental, and historical variants, and inspect the live endpoint when runtime state
 matters.
 
@@ -37,7 +37,8 @@ matters.
 |---|---|---|---|
 | `dsv4-flash-0731-v027` · `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c…` | DeepSeek-V4-Flash | `mp` | Native DSpark k=7, 256K, `MAX_NUM_SEQS=1`, FULL_DECODE_ONLY `[8]`, automatic startup prewarm, dual-node TP=2. |
 | `solar-open2-r4-bf16` · local image ID `sha256:ecb7bfe3978a…` | Solar-Open2-250B | `ray` | vLLM 0.25.1, TP=2, BF16 KV 4 GiB/rank, `MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`, eager. |
-| `qwen3.8-flash-next-c1-c2` | Qwen3.8-Flash-Next | `mp` | Manual profile TP=2 baseline, not auto-start; `MAX_NUM_SEQS=2`, prefix cache ON, FULL_DECODE_ONLY `[1,2]`, MTP off. |
+| `qwen3.8-flash-next-c1-c2` | Qwen3.8-Flash-Next FP8 | `mp` | Manual profile, manual activation only, not auto-start; official-checkpoint c1/c2 path with its dedicated preset and overlay. |
+| `ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5` | Qwen3.8-Flash-Next Uncensored FP8 | `ray` | Manual profile, not auto-started; Ray 2.59.0, TP=2/EP=2, eager MTP k=2, actual C2, BT8K, fixed 8 GiB KV/rank, 262K, multimodal/tool support. |
 
 **DeepSeek-V4 recommended** runs `deepseek-ai/DeepSeek-V4-Flash-0731` on vLLM 0.27,
 native DSpark k=7, 256K, and `MAX_NUM_SEQS=1`. Its immutable image identity is
@@ -62,14 +63,26 @@ Full operations, activation, rollback (including the empirically required physic
 sequence), and validation provenance (6-gate operational fast-track):
 [`docs/solar-open2-production.md`](docs/solar-open2-production.md).
 
-**Qwen3.8 Flash Next Uncensored FP8 validated manual recipe** uses the immutable NGC 26.09/e77 image
-manifest, exact source overlay, eager execution, TP=2/EP=2, MTP k=2, `MAX_NUM_SEQS=2`, BT8K, fixed
-8 GiB KV/rank, and `MAX_MODEL_LEN=262144`. Qualification included vision/multimodal requests,
-tool calling, structured output, a simultaneous 262,112-token pair, and a complete `llama-benchy`
-matrix (12/12 benchmark objects; 24 consolidated pp/tg rows). It is not an autostart or
-repository-wide operational default. Follow the dedicated
+**Qwen3.8 Flash Next Uncensored FP8 manual recipe** uses the immutable Ray 2.59.0 child image
+`ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5`,
+the exact source overlay, eager execution, TP=2/EP=2, MTP k=2, `MAX_NUM_SEQS=2`, BT8K, fixed
+8 GiB KV/rank, and `MAX_MODEL_LEN=262144`. Runtime checks covered vision/multimodal requests,
+tool calling, structured output, 262,112-token retrieval, MTP activity, and actual synchronized C2.
+The matched MP/Ray C2 comparison passed every declared retention gate; the former MP image and
+entrypoint remain available through the explicit rollback preset. This recipe is not auto-started.
+
+```bash
+docker pull ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5
+```
+
+Launch it with
+[`presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env)
+and the required
+[`compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml`](compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml)
+overlay. Follow the dedicated
 [step-by-step recipe](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md); do not combine it
-with the official-checkpoint Qwen profiles or their overlays.
+with the official-checkpoint Qwen profiles or their overlays. MP rollback uses
+[`presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env`](presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env).
 
 > **`dsv4-d568` is intentionally frozen** and will not be rebased onto NGC 26.05+. `dsv4-d568`
 > (JASL-era) and `unholy-fusion` are historical/experimental references, not recommended operational paths.

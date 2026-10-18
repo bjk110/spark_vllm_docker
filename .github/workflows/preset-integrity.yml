@@ -76,6 +76,7 @@ jobs:
           scripts/diag/test_verify_qwen38_flash_next_recipe.py
           scripts/diag/test_verify_qwen38_pr55122_mtp1_c1_candidate_recipe.py
           scripts/diag/test_verify_qwen38_ngc2609_mtp_k2_c2_recipe.py
+          scripts/diag/test_qwen38_ray_recipe.py
       - name: Static integrity and Compose rendering (no GPU/build/deploy)
         env:
           QWEN38_PR55122_REQUIRE_LOCAL_IMAGE_ID: '0'

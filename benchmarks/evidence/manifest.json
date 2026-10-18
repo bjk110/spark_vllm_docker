@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "catalog-sections-1-and-2",
-  "recipe_count": 15,
+  "recipe_count": 16,
   "recipes": [
     {
       "preset": "presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env",
@@ -107,10 +107,24 @@
       "evidence": [
         "docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md",
         "patches/qwen/ngc2609-e77-prefault/MANIFEST.json",
-        "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md"
+        "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md",
+        "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/report.md",
+        "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/comparison.json"
       ],
       "known_limits": [
-        "Manual activation only; not auto-started. The qualified contract is eager TP=2/EP=2, MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262144 context, and retained multimodal/tool support. Readiness-time memory warnings remain a documented operational warning, and changing the pinned image, model revision, overlay, MTP depth, concurrency, context, KV budget, scheduler cap, or multimodal path requires requalification."
+        "Manual activation only; not auto-started. The qualified contract is Ray 2.59.0, eager TP=2/EP=2, MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262144 context, and retained multimodal/tool support. Readiness-time memory warnings remain a documented operational warning, and changing the pinned image, model revision, overlay, MTP depth, concurrency, context, KV budget, scheduler cap, or multimodal path requires requalification."
+      ]
+    },
+    {
+      "preset": "presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env",
+      "status_class": "rollback",
+      "evidence": [
+        "docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md",
+        "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md",
+        "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/report.md"
+      ],
+      "known_limits": [
+        "Manual rollback only; not auto-started. Stop Ray head then worker, cleanly reclaim or reboot the nodes, then start the MP worker before the MP head."
       ]
     },
     {
@@ -181,6 +195,8 @@
     "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx64k-20260624-lc2/stage_summary.json": "9cde8f8e9d9a5ad3cb69b319fcf344065a309a0456257ce95e4b2307a543e4bf",
     "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longsoak-20260623-133120/soak_out/soak_summary.json": "016e1859ee7e7eede6cde57e245ce28fa13620b81169126f40de06b4c28aa455",
     "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md": "f9bc5d2057552d96af566c61e91c7c2f06d5abe82065060c4946d82c94724d44",
+    "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/comparison.json": "15221d1ffb3532a82bf77a00800548704b0ae0c9c0e87dd16f7595719c2372ed",
+    "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/report.md": "9496cb012844b4030bed253084e6f67b36135acc02116460a5f66d2c6a90c6c3",
     "benchmarks/evidence/retained/solar-open2-nvfp4-fullbench-20260724-213546/summary.md": "bf58e2e672f777d4022a2305895e5124e2d15c4734864795a06cc78fa3770d8b",
     "benchmarks/evidence/retained/solar-open2-v0251-b12x-cold-warm-20260726T013344Z/report.md": "0d5235708e119160d99a870d467ec547b697b7311284d72a789ebc940ba99a6a",
     "benchmarks/evidence/retained/solar-open2-v0251-b12xsw-r4-20260726T053457Z/report.md": "c8a1ec0a3e68f05d6764f08a75d446f545575ee717481ad2664dae745614e67f",

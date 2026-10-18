@@ -39,8 +39,8 @@ def check(repo):
     return catalog.verify(repo, skip_compose=True, expected_count=1)[0]
 
 
-def test_repository_default_catalog_count_tracks_44_presets():
-    assert catalog.verify.__defaults__[-1] == 44
+def test_repository_default_catalog_count_tracks_45_presets():
+    assert catalog.verify.__defaults__[-1] == 45
 
 
 @pytest.fixture

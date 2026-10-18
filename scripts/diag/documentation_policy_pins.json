@@ -307,6 +307,10 @@
   },
   "presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env": {
     "identifiers": [],
+    "runtime_sha256": "f93c25961b693ccef9342815abb76e2f99e8a141039a519cfafdc7b5afe52341"
+  },
+  "presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env": {
+    "identifiers": [],
     "runtime_sha256": "37da94582b9324e2d621ef7a45182051fd3b589ddd84152f11a59daed314562d"
   },
   "presets/redhatai-122b-nvfp4-tq.env": {

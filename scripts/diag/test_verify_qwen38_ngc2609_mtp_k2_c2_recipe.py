@@ -45,7 +45,7 @@ class RecipeVerifierTests(unittest.TestCase):
 
     def test_runbook_pins_pulled_image_id(self):
         doc = (self.root / "docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md").read_text()
-        self.assertIn("sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4", doc)
+        self.assertIn("sha256:518c1b8f9bdaca735d793ffef1c7d6e050bdb62e6ffc9730e9428052cbc59512", doc)
         self.assertNotIn('org.vllm-spark.qualified.rootfs.image.id', doc)
 
     def test_runbook_verifies_remote_code_checkpoint_content(self):

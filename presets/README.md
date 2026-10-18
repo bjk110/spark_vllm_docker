@@ -107,9 +107,9 @@ and both `compose/solar-open2/` overlays have latest introducing/consolidating c
 
 ### 1c. Qwen3.8-Flash-Next manual and opt-in presets
 
-Qwen3.8-Flash-Next has three indexed presets: the official manual c1/c2 baseline,
-the PR55122 MTP1 interactive-c1 profile, and the independently qualified uncensored NGC 26.09
-MTP k=2/C2 profile. All are manual activation only and are not wired into auto-start. The profiles
+Qwen3.8-Flash-Next has four indexed presets: the official manual c1/c2 baseline,
+the PR55122 MTP1 interactive-c1 profile, the uncensored NGC 26.09 Ray MTP k=2/C2 profile, and its
+explicit MP rollback. All are manual activation only and are not wired into auto-start. The profiles
 use different model revisions, images, graph modes, source overlays, and qualification contracts;
 do not mix their files or flags. Reboot after teardown before the next fresh launch.
 The MTP status label `MAIN_MERGE_APPROVED_OPT_IN` is historical; repository integration
@@ -120,6 +120,7 @@ Full gate ledger: [`docs/qwen3.8-flash-next-tp2.md`](../docs/qwen3.8-flash-next-
 |---|---|---|---|---|
 | [`qwen3.8-flash-next-fp8-tp2-candidate.env`](qwen3.8-flash-next-fp8-tp2-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | **Manual profile** (manual activation only, not auto-start) | dual-rdma TP2 (mp), validated at c1/c2, `MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`, `MAX_MODEL_LEN=262144`, `GPU_MEMORY_UTILIZATION=0.83`. Requires `compose/qwen3.8-flash-next/docker-compose.candidate.yml` overlay. Reboot before next fresh launch after teardown. `MAX_NUM_SEQS=4` remains BLOCKED (content diverges across identical repeats at c2/c4) and must not be raised. MTP and PLE-offloaded NVFP4 excluded from the default; MTP untested/off. | [Manual activation runbook](../docs/qwen3.8-flash-next-tp2.md) |
 | [`qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env`](qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the operational default; no auto-start | dual-rdma TP2 (mp), MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, exact local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; requires `compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml`. MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and default change remain out of scope. | [Manual opt-in runbook](../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) |
+| [`qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env`](qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env) | orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8 | **Primary rollback** (stopped) | Manual activation only; not auto-started. Preserves the former direct MP/RoCE path with the same TP2/EP2, MTP k=2, C2, BT8K, 8 GiB KV/rank, and 262K envelope. Start worker first after clean teardown/reboot. | [Rollback procedure](../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md#7-stop-and-rollback) |
 
 ## 2. Validated presets
 
@@ -127,7 +128,8 @@ Validated, but **not** the current default serving path for any model family.
 
 | Preset | Model / stack | Topology | Status | Use | Launch / docs |
 |---|---|---|---|---|---|
-| [`qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) | orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8 · NGC 26.09/e77 immutable GHCR manifest | dual-rdma TP2/EP2 | **Validated** — manual activation; not auto-started | Recommended profile for this checkpoint: eager MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262,144 context, simultaneous 262,112-token retrieval PASS, multimodal/tool support retained. | [Step-by-step recipe](../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) |
+| [`qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) | orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8 · NGC 26.09/e77 + Ray 2.59.0 immutable GHCR manifest | dual-rdma TP2/EP2 Ray | **Validated** — manual activation; not auto-started | Recommended profile for this checkpoint: eager MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262,144 context, 262,112-token retrieval, multimodal/tool support, and matched MP retention gates PASS. | [Step-by-step recipe](../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) · [matched evidence](../benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/report.md) |
+
 | [`step37-flash-nvfp4-v023-tp2-latency.env`](step37-flash-nvfp4-v023-tp2-latency.env) | Step-3.7-Flash NVFP4 · v0.23 (EP-off, MARLIN, TRITON_ATTN) | dual-rdma TP=2 | Validated (Step-3.7 NVFP4 path) | Recommended Step-3.7 NVFP4 latency path ([bench](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md)) | [Latency recipe/benchmark](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md) |
 | [`step37-flash-fp8-v023-tp2.env`](step37-flash-fp8-v023-tp2.env) | Step-3.7 FP8 v023 tokenizer overlay; 8192 context, c1 | dual-rdma TP=2 | Validated | Bounded validation evidence; documented limits apply | [Tokenizer-overlay runbook](../docs/step3.7-tokenizer-overlay.md#validated-step-37-fp8-baseline-tracked-preset) |
 | [`gemma4-31b-it.env`](gemma4-31b-it.env) | Gemma 4 31B; verified 2026-05-20 | single TP=1 | Validated | Bounded validation evidence; documented limits apply | [Validation evidence](../docs/model-serving-validation-history.md) · [Generic TP1](#generic-tp1-launch) |

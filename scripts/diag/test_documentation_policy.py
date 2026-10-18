@@ -111,6 +111,7 @@ def test_policy_files_and_scanned_benchmark_readmes_trigger_ci():
 def test_ngc2609_qwen_recipe_tests_and_verifier_run_in_ci():
     workflow = (ROOT / '.github/workflows/preset-integrity.yml').read_text()
     assert 'scripts/diag/test_verify_qwen38_ngc2609_mtp_k2_c2_recipe.py' in workflow
+    assert 'scripts/diag/test_qwen38_ray_recipe.py' in workflow
     assert 'python scripts/diag/verify_qwen38_ngc2609_mtp_k2_c2_recipe.py' in workflow
 
 
@@ -154,6 +155,15 @@ def test_public_catalog_summaries_preserve_family_specific_selection_and_rollbac
     assert 'v0.25.0/64K primary rollback + MTP1 legacy rollback' in root_readme
     assert 'For DeepSeek-V4 and Solar-Open2' in preset_readme
     assert 'There is no other operational choice for a validated model family' not in preset_readme
+
+
+def test_readme_qwen_uncensored_manifest_matches_preset():
+    readme = (ROOT / 'README.md').read_text()
+    preset = (ROOT / 'presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env').read_text()
+    image = re.search(r'^VLLM_IMAGE=(.+)$', preset, re.MULTILINE).group(1)
+    assert readme.count(image) >= 2
+    assert 'presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env' in readme
+    assert 'compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml' in readme
 
 
 def test_stack_references_identify_v027_as_current_deepseek_route():

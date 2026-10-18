@@ -12,17 +12,45 @@ from pathlib import Path
 import yaml
 
 PRESET = Path("presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env")
+ROLLBACK = Path("presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env")
 OVERLAY = Path("compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml")
-ENTRYPOINT = Path("entrypoints/qwen38-ngc2609-mtp-k2-c2.sh")
+ENTRYPOINT = Path("entrypoints/qwen38-ngc2609-mtp-k2-c2-ray.sh")
+MP_ENTRYPOINT = Path("entrypoints/qwen38-ngc2609-mtp-k2-c2.sh")
+DOCKERFILE = Path("dockerfiles/experimental/Dockerfile.qwen38-ngc2609-ray259-candidate")
 PATCH_ROOT = Path("patches/qwen/ngc2609-e77-prefault")
 MANIFEST = PATCH_ROOT / "MANIFEST.json"
 DOC = Path("docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md")
-IMAGE = "ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6"
-PUBLISHED_IMAGE_ID = "sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4"
+IMAGE = "ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5"
+PUBLISHED_IMAGE_ID = "sha256:518c1b8f9bdaca735d793ffef1c7d6e050bdb62e6ffc9730e9428052cbc59512"
+PARENT_IMAGE = "ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6"
 QUALIFIED_ROOTFS_IMAGE_ID = "sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4"
 MODEL = "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8"
 REVISION = "8bebbc05cbe65099f37c520865463c1377d8050d"
 VLLM_COMMIT = "e77daef89e18e08321ae7b8b24827eedd5fe8673"
+
+EXPECTED_MEASURED_CONTRACT = {
+    "common": {
+        "max_model_len": 262144,
+        "max_num_seqs": 2,
+        "max_num_batched_tokens": 8192,
+        "kv_cache_memory_bytes": 8589934592,
+        "mtp_depth": 2,
+    },
+    "ray": {
+        "topology": "dual GB10, TP=2, EP=2, Ray/RoCE",
+        "actual_262k_single": "PASS",
+        "matched_c2_pairs": "9/9 PASS",
+        "server_running_peak": 2,
+        "status": "VALIDATED_RAY_MTP_K2_C2_WITH_MP_ROLLBACK",
+    },
+    "mp_rollback": {
+        "topology": "dual GB10, TP=2, EP=2, mp/RoCE",
+        "kv_capacity_tokens": 548909,
+        "actual_262k_pair": "PASS",
+        "server_running_peak": 2,
+        "status": "VALIDATED_MTP_K2_C2_WITH_STARTUP_MEMORY_WARNING",
+    },
+}
 
 EXPECTED_ENV = {
     "VLLM_IMAGE": IMAGE,
@@ -30,17 +58,22 @@ EXPECTED_ENV = {
     "MODEL_CONTAINER_PATH": "/model",
     "SERVED_MODEL_NAME": MODEL,
     "MODEL_REVISION": REVISION,
-    "ENTRYPOINT_FILE": "./entrypoints/qwen38-ngc2609-mtp-k2-c2.sh",
+    "ENTRYPOINT_FILE": "./entrypoints/qwen38-ngc2609-mtp-k2-c2-ray.sh",
     "CLUSTER_MODE": "dual-rdma",
     "TP_SIZE": "2",
-    "DISTRIBUTED_BACKEND": "mp",
+    "DISTRIBUTED_BACKEND": "ray",
     "NNODES": "2",
-    "WORKER_NODE_RANK": "1",
     "HEAD_ROCE_IP": "10.10.10.1",
     "WORKER_ROCE_IP": "10.10.10.2",
     "ROCE_IF_NAME": "enp1s0f0np0",
     "IB_HCA_NAME": "rocep1s0f0",
-    "MASTER_PORT": "29538",
+    "RAY_PORT": "6379",
+    "RAY_JOIN_TIMEOUT_SEC": "600",
+    "RAY_INCLUDE_DASHBOARD": "false",
+    "RAY_OBJECT_STORE_MEMORY_BYTES": "4294967296",
+    "RAY_memory_monitor_refresh_ms": "0",
+    "VLLM_USE_RAY_V2_EXECUTOR_BACKEND": "1",
+    "VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE": "auto",
     "HOST_PORT": "8000",
     "MAX_MODEL_LEN": "262144",
     "MAX_NUM_SEQS": "2",
@@ -116,6 +149,9 @@ def expected_overlay_environment() -> list[str]:
         "KV_CACHE_DTYPE=${KV_CACHE_DTYPE:-auto}",
         "MODEL_REVISION=${MODEL_REVISION}",
         "NNODES=2",
+        "RAY_JOIN_TIMEOUT_SEC=${RAY_JOIN_TIMEOUT_SEC:-600}",
+        "RAY_INCLUDE_DASHBOARD=${RAY_INCLUDE_DASHBOARD:-false}",
+        "VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE=${VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE:-auto}",
         "VLLM_ALL2ALL_BACKEND=${VLLM_ALL2ALL_BACKEND:-allgather_reducescatter}",
         "UCX_NET_DEVICES=${ROCE_IF_NAME}",
         "HF_HOME=/cache/huggingface",
@@ -130,7 +166,7 @@ def expected_overlay_environment() -> list[str]:
 def verify(repo_root: Path, render_compose: bool = True):
     failures: list[str] = []
     warnings: list[str] = []
-    paths = [PRESET, OVERLAY, ENTRYPOINT, MANIFEST, DOC]
+    paths = [PRESET, ROLLBACK, OVERLAY, ENTRYPOINT, MP_ENTRYPOINT, DOCKERFILE, MANIFEST, DOC]
     for rel in paths:
         if not (repo_root / rel).is_file():
             failures.append(f"missing tracked recipe artifact: {rel}")
@@ -155,12 +191,16 @@ def verify(repo_root: Path, render_compose: bool = True):
         failures.append("manifest registry identity drift")
     if runtime.get("published_image_id") != PUBLISHED_IMAGE_ID:
         failures.append("manifest published image ID drift")
+    if runtime.get("parent_registry_manifest") != PARENT_IMAGE:
+        failures.append("manifest parent registry identity drift")
     if runtime.get("qualified_rootfs_source_image_id") != QUALIFIED_ROOTFS_IMAGE_ID:
         failures.append("manifest qualified rootfs identity drift")
     if runtime.get("vllm_commit") != VLLM_COMMIT:
         failures.append("manifest vLLM commit drift")
     if model != {"repo": MODEL, "revision": REVISION}:
         failures.append("manifest model identity drift")
+    if manifest.get("measured_contract") != EXPECTED_MEASURED_CONTRACT:
+        failures.append("manifest backend-specific measured contract drift")
     declared = manifest.get("files", {})
     if set(declared) != set(SOURCE_FILES):
         failures.append("manifest source file set is not exact")
@@ -219,9 +259,12 @@ def verify(repo_root: Path, render_compose: bool = True):
         "--kv-cache-memory-bytes",
         "--reasoning-parser qwen3",
         "--tool-call-parser qwen3_coder",
-        'case "${ROLE}:${NODE_RANK}"',
-        "head:0|worker:1",
+        "--distributed-executor-backend ray",
+        "ray start --head",
+        'ray start --address="${HEAD_ROCE_IP}:${RAY_PORT}"',
+        "Ray cluster join timeout",
         'mkdir -p "${HF_HOME}"',
+        '${MODEL_CONTAINER_PATH}/config.json',
         '${MODEL_REVISION:?MODEL_REVISION required}',
         '${MODEL_CONTAINER_PATH}/.hf-revision',
         "model revision mismatch",
@@ -231,6 +274,11 @@ def verify(repo_root: Path, render_compose: bool = True):
             failures.append(f"entrypoint missing required contract: {token}")
     if "--language-model-only" in script:
         failures.append("entrypoint disables multimodal support with --language-model-only")
+    mp_script = (repo_root / MP_ENTRYPOINT).read_text()
+    if "--language-model-only" in mp_script:
+        failures.append("MP rollback entrypoint disables multimodal support with --language-model-only")
+    if "--distributed-executor-backend mp" not in mp_script:
+        failures.append("MP rollback entrypoint lost the mp backend")
 
     doc = (repo_root / DOC).read_text()
     for phrase in (
@@ -274,7 +322,7 @@ def verify(repo_root: Path, render_compose: bool = True):
                         key: value for key, value in EXPECTED_ENV.items()
                         if key not in {
                             "VLLM_IMAGE", "MODEL_PATH", "ENTRYPOINT_FILE",
-                            "QWEN38_NGC2609_OVERLAY_ROOT", "WORKER_NODE_RANK",
+                            "QWEN38_NGC2609_OVERLAY_ROOT",
                         }
                     }
                     for role in ("head", "worker"):

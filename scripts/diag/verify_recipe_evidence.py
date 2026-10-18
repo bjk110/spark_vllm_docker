@@ -99,7 +99,7 @@ def parse_archive_manifest(path, errors):
     return entries
 
 
-def verify(root, expected_count=15, archive_root=None):
+def verify(root, expected_count=16, archive_root=None):
     root = Path(root).resolve()
     tracked = tracked_files(root)
     errors = []
@@ -228,7 +228,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--archive-root", type=Path)
-    parser.add_argument("--expected-count", type=int, default=15)
+    parser.add_argument("--expected-count", type=int, default=16)
     args = parser.parse_args()
     errors = verify(args.root, args.expected_count, args.archive_root)
     for error in errors:

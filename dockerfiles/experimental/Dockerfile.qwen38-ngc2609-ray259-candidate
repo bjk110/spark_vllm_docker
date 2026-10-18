@@ -1,0 +1,9 @@
+FROM ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6
+
+RUN python -m pip install --no-cache-dir "ray[cgraph]==2.59.0" \
+    && python -c 'import cupy, importlib.metadata as m, ray, torch, vllm; assert m.version("ray") == "2.59.0"; print({"ray": ray.__version__, "cupy_runtime": cupy.cuda.runtime.runtimeGetVersion(), "torch": torch.__version__, "vllm": vllm.__version__})'
+
+LABEL org.bjk110.parent.manifest="ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6" \
+      org.bjk110.ray.version="2.59.0" \
+      org.bjk110.candidate.scope="qwen38-ngc2609-e77-mtp-k2-c2-ray-ab" \
+      org.opencontainers.image.description="Experimental Ray A/B child of the validated Qwen3.8 NGC 26.09/e77 image"

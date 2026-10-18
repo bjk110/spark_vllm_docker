@@ -3,8 +3,9 @@
   "status": "VALIDATED_MANUAL_RECIPE",
   "scope": "Exact source overlay for orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8 on dual GB10",
   "source_runtime": {
-    "registry_manifest": "ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6",
-    "published_image_id": "sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4",
+    "registry_manifest": "ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5",
+    "published_image_id": "sha256:518c1b8f9bdaca735d793ffef1c7d6e050bdb62e6ffc9730e9428052cbc59512",
+    "parent_registry_manifest": "ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6",
     "qualified_rootfs_source_image_id": "sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4",
     "base_image_id": "sha256:2f1553f270c9bb44403ad7c4d9afb2d45ff1fb1cd9cf61df7de3385fb8cd11af",
     "vllm_commit": "e77daef89e18e08321ae7b8b24827eedd5fe8673",
@@ -25,15 +26,26 @@
     "model_executor/model_loader/weight_utils.py": "53a3455799b832b44d8a54308f63c8c406e0050669869e9a043424d38669de21"
   },
   "measured_contract": {
-    "topology": "dual GB10, TP=2, EP=2, mp/RoCE",
-    "max_model_len": 262144,
-    "max_num_seqs": 2,
-    "max_num_batched_tokens": 8192,
-    "kv_cache_memory_bytes": 8589934592,
-    "mtp_depth": 2,
-    "kv_capacity_tokens": 548909,
-    "actual_262k_pair": "PASS",
-    "server_running_peak": 2,
-    "status": "VALIDATED_MTP_K2_C2_WITH_STARTUP_MEMORY_WARNING"
+    "common": {
+      "max_model_len": 262144,
+      "max_num_seqs": 2,
+      "max_num_batched_tokens": 8192,
+      "kv_cache_memory_bytes": 8589934592,
+      "mtp_depth": 2
+    },
+    "ray": {
+      "topology": "dual GB10, TP=2, EP=2, Ray/RoCE",
+      "actual_262k_single": "PASS",
+      "matched_c2_pairs": "9/9 PASS",
+      "server_running_peak": 2,
+      "status": "VALIDATED_RAY_MTP_K2_C2_WITH_MP_ROLLBACK"
+    },
+    "mp_rollback": {
+      "topology": "dual GB10, TP=2, EP=2, mp/RoCE",
+      "kv_capacity_tokens": 548909,
+      "actual_262k_pair": "PASS",
+      "server_running_peak": 2,
+      "status": "VALIDATED_MTP_K2_C2_WITH_STARTUP_MEMORY_WARNING"
+    }
   }
 }

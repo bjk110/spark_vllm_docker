@@ -1,0 +1,59 @@
+{
+  "classification": "MATCHED_C2_PERFORMANCE_PASS",
+  "date_utc": "2026-10-18",
+  "model": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+  "contract": {
+    "topology": "dual GB10 over RoCE",
+    "tp_size": 2,
+    "max_model_len": 262144,
+    "max_num_seqs": 2,
+    "max_num_batched_tokens": 8192,
+    "kv_cache_memory_bytes": 8589934592,
+    "mtp_depth": 2,
+    "workloads": ["prose", "code", "json"],
+    "prompt_tokens": 2048,
+    "completion_tokens": 512,
+    "synchronized_requests": 2,
+    "repeats_per_workload": 3
+  },
+  "thresholds": {
+    "aggregate_decode_ratio_min": 0.9,
+    "mean_request_e2e_ratio_max": 1.15,
+    "mean_request_ttft_ratio_max": 1.2
+  },
+  "workloads": {
+    "prose": {
+      "mp": {"aggregate_decode_tok_s": 41.033521565411675, "mean_request_e2e_s": 26.4984309823332, "mean_request_ttft_s": 2.1294422401665543},
+      "ray": {"aggregate_decode_tok_s": 40.60672859862508, "mean_request_e2e_s": 26.75526748700001, "mean_request_ttft_s": 2.0954152921666114},
+      "ratios": {"aggregate_decode": 0.989598919358987, "mean_request_e2e": 1.0096925174489781, "mean_request_ttft": 0.9840207227234858}
+    },
+    "code": {
+      "mp": {"aggregate_decode_tok_s": 52.72017514120624, "mean_request_e2e_s": 21.31859068299991, "mean_request_ttft_s": 2.153004693666844},
+      "ray": {"aggregate_decode_tok_s": 51.64815360865401, "mean_request_e2e_s": 21.54336823833326, "mean_request_ttft_s": 2.0707076218332836},
+      "ratios": {"aggregate_decode": 0.9796658199696622, "mean_request_e2e": 1.0105437342775474, "mean_request_ttft": 0.9617757118339589}
+    },
+    "json": {
+      "mp": {"aggregate_decode_tok_s": 57.65469202873215, "mean_request_e2e_s": 19.55194559866656, "mean_request_ttft_s": 2.067943461666649},
+      "ray": {"aggregate_decode_tok_s": 55.04564106113921, "mean_request_e2e_s": 20.104123539499824, "mean_request_ttft_s": 2.010121659666538},
+      "ratios": {"aggregate_decode": 0.9547469446841772, "mean_request_e2e": 1.0282415853730138, "mean_request_ttft": 0.9720389831385865}
+    }
+  },
+  "gates": {
+    "all_workload_retention_gates": "PASS",
+    "mp_pairs": 9,
+    "ray_pairs": 9,
+    "mp_all_server_running_peak_ge_2": true,
+    "ray_all_server_running_peak_ge_2": true,
+    "ray_short_tool": "PASS",
+    "ray_mtp_activity": "PASS",
+    "ray_262112_token_retrieval": "PASS",
+    "ray_restart_or_oom": 0,
+    "ray_cuda_nccl_xid_traceback": 0,
+    "mp_restore": "PASS"
+  },
+  "adjudication": "Four optional triton_kernels.matmul_ogs import warnings were initially matched by an over-broad EngineCore failed regex. The same warning exists on the MP path and did not coincide with EngineCore death, restart, OOM, CUDA/NCCL/Xid, health failure, or request failure. It is not classified as a runtime fatal.",
+  "ray_image": "ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5",
+  "ray_image_id": "sha256:518c1b8f9bdaca735d793ffef1c7d6e050bdb62e6ffc9730e9428052cbc59512",
+  "mp_image": "ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6",
+  "mp_image_id": "sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4"
+}
