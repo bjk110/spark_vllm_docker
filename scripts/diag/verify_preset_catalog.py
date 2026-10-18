@@ -143,8 +143,13 @@ def verify(root, skip_compose=False, expected_count=EXPECTED_PRESET_COUNT):
             fail(f'{path}: topology differs from CLUSTER_MODE/TP_SIZE')
         row_topologies = re.findall(r'\b(single|dual-rdma)\s+TP=?([12])\b', re.sub(r'[`*]', '', row))
         if row_topologies and any(pair != (mode, tp) for pair in row_topologies): fail(f'{path}: catalog topology differs from preset')
-        backend = env.get('DISTRIBUTED_BACKEND', 'ray')
-        if backend not in ('ray', 'mp') or f'backend={backend}' not in topology: fail(f'{path}: backend missing or differs from preset/Compose default')
+        backend = env.get('DISTRIBUTED_BACKEND', 'direct' if mode == 'single' else 'ray')
+        if mode == 'single' and backend != 'direct':
+            fail(f'{path}: single topology must use backend=direct without DISTRIBUTED_BACKEND')
+        elif mode == 'dual-rdma' and backend not in ('ray', 'mp'):
+            fail(f'{path}: dual-rdma backend must be ray or mp')
+        if f'backend={backend}' not in topology:
+            fail(f'{path}: backend missing or differs from preset/Compose default')
         identity = re.search(r'VLLM_IMAGE=([^;\s]+)', metadata['Image identity'])
         if not env.get('VLLM_IMAGE') or not identity or identity.group(1) != env['VLLM_IMAGE']: fail(f'{path}: image identity differs from VLLM_IMAGE')
         overlays = list(dict.fromkeys(file for file in re.findall(r'[\w./-]+\.ya?ml', metadata['Required overlay']) if file != 'docker-compose.yml'))

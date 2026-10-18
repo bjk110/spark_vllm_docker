@@ -4,6 +4,10 @@ This is the canonical index for `docs/`. **A document's authority is determined 
 this index and by the status banner at the top of each document**, not by its
 filename. A filename does not by itself make a document current — always check its group here and its banner.
 
+Start with the [model runbook index](models/README.md) when selecting an evidence-backed recipe.
+The generated executable recipe table is [`../recipes/README.md`](../recipes/README.md); the root
+README owns the common download, render, launch, readiness, and shutdown workflow.
+
 The DeepSeek-V4-Flash recommended baseline is the **vLLM 0.27 native DSpark k=7 256K** path
 with `MAX_NUM_SEQS=1`. Deploy with
 `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` plus
@@ -102,7 +106,7 @@ Benchmark documents index existing results only; they are not operational-config
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [Recipe evidence catalog](../benchmarks/evidence/README.md) | Canonical evidence map for the 15 recommended/rollback/manual and validated presets | `Evidence authority` | Find retained gate summaries, explicit limits, immutable hashes, and the external raw-archive ledger |
+| [Recipe evidence catalog](../benchmarks/evidence/README.md) | Canonical evidence map for the 16 recommended/rollback/manual and validated presets | `Evidence authority` | Find retained gate summaries, explicit limits, immutable hashes, and the external raw-archive ledger |
 | [benchmarks/bt-matrix-step37-nvfp4-v023.md](benchmarks/bt-matrix-step37-nvfp4-v023.md) | Step-3.7-NVFP4 v0.23 `MAX_NUM_BATCHED_TOKENS` matrix benchmark | `Benchmark` | bt-matrix reference for the Step-3.7 NVFP4 path |
 | [benchmarks/step37-v022-long-context-validation.md](benchmarks/step37-v022-long-context-validation.md) | Step-3.7-NVFP4 v0.22 long-context validation (to 245009 tokens) | `Benchmark` (experimental) | Long-context envelope evidence |
 

@@ -175,10 +175,72 @@ def test_root_readme_uses_a_generic_model_serving_workflow():
     assert 'There is no other operational choice for a validated model family' not in preset_readme
 
 
+def test_root_readme_covers_fresh_clone_recipe_onboarding():
+    readme = (ROOT / 'README.md').read_text()
+    for command in (
+        'git clone https://github.com/bjk110/spark_vllm_docker.git',
+        'docker compose version',
+        './scripts/recipe list --nodes 1',
+        './scripts/recipe list --nodes 2',
+        './scripts/recipe pull',
+        './scripts/recipe render',
+    ):
+        assert command in readme
+    assert 'portable' in readme.lower()
+    assert 'local-only' in readme.lower()
+
+
+def test_preset_catalog_delegates_launch_commands_to_the_recipe_cli():
+    readme = (ROOT / 'presets/README.md').read_text()
+    assert not re.search(r'docker compose --env-file[^\n]+--profile\s+(?:head|worker)\s+up -d', readme)
+    assert '../scripts/recipe' in readme
+    assert '../README.md#quick-start' in readme
+
+
+def test_model_index_covers_every_executable_recipe_runbook():
+    manifest = json.loads((ROOT / 'recipes/manifest.json').read_text())
+    index = (ROOT / 'docs/models/README.md').read_text()
+    for recipe in manifest['recipes']:
+        assert recipe['documentation']['runbook'].removeprefix('docs/') in index
+
+
+def test_active_compose_overlays_do_not_embed_a_maintainer_home_path():
+    for path in (ROOT / 'compose').rglob('*.yml'):
+        assert '/home/bjk110/' not in path.read_text(), path
+
+
+def test_entrypoint_index_lists_every_tracked_entrypoint_script():
+    index = (ROOT / 'entrypoints/README.md').read_text()
+    for path in (ROOT / 'entrypoints').glob('*.sh'):
+        assert f'`{path.name}`' in index
+
+
 def test_readme_qwen_uncensored_manifest_matches_preset():
     readme = (ROOT / 'README.md').read_text()
     assert 'presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env' in readme
     assert 'compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml' in readme
+
+
+def test_recipe_indexes_match_canonical_evidence_count():
+    manifest = json.loads((ROOT / 'benchmarks/evidence/manifest.json').read_text())
+    expected = str(manifest['recipe_count'])
+    assert f'{expected} presets' in (ROOT / 'benchmarks/evidence/README.md').read_text()
+    assert f'{expected} recommended/rollback/manual and validated presets' in (
+        ROOT / 'docs/README.md'
+    ).read_text()
+
+
+def test_qwen_ray_and_mp_images_are_not_conflated():
+    ray = (ROOT / 'presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env').read_text()
+    mp = (ROOT / 'presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env').read_text()
+    images = (ROOT / 'docs/images.md').read_text()
+    ray_image = re.search(r'^VLLM_IMAGE=(.*)$', ray, re.M).group(1)
+    mp_image = re.search(r'^VLLM_IMAGE=(.*)$', mp, re.M).group(1)
+    assert ray_image != mp_image
+    assert '`qwen38-ngc2609-e77-k2c2-ray`' in images
+    assert ray_image in images
+    assert '`qwen38-ngc2609-e77-k2c2-mp-rollback`' in images
+    assert mp_image in images
 
 
 def test_root_readme_commands_preserve_the_rendered_environment_contract():

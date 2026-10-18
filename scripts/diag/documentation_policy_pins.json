@@ -24,6 +24,33 @@
       "compose/solar-open2/docker-compose.r4-production.yml"
     ]
   },
+  "docs/models/README.md": {
+    "identifiers": [
+      "deepseek-v4-production.md",
+      "../deepseek-v4-production.md",
+      "solar-open2-production.md",
+      "../solar-open2-production.md"
+    ]
+  },
+  "recipes/README.md": {
+    "identifiers": [
+      "deepseek-v4-production.md",
+      "../docs/deepseek-v4-production.md",
+      "deepseek-v4-production.md",
+      "../docs/deepseek-v4-production.md",
+      "deepseek-v4-flash-dspark-k7-64k-production-tp2",
+      "deepseek-v4-production.md",
+      "../docs/deepseek-v4-production.md",
+      "deepseek-v4-flash-mtp1-production-tp2",
+      "deepseek-v4-production.md",
+      "../docs/deepseek-v4-production.md",
+      "solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2",
+      "solar-open2-production.md",
+      "../docs/solar-open2-production.md",
+      "solar-open2-production.md",
+      "../docs/solar-open2-production.md"
+    ]
+  },
   "README.md": {
     "identifiers": [
       "docs/deepseek-v4-production.md",
@@ -405,7 +432,7 @@
       "docker-compose.r4-production.yml",
       "docs/solar-open2-production.md"
     ],
-    "runtime_sha256": "1680d0c44f71a8ded8faab7fa4ca99cf95646817ed0992f293b356affed8cc03"
+    "runtime_sha256": "7db437452126639194e3bb1e51a66b6d933ff797e859dc427f0eb2223745231e"
   },
   "compose/solar-open2/docker-compose.r4-production.yml": {
     "identifiers": [

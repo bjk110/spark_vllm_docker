@@ -141,6 +141,7 @@ reproducibility-limitation note below):
 
 ```bash
 export B12X_CACHE_DIR=/absolute/node-local/solar-cache  # explicit operator prerequisite
+export B12X_OBS_DIR=/absolute/node-local/solar-observability  # optional; defaults to /tmp/solar-open2-obs
 docker compose --env-file presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env \
   -f docker-compose.yml -f compose/solar-open2/docker-compose.r4-production.yml \
   -f compose/solar-open2/docker-compose.b12x-cache.yml --profile head up -d   # spark01
@@ -185,8 +186,9 @@ than an oversight:
 - A portable cache path can be supplied explicitly in the reference below, but it does not
   reproduce the recorded warm cache or validate new guard/watch orchestration. A cold cache
   changes startup timing; warm-cache contents remain local-only.
-- The overlay also mounts `/home/bjk110/docker-build/c2-obs` (an observability/telemetry sink) —
-  also local-only, also not required for correctness, only for diagnostics.
+- The overlay mounts `${B12X_OBS_DIR:-/tmp/solar-open2-obs}` as an observability/telemetry sink.
+  It is node-local and optional, is not required for correctness, and no longer embeds a
+  maintainer-specific home path.
 
 **Consequence:** a fresh clone of this
 repository will be able to reproduce the exact configuration (image reference, both presets, all

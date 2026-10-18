@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""List, inspect, pull, and render evidence-backed DGX Spark recipes."""
+import argparse
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+MANIFEST = ROOT / "recipes/manifest.json"
+RENDER_OVERRIDE_KEYS = {
+    "B12X_CACHE_DIR", "B12X_OBS_DIR", "HEAD_ROCE_IP", "WORKER_ROCE_IP",
+    "ROCE_IF_NAME", "IB_HCA_NAME",
+}
+
+
+def load_recipes():
+    data = json.loads(MANIFEST.read_text())
+    return data["recipes"]
+
+
+def select_recipe(recipe_id):
+    for recipe in load_recipes():
+        if recipe["id"] == recipe_id:
+            return recipe
+    raise ValueError(f"unknown recipe: {recipe_id}")
+
+
+def trusted_path():
+    entries = [
+        entry for entry in os.environ.get("PATH", os.defpath).split(os.pathsep)
+        if entry and Path(entry).is_absolute()
+    ]
+    return os.pathsep.join(entries) or os.defpath
+
+
+def docker_executable():
+    path = shutil.which("docker", path=trusted_path())
+    if not path:
+        raise ValueError("docker executable not found")
+    resolved = Path(path).resolve()
+    if not resolved.is_absolute():
+        raise ValueError("docker executable must resolve to an absolute path")
+    return str(resolved)
+
+
+def compose_command(recipe):
+    command = [docker_executable(), "compose", "--env-file", recipe["preset"]]
+    for path in recipe["runtime"]["compose"]:
+        command.extend(["-f", path])
+    command.extend(["--profile", "*", "config"])
+    return command
+
+
+def parse_overrides(values):
+    result = {}
+    for value in values:
+        key, separator, setting = value.partition("=")
+        if not separator or key not in RENDER_OVERRIDE_KEYS:
+            raise ValueError(f"override key is not allowed: {key or value}")
+        if not setting:
+            raise ValueError(f"override value must not be empty: {key}")
+        result[key] = setting
+    return result
+
+
+def clean_render_environment(model_path, overrides):
+    environment = {
+        "PATH": trusted_path(),
+        "HOME": os.environ.get("HOME", "/tmp"),
+        "MODEL_PATH": model_path,
+    }
+    environment.update(overrides)
+    if os.environ.get("DOCKER_CONFIG"):
+        environment["DOCKER_CONFIG"] = os.environ["DOCKER_CONFIG"]
+    return environment
+
+
+def display_clean_command(command, environment):
+    assignments = [f"{key}={value}" for key, value in environment.items()]
+    visible = ["docker" if Path(command[0]).name == "docker" else command[0], *command[1:]]
+    return "env -i " + shlex.join([*assignments, *visible])
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    list_parser = sub.add_parser("list", help="list executable recipes")
+    list_parser.add_argument("--nodes", type=int, choices=(1, 2))
+    show_parser = sub.add_parser("show", help="show one canonical recipe as JSON")
+    show_parser.add_argument("recipe_id")
+    pull_parser = sub.add_parser("pull", help="pull the exact recipe image")
+    pull_parser.add_argument("recipe_id")
+    pull_parser.add_argument("--dry-run", action="store_true")
+    render_parser = sub.add_parser("render", help="render Compose without starting containers")
+    render_parser.add_argument("recipe_id")
+    render_parser.add_argument("--model-path", required=True)
+    render_parser.add_argument(
+        "--set", action="append", default=[], metavar="KEY=VALUE",
+        help="explicit render override for documented network/cache keys",
+    )
+    render_parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "list":
+            print("ID\tNODES\tBACKEND\tDISTRIBUTION\tMODEL")
+            for recipe in load_recipes():
+                if args.nodes and recipe["runtime"]["nodes"] != args.nodes:
+                    continue
+                print("\t".join((
+                    recipe["id"], str(recipe["runtime"]["nodes"]),
+                    recipe["runtime"]["backend"], recipe["image"]["distribution"],
+                    recipe["model"]["served_name"],
+                )))
+            return 0
+        recipe = select_recipe(args.recipe_id)
+        if args.command == "show":
+            print(json.dumps(recipe, indent=2, ensure_ascii=False))
+            return 0
+        if args.command == "pull":
+            if not recipe["image"]["pullable"]:
+                raise ValueError(
+                    f"recipe {recipe['id']} is not pullable "
+                    f"({recipe['image']['distribution']}); follow {recipe['documentation']['runbook']}"
+                )
+            command = ["docker", "pull", recipe["image"]["reference"]]
+            if args.dry_run:
+                print(shlex.join(command))
+                return 0
+            command[0] = docker_executable()
+            environment = {
+                "PATH": trusted_path(),
+                "HOME": os.environ.get("HOME", "/tmp"),
+            }
+            if os.environ.get("DOCKER_CONFIG"):
+                environment["DOCKER_CONFIG"] = os.environ["DOCKER_CONFIG"]
+            return subprocess.run(command, cwd=ROOT, env=environment).returncode
+        if args.command == "render":
+            environment = clean_render_environment(args.model_path, parse_overrides(args.set))
+            command = compose_command(recipe)
+            if args.dry_run:
+                print(display_clean_command(command, environment))
+                return 0
+            return subprocess.run(command, cwd=ROOT, env=environment).returncode
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

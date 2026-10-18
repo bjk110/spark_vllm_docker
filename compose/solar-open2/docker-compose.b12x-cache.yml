@@ -35,6 +35,8 @@
 # B12X_CACHE_DIR resolution is launcher-local-only (not tracked in this
 # repository) — see docs/solar-open2-production.md section 5 for the
 # reproducibility-limitation note.
+# B12X_OBS_DIR is an optional node-local telemetry sink. It defaults to
+# /tmp/solar-open2-obs and must never be hard-coded to a maintainer home path.
 services:
   head:
     environment:
@@ -44,7 +46,7 @@ services:
       - ${B12X_CACHE_DIR:?}/triton:/root/.triton
       - ${B12X_CACHE_DIR:?}/nv:/root/.nv
       - ${B12X_CACHE_DIR:?}/cutedsl:/cache/cutedsl
-      - /home/bjk110/docker-build/c2-obs:/obs
+      - ${B12X_OBS_DIR:-/tmp/solar-open2-obs}:/obs
   worker:
     environment:
       - CUTE_DSL_CACHE_DIR=/cache/cutedsl
@@ -53,4 +55,4 @@ services:
       - ${B12X_CACHE_DIR:?}/triton:/root/.triton
       - ${B12X_CACHE_DIR:?}/nv:/root/.nv
       - ${B12X_CACHE_DIR:?}/cutedsl:/cache/cutedsl
-      - /home/bjk110/docker-build/c2-obs:/obs
+      - ${B12X_OBS_DIR:-/tmp/solar-open2-obs}:/obs

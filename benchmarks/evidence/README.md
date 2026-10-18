@@ -1,7 +1,7 @@
 # Canonical recipe evidence
 
-This directory is the evidence authority for the **15 presets in catalog sections 1–2**:
-8 recommended/rollback/manual presets and 7 validated presets.
+This directory is the evidence authority for the **16 presets in catalog sections 1–2**:
+9 recommended/rollback/manual presets and 7 validated presets.
 The machine-readable contract is [`manifest.json`](manifest.json).
 
 ## Retention rule

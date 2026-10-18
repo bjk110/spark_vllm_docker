@@ -19,6 +19,16 @@ Do not mix presets, overlays, or entrypoints from different model families. The 
 [`docs/README.md`](docs/README.md). Release and patch details live in
 [`CHANGELOG.md`](CHANGELOG.md) and [`PATCH_STATUS.md`](PATCH_STATUS.md).
 
+The evidence-backed executable set is defined by [`recipes/manifest.json`](recipes/manifest.json).
+Its image distribution field is separate from validation status:
+
+- **`portable`** — pullable immutable registry digest;
+- **`tag-only`** — pullable tag, but not an immutable content identity;
+- **`local-only`** — image or orchestration exists only on the qualification hosts.
+
+Use local-only entries as configuration/evidence references unless you have the documented host
+artifacts. They are not advertised as fresh-clone downloads.
+
 ## Hardware and topology
 
 | Topology | Nodes | GPU / memory | Interconnect | Coordination |
@@ -38,7 +48,7 @@ time.
 | Representative path | Model family | Typical topology / backend | Start here |
 |---|---|---|---|
 | `dsv4-flash-0731-v027` | DeepSeek-V4 Flash | dual-RDMA, `mp` | [Preset catalog](presets/README.md) · [model runbook](docs/deepseek-v4-production.md) |
-| `solar-open2-r4-bf16` | Solar-Open2-250B | dual-RDMA, Ray | [`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env) · [model runbook](docs/solar-open2-production.md) |
+| `solar-open2-r4-bf16` | Solar-Open2-250B; local-only reference | dual-RDMA, Ray | [`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env) · [model runbook](docs/solar-open2-production.md) |
 | `qwen3.8-flash-next-c1-c2` | Qwen3.8 Flash Next official; manual profile, manual activation, not auto-started | dual-RDMA, `mp` | [Preset catalog](presets/README.md) · [model guide](docs/qwen3.8-flash-next-tp2.md) |
 | `qwen3.8-uncensored-k2-c2` | Qwen3.8 Flash Next Uncensored FP8 | dual-RDMA, Ray | [`presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) · [`compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml`](compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml) · [model runbook](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) |
 
@@ -49,10 +59,46 @@ this top-level launch guide.
 
 ## Quick Start
 
+### 0. Clone and check prerequisites
+
+```bash
+git clone https://github.com/bjk110/spark_vllm_docker.git
+cd spark_vllm_docker
+docker compose version
+python3 --version
+```
+
+Docker Compose **2.24.4 or newer** is required because some exact-environment overlays use
+`!override`. On every participating Spark, verify the NVIDIA container runtime and the network/RDMA
+devices required by the selected model runbook.
+
+List only the evidence-backed executable recipes:
+
+```bash
+./scripts/recipe list --nodes 1
+./scripts/recipe list --nodes 2
+./scripts/recipe show <recipe-id>
+```
+
+For a pullable recipe, download the exact image on every participating node and render without
+starting containers:
+
+```bash
+./scripts/recipe pull <recipe-id>
+./scripts/recipe render <recipe-id> --model-path /absolute/path/to/model
+```
+
+`pull` fails closed for local-only recipes. Model weights are not stored in this repository; follow
+the recipe's model runbook for source, revision, checksum or revision-marker requirements. The CLI
+currently performs discovery, image pull, and config-only rendering. Launch remains an explicit
+operator action using the reviewed render and the backend-specific order below.
+
 ### 1. Select a preset
 
-Choose a preset from [`presets/README.md`](presets/README.md), then read its header before running any
-command. Treat these fields as one contract:
+Choose an executable recipe with [`scripts/recipe`](scripts/recipe), or consult
+[`presets/README.md`](presets/README.md) for general, experimental, and historical references. Then
+read the preset header and linked model runbook before running any command. Treat these fields as one
+contract:
 
 - `VLLM_IMAGE`, `ENTRYPOINT_FILE`, and model identity;
 - `CLUSTER_MODE`, `TP_SIZE`, and `DISTRIBUTED_BACKEND`;

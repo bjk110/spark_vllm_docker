@@ -8,35 +8,31 @@ recipe/image/topology in its header comment.
 
 ## Launch / docs
 
-Every catalog row links its tracked preset and either a canonical generic launch below or the
-most specific existing runbook/evidence. Operational and model-specific rows use their runbook;
+Every catalog row links its tracked preset and either a generic topology reference below or the
+most specific existing runbook/evidence. Evidence-backed executable recipes are selected with
+[`scripts/recipe`](../scripts/recipe); the canonical launch workflow is the
+[root Quick Start](../README.md#quick-start). Operational and model-specific rows use their runbook;
 experimental/historical links are **validation/reproduction only**, not recommended deployment paths.
 The preset header's **Required overlay wins**: include its required overlays and runtime setup,
 even when a generic command appears applicable. The current DeepSeek-V4 route requires its
 operational overlay; omitting it skips health/prewarm.
 
-All commands run from the **repository root** on the indicated node. Replace `<preset>` with the
-selected filename (without `.env`), resolve `MODEL_PATH` and model weights, network/RDMA settings,
-and the required image identity/availability before launch. See [image prerequisites](../docs/images.md)
-and [architecture/network setup](../docs/architecture.md). For TP2, resolve prerequisites on both nodes.
-Generic snippets apply only to general or validated configuration references whose header documents no required overlay;
-follow the linked runbook for model-specific, tokenizer-overlay, Step-3.7, and FlashInfer-AOT setup.
+All operations run from the **repository root**. Resolve `MODEL_PATH`, model weights, network/RDMA
+settings, image availability, and every required overlay before launch. See
+[image prerequisites](../docs/images.md) and
+[architecture/network setup](../docs/architecture.md). For TP2, resolve prerequisites on both nodes.
+The catalog intentionally does not duplicate Compose launch commands: use the recipe CLI for
+selection/pull/render and the root Quick Start plus the linked runbook for launch.
 
 ### Generic TP1 launch
 
-```bash
-# Single node — general supported TP1 preset with Required overlay=None.
-docker compose --env-file presets/<preset>.env --profile head up -d
-```
+Single-node references use `backend=direct` and start only the head profile. See the
+[root Quick Start](../README.md#quick-start); no generic command here overrides a preset's runbook.
 
 ### Generic TP2 launch
 
-```bash
-# Worker node first — general supported TP2 preset with Required overlay=None.
-docker compose --env-file presets/<preset>.env --profile worker up -d
-# Then head node, after the worker starts.
-docker compose --env-file presets/<preset>.env --profile head up -d
-```
+Two-node order is backend-specific: Ray starts head then worker; `mp` starts worker then head. See
+the [root Quick Start](../README.md#quick-start); never infer order from TP size alone.
 
 Navigation: **[1. Operational presets](#1-operational-presets)** · [2. Validated](#2-validated-presets)
 · [3. General supported](#3-general-supported-presets) · [4. Experimental](#4-experimental-presets) · [5. Historical reproduction](#5-historical-reproduction-presets)

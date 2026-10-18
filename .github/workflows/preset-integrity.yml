@@ -17,7 +17,12 @@ on:
       - 'benchmarks/evidence/**'
       - 'benchmarks/README.md'
       - 'benchmarks/llama-benchy/README.md'
+      - 'recipes/**'
+      - 'scripts/recipe'
       - 'scripts/prewarm*.py'
+      - 'scripts/diag/test_recipe_cli.py'
+      - 'scripts/diag/test_recipe_manifest.py'
+      - 'scripts/diag/verify_recipe_manifest.py'
       - 'scripts/diag/test_documentation_policy.py'
       - 'scripts/diag/documentation_policy_pins.json'
       - 'scripts/diag/verify_preset_catalog.py'
@@ -45,7 +50,12 @@ on:
       - 'benchmarks/evidence/**'
       - 'benchmarks/README.md'
       - 'benchmarks/llama-benchy/README.md'
+      - 'recipes/**'
+      - 'scripts/recipe'
       - 'scripts/prewarm*.py'
+      - 'scripts/diag/test_recipe_cli.py'
+      - 'scripts/diag/test_recipe_manifest.py'
+      - 'scripts/diag/verify_recipe_manifest.py'
       - 'scripts/diag/test_documentation_policy.py'
       - 'scripts/diag/documentation_policy_pins.json'
       - 'scripts/diag/verify_preset_catalog.py'
@@ -71,6 +81,8 @@ jobs:
         run: >-
           python -m pytest -q scripts/diag/test_verify_preset_catalog.py
           scripts/diag/test_verify_recipe_evidence.py
+          scripts/diag/test_recipe_manifest.py
+          scripts/diag/test_recipe_cli.py
           scripts/diag/test_solar_incremental_provenance.py
           scripts/diag/test_documentation_policy.py
           scripts/diag/test_verify_qwen38_flash_next_recipe.py
@@ -83,6 +95,7 @@ jobs:
         run: |
           python scripts/diag/verify_preset_catalog.py
           python scripts/diag/verify_recipe_evidence.py
+          python scripts/diag/verify_recipe_manifest.py
           python scripts/diag/verify_qwen38_flash_next_recipe.py
           python scripts/diag/verify_qwen38_pr55122_mtp1_c1_candidate_recipe.py
           python scripts/diag/verify_qwen38_ngc2609_mtp_k2_c2_recipe.py

@@ -15,14 +15,13 @@ def repo(tmp_path):
     (tmp_path / 'presets').mkdir()
     (tmp_path / 'presets/a.env').write_text('''# Status: General supported
 # Validated date: Not recorded
-# Topology: single; TP=1; backend=ray
+# Topology: single; TP=1; backend=direct
 # Image identity: VLLM_IMAGE=example:tag
 # Required overlay: None documented; use docker-compose.yml
 # Known limits: Not recorded
 VLLM_IMAGE=example:tag
 CLUSTER_MODE=single
 TP_SIZE=1
-DISTRIBUTED_BACKEND=ray
 ''')
     (tmp_path / 'docker-compose.yml').write_text('services: {}\n')
     (tmp_path / 'presets/README.md').write_text('''# Catalog
@@ -51,13 +50,19 @@ def test_pass_and_ignore_untracked(repo):
     (repo / 'presets/untracked.env').write_text('bad')
     assert check(repo) == []
 
+
+def test_single_topology_is_direct_and_rejects_distributed_backend(repo):
+    path = repo / 'presets/a.env'
+    path.write_text(path.read_text() + 'DISTRIBUTED_BACKEND=ray\n')
+    assert any('single topology must use backend=direct' in error for error in check(repo))
+
 @pytest.mark.parametrize('old,new,needle', [
     ('# Status: General supported', '# Status: Experimental', 'status'),
     ('# Known limits: Not recorded', '# Known limits: Not recorded\n# Known limits: duplicate', 'Known limits'),
     ('TP_SIZE=1', 'TP_SIZE=2', 'topology'),
     ('# Image identity: VLLM_IMAGE=example:tag', '# Image identity: wrong', 'image'),
     ('# Required overlay: None documented; use docker-compose.yml', '# Required overlay: compose/missing.yml', 'tracked path'),
-    ('DISTRIBUTED_BACKEND=ray', 'DISTRIBUTED_BACKEND=mp', 'backend'),
+    ('# Topology: single; TP=1; backend=direct', '# Topology: single; TP=1; backend=ray', 'backend'),
     ('TP_SIZE=1', 'TP_SIZE=1\nAPI_TOKEN=secret123', 'credential'),
     ('TP_SIZE=1', 'TP_SIZE=1\nENTRYPOINT_FILE=./missing.sh', 'tracked path'),
 ])

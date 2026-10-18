@@ -1,0 +1,659 @@
+{
+  "schema_version": 1,
+  "scope": "evidence-backed-executable-recipes",
+  "recipe_count": 16,
+  "recipes": [
+    {
+      "id": "deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2",
+      "preset": "presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env",
+      "status": "Recommended (since 2026-08-15, spark01:8000)",
+      "model": {
+        "served_name": "deepseek-ai/DeepSeek-V4-Flash-0731",
+        "source": "deepseek-ai/DeepSeek-V4-Flash-0731",
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f",
+        "distribution": "portable",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "mp",
+        "compose": [
+          "docker-compose.yml",
+          "compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml"
+        ],
+        "start_order": [
+          "worker",
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/deepseek-v4-production.md",
+        "evidence": [
+          "docs/deepseek-v4-production.md",
+          "docs/deepseek-v4-v027-b43s-promotion-candidate.md"
+        ]
+      },
+      "known_limits": [
+        "Default MAX_NUM_SEQS=1; E8M0=1 mandatory; UVM recovery may require reboot."
+      ]
+    },
+    {
+      "id": "deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2",
+      "preset": "presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env",
+      "status": "Optional validated profile (attended use only, not default)",
+      "model": {
+        "served_name": "deepseek-ai/DeepSeek-V4-Flash-0731",
+        "source": "deepseek-ai/DeepSeek-V4-Flash-0731",
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f",
+        "distribution": "portable",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "mp",
+        "compose": [
+          "docker-compose.yml",
+          "compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml"
+        ],
+        "start_order": [
+          "worker",
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/deepseek-v4-production.md",
+        "evidence": [
+          "docs/deepseek-v4-production.md",
+          "docs/deepseek-v4-v027-b43s-promotion-candidate.md"
+        ]
+      },
+      "known_limits": [
+        "Attended use only; global-topk warmup is manual; unexplained host power-loss risk; no hardware watchdog."
+      ]
+    },
+    {
+      "id": "deepseek-v4-flash-dspark-k7-64k-production-tp2",
+      "preset": "presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "status": "Primary rollback (stopped)",
+      "model": {
+        "served_name": "deepseek-ai/DeepSeek-V4-Flash-DSpark",
+        "source": "deepseek-ai/DeepSeek-V4-Flash-DSpark",
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "ghcr.io/bjk110/vllm-spark@sha256:aacb06de60ecdc1bcafca5209aa5f0973eb86ab786212c988847ce53575ed84c",
+        "distribution": "portable",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "mp",
+        "compose": [
+          "docker-compose.yml"
+        ],
+        "start_order": [
+          "worker",
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/deepseek-v4-production.md",
+        "evidence": [
+          "docs/deepseek-v4-production.md"
+        ]
+      },
+      "known_limits": [
+        "Rollback only; unrestricted 135168 unsupported; LC131 not exposed; recovery may require reboot."
+      ]
+    },
+    {
+      "id": "deepseek-v4-flash-mtp1-production-tp2",
+      "preset": "presets/deepseek-v4-flash-mtp1-production-tp2.env",
+      "status": "Legacy rollback (stopped)",
+      "model": {
+        "served_name": "deepseek-ai/DeepSeek-V4-Flash",
+        "source": "deepseek-ai/DeepSeek-V4-Flash",
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "ghcr.io/bjk110/vllm-spark@sha256:de69fa367137c3c77df07c3dfff784dc0b0caec8d2c8c43cf2ad63608381ee4a",
+        "distribution": "portable",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "mp",
+        "compose": [
+          "docker-compose.yml"
+        ],
+        "start_order": [
+          "worker",
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/deepseek-v4-production.md",
+        "evidence": [
+          "docs/deepseek-v4-production.md",
+          "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-coldrepro-20260624/cold_repro_summary.json",
+          "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longsoak-20260623-133120/soak_out/soak_summary.json",
+          "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx16k-20260624/stage_summary.json",
+          "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx32k-20260624-lc1/stage_summary.json",
+          "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx64k-20260624-lc2/stage_summary.json"
+        ]
+      },
+      "known_limits": [
+        "Legacy rollback only; repeated large-context operation not approved."
+      ]
+    },
+    {
+      "id": "solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2",
+      "preset": "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "status": "Recommended (since 2026-08-09, spark01:8000 when deployed)",
+      "model": {
+        "served_name": "solar-open2-250b",
+        "source": null,
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "sha256:ecb7bfe3978a5241c5c304d52ce91e061e22b750178d21a4ef7788a08e86e774",
+        "distribution": "local-only",
+        "pullable": false
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "ray",
+        "compose": [
+          "docker-compose.yml",
+          "compose/solar-open2/docker-compose.r4-production.yml",
+          "compose/solar-open2/docker-compose.b12x-cache.yml"
+        ],
+        "start_order": [
+          "head",
+          "worker"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/solar-open2-production.md",
+        "evidence": [
+          "docs/solar-open2-production.md",
+          "dockerfiles/active/solar-open2/r4/PROVENANCE.md",
+          "benchmarks/evidence/retained/solar-open2-v0251-b12x-cold-warm-20260726T013344Z/report.md",
+          "benchmarks/evidence/retained/solar-open2-v0251-b12xsw-r4-20260726T053457Z/report.md",
+          "benchmarks/evidence/retained/solar-open2-v0251-pread-complete-20260725T225149Z/report.md",
+          "benchmarks/evidence/retained/solar-open2-v0251-pread-r3-build-20260726T002411Z/report.md",
+          "benchmarks/evidence/retained/solar-open2-v0251-promotion-readiness-20260727T065646Z/01_provenance/provenance.md",
+          "benchmarks/evidence/retained/solar-open2-v0251-promotion-readiness-20260727T065646Z/09_final/report.md",
+          "benchmarks/evidence/retained/solar-open2-v0251-r4-acceptance-20260726T121058Z/report.md",
+          "benchmarks/evidence/retained/solar-open2-v0251-multi-instance-lowconc-20260727T004456Z/09_final/report.md"
+        ]
+      },
+      "known_limits": [
+        "Eager, BF16 KV only; c2 may be 1-3% below rollback; recovery requires reboot; Ray status CLI may segfault."
+      ]
+    },
+    {
+      "id": "solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2",
+      "preset": "presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env",
+      "status": "Primary rollback (stopped)",
+      "model": {
+        "served_name": "solar-open2-250b",
+        "source": null,
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "sha256:1873d2174691f67e16b5588fcef01680d21f1e7b42ac5587bd23d7503cae1366",
+        "distribution": "local-only",
+        "pullable": false
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "ray",
+        "compose": [
+          "docker-compose.yml",
+          "compose/solar-open2/docker-compose.r4-production.yml"
+        ],
+        "start_order": [
+          "head",
+          "worker"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/solar-open2-production.md",
+        "evidence": [
+          "docs/solar-open2-production.md",
+          "benchmarks/evidence/retained/solar-open2-nvfp4-fullbench-20260724-213546/summary.md",
+          "benchmarks/evidence/retained/solar-open2-v0251-r4-acceptance-20260726T121058Z/report.md"
+        ]
+      },
+      "known_limits": [
+        "Rollback only; reboot required between baselines; first-request Triton JIT may take several minutes."
+      ]
+    },
+    {
+      "id": "qwen3.8-flash-next-fp8-tp2-candidate",
+      "preset": "presets/qwen3.8-flash-next-fp8-tp2-candidate.env",
+      "status": "Manual profile (manual activation only, not auto-start)",
+      "model": {
+        "served_name": "Qwen/Qwen3.8-Flash-Next-FP8",
+        "source": "Qwen/Qwen3.8-Flash-Next-FP8",
+        "revision": "970c569adaca6b35532111fd6b27351b2baefe50"
+      },
+      "image": {
+        "reference": "vllm/vllm-openai:qwen38-flash-next@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e",
+        "distribution": "portable",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "mp",
+        "compose": [
+          "docker-compose.yml",
+          "compose/qwen3.8-flash-next/docker-compose.candidate.yml"
+        ],
+        "start_order": [
+          "worker",
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/qwen3.8-flash-next-tp2.md",
+        "evidence": [
+          "docs/qwen3.8-flash-next-tp2.md"
+        ]
+      },
+      "known_limits": [
+        "Manual activation; reboot after teardown; MAX_NUM_SEQS=4 blocked; c1/c2 qualified; MTP off."
+      ]
+    },
+    {
+      "id": "qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate",
+      "preset": "presets/qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env",
+      "status": "MAIN_MERGE_APPROVED_OPT_IN — opt-in interactive c1 only; NOT the operational default; no auto-start",
+      "model": {
+        "served_name": "Qwen/Qwen3.8-Flash-Next-FP8",
+        "source": "Qwen/Qwen3.8-Flash-Next-FP8",
+        "revision": null,
+        "revision_note": "The tracked preset and runbook do not record an immutable model revision; verify the local checkpoint identity from the qualification artifacts before launch."
+      },
+      "image": {
+        "reference": "sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610",
+        "distribution": "local-only",
+        "pullable": false
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "mp",
+        "compose": [
+          "docker-compose.yml",
+          "compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml"
+        ],
+        "start_order": [
+          "worker",
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md",
+        "evidence": [
+          "docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md"
+        ]
+      },
+      "known_limits": [
+        "Opt-in c1 only; MTP1 c2/c8, prefix-cache ON and MAX_NUM_SEQS=8 excluded; no auto-start or default change."
+      ]
+    },
+    {
+      "id": "qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2",
+      "preset": "presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env",
+      "status": "Validated (manual activation only)",
+      "model": {
+        "served_name": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+        "source": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+        "revision": "8bebbc05cbe65099f37c520865463c1377d8050d"
+      },
+      "image": {
+        "reference": "ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5",
+        "distribution": "portable",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "ray",
+        "compose": [
+          "docker-compose.yml",
+          "compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml"
+        ],
+        "start_order": [
+          "head",
+          "worker"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/qwen38-ngc2609-mtp-k2-c2-ray.sh"
+      },
+      "documentation": {
+        "runbook": "docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md",
+        "evidence": [
+          "docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md",
+          "patches/qwen/ngc2609-e77-prefault/MANIFEST.json",
+          "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md",
+          "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/report.md",
+          "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/comparison.json"
+        ]
+      },
+      "known_limits": [
+        "readiness-time memory warnings require the documented hard-failure checks; manual activation only."
+      ]
+    },
+    {
+      "id": "qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback",
+      "preset": "presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env",
+      "status": "Primary rollback (stopped)",
+      "model": {
+        "served_name": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+        "source": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+        "revision": "8bebbc05cbe65099f37c520865463c1377d8050d"
+      },
+      "image": {
+        "reference": "ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6",
+        "distribution": "portable",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "mp",
+        "compose": [
+          "docker-compose.yml",
+          "compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2-mp-rollback.yml"
+        ],
+        "start_order": [
+          "worker",
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/qwen38-ngc2609-mtp-k2-c2.sh"
+      },
+      "documentation": {
+        "runbook": "docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md",
+        "evidence": [
+          "docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md",
+          "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md",
+          "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/report.md"
+        ]
+      },
+      "known_limits": [
+        "readiness-time memory warnings require the documented hard-failure checks; manual activation only."
+      ]
+    },
+    {
+      "id": "step37-flash-nvfp4-v023-tp2-latency",
+      "preset": "presets/step37-flash-nvfp4-v023-tp2-latency.env",
+      "status": "Validated",
+      "model": {
+        "served_name": "stepfun-ai/Step-3.7-Flash-NVFP4",
+        "source": "stepfun-ai/Step-3.7-Flash-NVFP4",
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "vllm-spark:v023-step3p7-fixed-kv-profile-skip-candidate",
+        "distribution": "local-only",
+        "pullable": false
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "mp",
+        "compose": [
+          "docker-compose.yml"
+        ],
+        "start_order": [
+          "worker",
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/benchmarks/bt-matrix-step37-nvfp4-v023.md",
+        "evidence": [
+          "docs/benchmarks/bt-matrix-step37-nvfp4-v023.md"
+        ]
+      },
+      "known_limits": [
+        "Single-user latency only; EP off, CUDA graphs off; context above 32768 requires revalidation."
+      ]
+    },
+    {
+      "id": "step37-flash-fp8-v023-tp2",
+      "preset": "presets/step37-flash-fp8-v023-tp2.env",
+      "status": "Validated",
+      "model": {
+        "served_name": "stepfun-ai/Step-3.7-Flash-FP8",
+        "source": "stepfun-ai/Step-3.7-Flash-FP8",
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "ghcr.io/bjk110/vllm-spark:v023-step37-tokenizer-overlay-exp-07a2722",
+        "distribution": "tag-only",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "mp",
+        "compose": [
+          "docker-compose.yml"
+        ],
+        "start_order": [
+          "worker",
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint-tokenizer-overlay.sh"
+      },
+      "documentation": {
+        "runbook": "docs/step3.7-tokenizer-overlay.md",
+        "evidence": [
+          "docs/step3.7-tokenizer-overlay.md"
+        ]
+      },
+      "known_limits": [
+        "Validated at 8192 context, c1, EP off; larger context and concurrency unvalidated; clean-memory preflight required."
+      ]
+    },
+    {
+      "id": "gemma4-31b-it",
+      "preset": "presets/gemma4-31b-it.env",
+      "status": "Validated",
+      "model": {
+        "served_name": "google/gemma-4-31B-it",
+        "source": "google/gemma-4-31B-it",
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "ghcr.io/bjk110/vllm-spark:v022-d568",
+        "distribution": "tag-only",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 1,
+        "topology": "single",
+        "backend": "direct",
+        "compose": [
+          "docker-compose.yml"
+        ],
+        "start_order": [
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/model-serving-validation-history.md",
+        "evidence": [
+          "docs/model-serving-validation-history.md"
+        ]
+      },
+      "known_limits": [
+        "Not recorded beyond runtime settings in this preset."
+      ]
+    },
+    {
+      "id": "qwen3.6-35b-a3b",
+      "preset": "presets/qwen3.6-35b-a3b.env",
+      "status": "Validated",
+      "model": {
+        "served_name": "Qwen/Qwen3.6-35B-A3B",
+        "source": "Qwen/Qwen3.6-35B-A3B",
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "ghcr.io/bjk110/vllm-spark:v022-d568",
+        "distribution": "tag-only",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 1,
+        "topology": "single",
+        "backend": "direct",
+        "compose": [
+          "docker-compose.yml"
+        ],
+        "start_order": [
+          "head"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/model-serving-validation-history.md",
+        "evidence": [
+          "docs/model-serving-validation-history.md"
+        ]
+      },
+      "known_limits": [
+        "Not recorded beyond runtime settings in this preset."
+      ]
+    },
+    {
+      "id": "qwen3.6-35b-a3b-fi-aot-tp2",
+      "preset": "presets/qwen3.6-35b-a3b-fi-aot-tp2.env",
+      "status": "Validated",
+      "model": {
+        "served_name": "Qwen/Qwen3.6-35B-A3B",
+        "source": "Qwen/Qwen3.6-35B-A3B",
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "ghcr.io/bjk110/vllm-spark:v022-d568-fi-aot",
+        "distribution": "tag-only",
+        "pullable": true
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "ray",
+        "compose": [
+          "docker-compose.yml"
+        ],
+        "start_order": [
+          "head",
+          "worker"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/flashinfer-aot-prebake.md",
+        "evidence": [
+          "docs/flashinfer-aot-prebake.md"
+        ]
+      },
+      "known_limits": [
+        "Seven prebaked FlashInfer specs only; other module/dtype/shape combinations may JIT (docs/flashinfer-aot-prebake.md)."
+      ]
+    },
+    {
+      "id": "step37-flash-fp8-tp2",
+      "preset": "presets/step37-flash-fp8-tp2.env",
+      "status": "Validated",
+      "model": {
+        "served_name": "stepfun-ai/Step-3.7-Flash-FP8",
+        "source": "stepfun-ai/Step-3.7-Flash-FP8",
+        "revision": null,
+        "revision_note": "The preset does not encode an immutable model revision; follow the linked runbook and verify the local model identity before launch."
+      },
+      "image": {
+        "reference": "vllm-spark:v022-d568-ngc2605-tx5102-vllm022-step3p7",
+        "distribution": "local-only",
+        "pullable": false
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "ray",
+        "compose": [
+          "docker-compose.yml"
+        ],
+        "start_order": [
+          "head",
+          "worker"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/entrypoint.sh"
+      },
+      "documentation": {
+        "runbook": "docs/step3.7-flash-tp2.md",
+        "evidence": [
+          "docs/step3.7-flash-tp2.md"
+        ]
+      },
+      "known_limits": [
+        "Verified at 32768 context; KV capacity 80,308 tokens (see preset header)."
+      ]
+    }
+  ]
+}
