@@ -2,36 +2,34 @@
 
 This is the canonical index for `docs/`. **A document's authority is determined by
 this index and by the status banner at the top of each document**, not by its
-filename. A filename containing `production` or `validated` does not by itself make a
-document current — always check its group here and its banner.
+filename. A filename does not by itself make a document current — always check its group here and its banner.
 
-The DeepSeek-V4-Flash promoted production baseline is the **vLLM 0.27 native DSpark k=7 256K** path
+The DeepSeek-V4-Flash recommended baseline is the **vLLM 0.27 native DSpark k=7 256K** path
 with `MAX_NUM_SEQS=1`. Deploy with
 `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` plus
 `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`; the preset itself is pinned to the
 immutable registry digest documented in `deepseek-v4-production.md`. The v0.25.0/64K preset
 is the primary rollback; MTP1 is the legacy second-tier rollback.
 
-The Solar-Open2-250B promoted production baseline is the **r4 BF16** (vLLM 0.25.1) path. Runtime
-deployments use the **local-image-ID-pinned** production preset
+The Solar-Open2-250B recommended baseline is the **r4 BF16** (vLLM 0.25.1) path. Runtime
+deployments use the **local-image-ID-pinned** operational preset
 (`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`); the v0.22.1 KV4G matched preset
 (`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`) is the authoritative rollback.
 
-DeepSeek-V4 and Solar are promoted production; Qwen3.8 is production-qualified for manual activation,
-not promoted/current production. All three families share the same physical serving
+DeepSeek-V4 and Solar are recommended; Qwen3.8 has a validated manual profile. All three families share the same physical serving
 slot (spark01 head + spark02 worker, port 8000) rather than running simultaneously — this index
 does not track which one is deployed at this instant; check live container/health state for that.
 
-Groups: [Current production](#current-production) · [Production-qualified manual activation](#production-qualified-manual-activation)
+Groups: [Recommended](#recommended) · [Manual activation](#manual-activation)
 · [Rollback and operations](#rollback-and-operations)
 · [General stable stacks](#general-stable-stacks) · [Model guides](#model-guides)
 · [Diagnostics and troubleshooting](#diagnostics-and-troubleshooting) · [Benchmarks](#benchmarks)
 · [Validated alternatives](#validated-alternatives) · [Experimental work](#experimental-work)
 · [Historical and superseded records](#historical-and-superseded-records)
 
-## Current production
+## Recommended
 
-DeepSeek-V4 and Solar have promoted production tracks. Only one family can occupy the shared
+DeepSeek-V4 and Solar have recommended tracks. Only one family can occupy the shared
 spark01/spark02 port 8000 slot at a time; this index does not establish live state.
 
 Runtime authority (DeepSeek-V4-Flash) = immutable manifest `sha256:7a005243…` (local image ID
@@ -43,29 +41,29 @@ to a registry). Deploy via the local-ID-pinned preset.
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [deepseek-v4-production.md](deepseek-v4-production.md) | Canonical DeepSeek-V4 production operations — active v0.27 native DSpark k=7 256K/MS1 route, v0.25.0/64K primary rollback, MTP1 legacy rollback, startup/prewarm and qualification provenance | `Current production` | Authoritative operations, runtime contracts, rollback |
+| [deepseek-v4-production.md](deepseek-v4-production.md) | Canonical DeepSeek-V4 operations — active v0.27 native DSpark k=7 256K/MS1 route, v0.25.0/64K primary rollback, MTP1 legacy rollback, startup/prewarm and qualification provenance | `Recommended` | Authoritative operations, runtime contracts, rollback |
 | [deepseek-v4-v027-runtime-build-base.md](deepseek-v4-v027-runtime-build-base.md) | Frozen DSV4-specific NGC 26.07/vLLM 0.27 build base, GHCR identities, thin-derivative recipe | `Build/release reference` | Avoid rebuilding the validated common runtime closure |
-| [solar-open2-production.md](solar-open2-production.md) | Canonical Solar-Open2-250B production operations — active r4 BF16 (vLLM 0.25.1) route and v0.22.1 rollback, runtime contracts, activation/rollback with empirical reboot procedure, validation provenance (6-gate production fast-track 2026-08-08/09) | `Current production` | Authoritative operations, runtime contracts, rollback |
+| [solar-open2-production.md](solar-open2-production.md) | Canonical Solar-Open2-250B operations — active r4 BF16 (vLLM 0.25.1) route and v0.22.1 rollback, runtime contracts, activation/rollback with empirical reboot procedure, validation provenance (6-gate operational fast-track 2026-08-08/09) | `Recommended` | Authoritative operations, runtime contracts, rollback |
 
-## Production-qualified manual activation
+## Manual activation
 
-Qwen3.8 is qualified within its documented envelope, not promoted/current production.
+Qwen3.8 is qualified within its documented envelope for manual activation only.
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md](qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) | Followable dual-Spark recipe for the validated uncensored FP8 checkpoint on the NGC 26.09/e77 runtime: eager MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262,144-token context, multimodal/tool support, exact source overlay | `Validated (non-production)` (manual, not auto-started) | Recommended profile for this checkpoint; pullable immutable GHCR manifest; includes 12/12 benchmark objects (24 consolidated pp/tg rows), 135 requests, and exact post-start checks |
-| [qwen3.8-flash-next-tp2.md](qwen3.8-flash-next-tp2.md) | Qwen/Qwen3.8-Flash-Next-FP8 dual DGX Spark TP=2 recipe — production-qualified c1/c2 profile, `MAX_NUM_SEQS=2`, FULL_DECODE_ONLY capture sizes `[1,2]`, staged Gate0–Gate3 procedure, checksum/identity verification | `Production-qualified` (c1/c2; not auto-start) | Production-qualified c1/c2 route; not auto-started, activate manually |
+| [qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md](qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) | Followable dual-Spark recipe for the validated uncensored FP8 checkpoint on the NGC 26.09/e77 runtime: eager MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262,144-token context, multimodal/tool support, exact source overlay | `Validated` (manual, not auto-started) | Recommended profile for this checkpoint; pullable immutable GHCR manifest; includes 12/12 benchmark objects (24 consolidated pp/tg rows), 135 requests, and exact post-start checks |
+| [qwen3.8-flash-next-tp2.md](qwen3.8-flash-next-tp2.md) | Qwen/Qwen3.8-Flash-Next-FP8 dual DGX Spark TP=2 recipe — manual c1/c2 profile, `MAX_NUM_SEQS=2`, FULL_DECODE_ONLY capture sizes `[1,2]`, staged Gate0–Gate3 procedure, checksum/identity verification | `Manual profile` (c1/c2; not auto-start) | Manual profile c1/c2 route; not auto-started, activate manually |
 | [qwen3.8-flash-next-gb10-prefault.md](qwen3.8-flash-next-gb10-prefault.md) | Reusable GB10 safetensors copy-site prefault mechanism, pinned six-file source overlay, measured A–B–A–B result, and per-checkpoint qualification gates | `Validated mechanism` (per-checkpoint qualification required) | Optional cold-start overlay for compatible Qwen3.8 Flash Next FP8-family checkpoints; does not universalize Graph-NONE or KV8 |
-| [qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md](qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) | Detailed PR55122 deterministic-kernel MTP1 interactive-c1 opt-in recipe and Gate0–Gate5 evidence | `MAIN_MERGE_APPROVED_OPT_IN` — NOT the production default; no auto-start | Local product/config authority only: TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
+| [qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md](qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) | Detailed PR55122 deterministic-kernel MTP1 interactive-c1 opt-in recipe and Gate0–Gate5 evidence | `MAIN_MERGE_APPROVED_OPT_IN` — NOT the operational default; no auto-start | Local product/config authority only: TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and default change remain out of scope. |
 
 ## Rollback and operations
 
-The primary rollback for the active v0.27/256K DSpark production is
+The primary rollback for the active v0.27/256K DSpark route is
 `presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env` (v0.25.0, image
 `@sha256:aacb06de60ec…`, stopped). MTP1 (`@sha256:de69fa367137…`) is the legacy second-tier rollback.
 Rollback and recovery procedure: [deepseek-v4-production.md](deepseek-v4-production.md).
 
-The authoritative rollback for the active Solar-Open2 r4 production is the v0.22.1 preset
+The authoritative rollback for the active Solar-Open2 r4 route is the v0.22.1 preset
 (`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`, image
 `sha256:1873d2174691…`, stopped). Rollback and recovery procedure (including the empirically
 required physical-reboot sequence): [solar-open2-production.md](solar-open2-production.md).
@@ -88,7 +86,7 @@ required physical-reboot sequence): [solar-open2-production.md](solar-open2-prod
 | Document | Subject | Status | Use |
 |---|---|---|---|
 | [step3.7-flash-tp2.md](step3.7-flash-tp2.md) | Step-3.7-Flash FP8/NVFP4 dual-Spark TP=2 serving + benchmark comparison | `Model guide` | Step-3.7-Flash serving |
-| [dsv4-flash-tp2.md](dsv4-flash-tp2.md) | Legacy JASL-era DeepSeek-V4-Flash TP=2 guide (`dsv4-d568`) | `Historical` model guide | Legacy `dsv4-d568` reproduction (NOT current production — see current replacement in its banner) |
+| [dsv4-flash-tp2.md](dsv4-flash-tp2.md) | Legacy JASL-era DeepSeek-V4-Flash TP=2 guide (`dsv4-d568`) | `Historical` model guide | Legacy `dsv4-d568` reproduction (NOT recommended — see current replacement in its banner) |
 
 ## Diagnostics and troubleshooting
 
@@ -100,11 +98,11 @@ required physical-reboot sequence): [solar-open2-production.md](solar-open2-prod
 
 ## Benchmarks
 
-Benchmark documents index existing results only; they are not production-configuration authority.
+Benchmark documents index existing results only; they are not operational-configuration authority.
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [Recipe evidence catalog](../benchmarks/evidence/README.md) | Canonical evidence map for the 15 production/rollback/production-qualified and validated non-production presets | `Evidence authority` | Find retained gate summaries, explicit limits, immutable hashes, and the external raw-archive ledger |
+| [Recipe evidence catalog](../benchmarks/evidence/README.md) | Canonical evidence map for the 15 recommended/rollback/manual and validated presets | `Evidence authority` | Find retained gate summaries, explicit limits, immutable hashes, and the external raw-archive ledger |
 | [benchmarks/bt-matrix-step37-nvfp4-v023.md](benchmarks/bt-matrix-step37-nvfp4-v023.md) | Step-3.7-NVFP4 v0.23 `MAX_NUM_BATCHED_TOKENS` matrix benchmark | `Benchmark` | bt-matrix reference for the Step-3.7 NVFP4 path |
 | [benchmarks/step37-v022-long-context-validation.md](benchmarks/step37-v022-long-context-validation.md) | Step-3.7-NVFP4 v0.22 long-context validation (to 245009 tokens) | `Benchmark` (experimental) | Long-context envelope evidence |
 
@@ -115,17 +113,17 @@ Validated, but not the current default serving path.
 | Document | Subject | Status | Use |
 |---|---|---|---|
 | [flashinfer-aot-prebake.md](flashinfer-aot-prebake.md) | FlashInfer AOT-prebaked image (`v022-d568-fi-aot`) validated specs | `Validated alternative` | Optional drop-in for `v022-d568` |
-| [step3.7-tokenizer-overlay.md](step3.7-tokenizer-overlay.md) | Step-3.7 non-mutating runtime tokenizer overlay | `Validated (non-production)` | Tokenizer-overlay technique |
+| [step3.7-tokenizer-overlay.md](step3.7-tokenizer-overlay.md) | Step-3.7 non-mutating runtime tokenizer overlay | `Validated` | Tokenizer-overlay technique |
 
 ## Experimental work
 
-Not promoted. Reference/experimental only.
+Experimental. Reference/experimental only.
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [unholy-fusion-benchmark.md](unholy-fusion-benchmark.md) | `unholy-fusion` configuration, limits, and benchmark comparison | `Experimental` | Higher-prefill DSV4 experimental alternative (not a recommended production path) |
+| [unholy-fusion-benchmark.md](unholy-fusion-benchmark.md) | `unholy-fusion` configuration, limits, and benchmark comparison | `Experimental` | Higher-prefill DSV4 experimental alternative (not a recommended operational path) |
 | [prometheus-routing-path-fix.md](prometheus-routing-path-fix.md) | Prometheus `routing.py` `.path` guard (experimental image) | `Experimental` | Monitoring routing-path fix notes |
-| [dsv4-dspark-speculative-decoding-72261a7-closure.md](dsv4-dspark-speculative-decoding-72261a7-closure.md) | DeepSeek-V4-Flash-DSpark speculative decoding on vLLM `72261a7` — DS2 arc closure (defects found and fixed; acceptance unmoved) | `Experimental` (investigation CLOSED, NOT VALIDATED) | DSpark experimental status: DS2D14 preferred baseline / DS2D13 fallback / DS2D12 rollback; k=3 only validated envelope; local-only images; production unaffected (speculative decoding not used) |
+| [dsv4-dspark-speculative-decoding-72261a7-closure.md](dsv4-dspark-speculative-decoding-72261a7-closure.md) | DeepSeek-V4-Flash-DSpark speculative decoding on vLLM `72261a7` — DS2 arc closure (defects found and fixed; acceptance unmoved) | `Experimental` (investigation CLOSED, NOT VALIDATED) | DSpark experimental status: DS2D14 preferred baseline / DS2D13 fallback / DS2D12 rollback; k=3 only validated envelope; local-only images; operational unaffected (speculative decoding not used) |
 
 ## Historical and superseded records
 
@@ -133,7 +131,7 @@ Preserved for evidence and reproducibility. Superseded ≠ incorrect; do not tre
 
 | Document | Subject | Status | Use |
 |---|---|---|---|
-| [deepseek-v4-external-runtime-qualification-2026-08-28.md](deepseek-v4-external-runtime-qualification-2026-08-28.md) | eugr, MiaAI/Anemll, and Aiden/Tony replacement-candidate closure | `Qualification record` (no candidate promoted) | Immutable identities, lossless-gate results, benchmark fail-closed decision |
+| [deepseek-v4-external-runtime-qualification-2026-08-28.md](deepseek-v4-external-runtime-qualification-2026-08-28.md) | eugr, MiaAI/Anemll, and Aiden/Tony replacement-candidate closure | `Qualification record` (no candidate validated) | Immutable identities, lossless-gate results, benchmark fail-closed decision |
 | [model-serving-validation-history.md](model-serving-validation-history.md) | Historical stack validation notes and benchmarks (Gemma 4, Qwen3.5 122B/397B, PrismaQuant, Qwen3.6-35B, TurboQuant) | `Historical` | Historical benchmark/validation archive |
 | [stack-v021.md](stack-v021.md) | Software stack v021-ngc2603 (previous main, NGC 26.03) | `Superseded` | Prior main stack reference |
 | [stack-v019.md](stack-v019.md) | Software stack v019-ngc2603 (archived) | `Historical` (archived) | Archived stack reference |

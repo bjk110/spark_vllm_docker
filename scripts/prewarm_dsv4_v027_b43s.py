@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Startup prewarm for the DeepSeek-V4-Flash-0731 / vLLM 0.27 / b43s promotion
-candidate (MAX_NUM_SEQS=1 default profile).
+"""Startup prewarm for the DeepSeek-V4-Flash-0731 / vLLM 0.27 / b43s
+recommended profile (MAX_NUM_SEQS=1 default profile).
 
 Purpose
 -------
 vLLM's own boot-time CUDA-graph capture does NOT compile every kernel this
 runtime touches. A fixed set of lazy-JIT kernels only compile on the first
 real inference request that reaches their code path, which costs the FIRST
-matching production request an extra ~15-30s. This script issues a small,
+matching serving request an extra ~15-30s. This script issues a small,
 deterministic set of warmup requests against the already-healthy API server
 so that cost is paid once, at startup, under operator control -- not on an
 arbitrary user's first request.
@@ -71,7 +71,7 @@ TARGET_B_TOKENS = 61440
 # exact token count at runtime -- no large literal prompt file is stored in
 # the repository.
 FILLER_SENTENCE = (
-    "The DeepSeek-V4-Flash-0731 promotion candidate runs tensor-parallel "
+    "The DeepSeek-V4-Flash-0731 recommended profile runs tensor-parallel "
     "rank {rank} of {tp_size} on a DGX Spark node over RoCE. "
 )
 

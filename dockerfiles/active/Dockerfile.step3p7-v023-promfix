@@ -15,7 +15,7 @@
 # Everything else (vLLM 0.23.0, torch, FlashInfer, model loading, step3p7
 # support, GB10 UMA patches) is inherited byte-for-byte.
 #
-# Status: EXPERIMENTAL. Not production, not promoted.
+# Status: EXPERIMENTAL. Manual validation only; not recommended for serving.
 # Build tag: vllm-spark:v023-d568-ngc2605-tx5102-vllm023-step3p7-relax-promfix-exp
 # Build host: spark01 or spark02 (aarch64 GB10/SM121).
 # Root cause / provenance: docs/prometheus-routing-path-fix.md

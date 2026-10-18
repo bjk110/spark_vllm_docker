@@ -4,7 +4,7 @@ Deterministic, guarded, build-time replacement for the ephemeral runtime sed
 that `benchmarks/bench-bt-matrix-step37-v023.sh::apply_prometheus_patch` applied
 to the running head container.
 
-**Status: EXPERIMENTAL. Not production, not promoted.**
+**Status: EXPERIMENTAL.**
 
 ## Problem
 
@@ -135,7 +135,7 @@ This image is additive and isolated:
   FastAPI 0.137 / Starlette 1.3.1 `_IncludedRouter`-without-`.path` behavior, not
   an upstream fix. If `prometheus-fastapi-instrumentator` later ships its own
   guard, this patch becomes redundant and the build guard will need updating.
-- **Experimental only.** Not a production or promoted image.
+- **Experimental only.** Not an operational image.
 - **GB10 UMA, unrelated to this patch.** A full FP8 run still leaves
   ~59–85 GiB of UVM/driver-retained memory per node after shutdown; a reboot is
   required before the next large model load. This is a platform property, not a

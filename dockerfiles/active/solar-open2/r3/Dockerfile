@@ -23,7 +23,7 @@
 # (independent files; order has no functional effect).
 #
 # Build context: staging dir with the patched sources + canonical patches.
-# EXPERIMENTAL — do not promote, do not publish to GHCR.
+# EXPERIMENTAL — do not adopt as a recommended image; do not publish to GHCR.
 # =============================================================================
 FROM vllm-spark:solar-open2-nvfp4-v0251-upstage00907fc-rebased-ecfix-upstream-r2-exp
 

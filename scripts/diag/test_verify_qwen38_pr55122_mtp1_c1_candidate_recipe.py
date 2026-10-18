@@ -71,7 +71,7 @@ class TestDockerfileMutations(MutationCase):
         self.assertTrue(any("COPY" in f and "flag" in f for f in results.failures))
     def test_label_value_or_extra_label_is_rejected(self):
         text = verifier.DOCKERFILE_PATH.read_text().replace(
-            'LABEL org.vllm-spark.candidate.purpose="LOCAL NON-PRODUCTION experimental deterministic persistent_topk evaluation; not promoted or pushed"',
+            'LABEL org.vllm-spark.candidate.purpose="LOCAL experimental deterministic persistent_topk evaluation; manual opt-in only; not published"',
             'LABEL org.vllm-spark.candidate.purpose="wrong"\nLABEL attacker.extra="value"',
             1,
         )
@@ -410,7 +410,7 @@ class TestPromotionIndexes(MutationCase):
     def test_operational_status_and_scope_drift_are_rejected(self):
         target = "presets/README.md"
         original = verifier.PROMOTION_INDEX_PATHS[target].read_text()
-        for phrase in ("NOT the production default", "no auto-start", "MTP1 c2/c8", "prefix-cache ON exact", "MAX_NUM_SEQS=8"):
+        for phrase in ("NOT the operational default", "no auto-start", "MTP1 c2/c8", "prefix-cache ON exact", "MAX_NUM_SEQS=8"):
             with self.subTest(phrase=phrase):
                 self.saved.setdefault("PROMOTION_INDEX_PATHS", verifier.PROMOTION_INDEX_PATHS)
                 paths = dict(self.saved["PROMOTION_INDEX_PATHS"])
@@ -469,7 +469,8 @@ class TestPostCommitStateContract(unittest.TestCase):
         self.assertEqual(7, len(PROMOTED_CONTENT_PATHS))
         for path in PROMOTED_CONTENT_PATHS:
             with self.subTest(path=path):
-                self.assertIn(AUTHORIZATION_STATEMENT, path.read_text())
+                expected = AUTHORIZATION_STATEMENT if path == verifier.DOC_PATH else AUTHORIZATION_STATEMENT.replace("production-default", "default")
+                self.assertIn(expected, path.read_text())
 
     def test_stale_current_no_commit_claims_are_absent(self):
         stale_claims = (
@@ -621,6 +622,8 @@ class TestRepositoryMergeAuthorizationState(unittest.TestCase):
             text = path.read_text()
             with self.subTest(path=path):
                 for needle in required:
+                    if path != verifier.DOC_PATH:
+                        needle = needle.replace("production-default", "default")
                     self.assertIn(needle, text)
                 for needle in forbidden:
                     self.assertNotIn(needle, text)

@@ -1,6 +1,6 @@
 # compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml
 #
-# Overlay for the DeepSeek-V4-Flash-0731 / vLLM 0.27 / b43s promotion
+# Overlay for the DeepSeek-V4-Flash-0731 / vLLM 0.27 / b43s validation
 # candidate (B4.4B repository implementation of the B4.4A-approved default:
 # TP=2, DSpark k=7, MAX_MODEL_LEN=262144, MAX_NUM_SEQS=1).
 #

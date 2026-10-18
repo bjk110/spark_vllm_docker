@@ -9,6 +9,25 @@ from pathlib import Path
 from urllib.parse import unquote
 
 LABELS = ('Status', 'Validated date', 'Topology', 'Image identity', 'Required overlay', 'Known limits')
+STATUS_GRAMMAR = {
+    '1': (
+        r'recommended',
+        r'recommended \(since \d{4}-\d{2}-\d{2}, spark01:8000(?: when deployed)?\)',
+        r'optional validated profile \(attended use only, not default\)',
+        r'primary rollback \(stopped\)',
+        r'legacy rollback \(stopped\)',
+        r'manual profile \(manual activation only, not auto-start\)',
+        r'main_merge_approved_opt_in — opt-in interactive c1 only; not the operational default; no auto-start',
+    ),
+    '2': (r'validated', r'validated \(manual activation only\)'),
+    '3': (r'general supported',),
+    '4': (r'experimental', r'experimental — unvalidated; manual correctness bring-up only'),
+    '5': (r'historical reproduction',),
+}
+
+
+def valid_status(section_number, status):
+    return any(re.fullmatch(pattern, status) for pattern in STATUS_GRAMMAR.get(section_number, ()))
 
 def tracked_files(root):
     return set(subprocess.run(['git', '-C', str(root), 'ls-files', '-z'], check=True,
@@ -83,13 +102,13 @@ def verify(root, skip_compose=False, expected_count=44):
         if len(entries) != 1: fail(f'{path}: exactly one catalog row required'); continue
         section, row = entries[0]
         status = metadata['Status'].lower()
+        if re.search(r'\b(?:production|promot\w*)\b', status):
+            fail(f'{path}: status must use neutral operational vocabulary')
         section_number = re.search(r'## (\d)\.', section)
         number = section_number.group(1) if section_number else ''
         if number not in ('1', '2', '3', '4', '5'): fail(f'{path}: status in unrecognized catalog section')
-        expected = {'2': 'validated', '3': 'general supported', '4': 'experimental', '5': 'historical'}
-        if number in expected and not status.startswith(expected[number]): fail(f'{path}: status disagrees with catalog section')
-        if number == '1' and not status.startswith(('active production', 'optional validated profile', 'primary rollback', 'legacy rollback', 'production rollback', 'production-qualified', 'main_merge_approved_opt_in')):
-            fail(f'{path}: status not operationally qualified for production catalog section')
+        if not valid_status(number, status):
+            fail(f'{path}: status is outside the closed grammar for catalog section {number}')
         if number == '1' and status.split(' (')[0] not in re.sub(r'[*`]', '', row).lower(): fail(f'{path}: status disagrees with catalog row')
         if path == 'presets/deepseek-v4-flash-vision-exp-tp2.env':
             required = {

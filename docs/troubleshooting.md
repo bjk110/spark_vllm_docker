@@ -101,10 +101,10 @@ informational notes for everything else.
   [`README.md` § Quick Start](../README.md#quick-start) — a literal
   `[model_path]` placeholder left in `.env` will fail to resolve.
 
-## dsv4-d568 issues
+## Historical dsv4-d568 issues
 
-For known pitfalls and fixes specific to the primary DeepSeek-V4-Flash path
-(`dsv4-d568`) — including the PyTorch 2.12.0a0 alpha `split_module` issue, the
+For known pitfalls and fixes specific to the frozen historical/reproduction
+DeepSeek-V4-Flash baseline (`dsv4-d568`) — including the PyTorch 2.12.0a0 alpha `split_module` issue, the
 forum-recommended `dda4668b` pin's MTP graph hang, `max_num_scheduled_tokens`
 warnings with MTP, the `--attention_config.use_fp4_indexer_cache=True` GB10
 limitation, page-cache-induced GPU memory shortages, and KV pool sizing — see
@@ -116,7 +116,7 @@ For the experimental high-prefill `unholy-fusion` path's known operational
 limits (`MAX_NUM_SEQS`, `MAX_MODEL_LEN`, MTP `n`, the
 `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS` requirement, the
 `VLLM_USE_BREAKABLE_CUDAGRAPH` garbled-output trap), the GB10 UMA memory-check
-patches it requires, and the switching procedure to/from `dsv4-d568`, see
+patches it requires, and the historical switching procedure to/from `dsv4-d568`, see
 [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md).
 
 ## Qwen or other experimental preset issues
@@ -169,5 +169,5 @@ docker logs vllm-spark-head 2>&1 | grep "Application startup complete"
 docker logs vllm-spark-worker 2>&1 | grep -E "startup|ready|error" | tail -5
 ```
 
-See [`README.md` § Quick Start → 3. Verify](../README.md#3-verify) for the
+See [`README.md` § Quick Start → 4. Verify readiness](../README.md#4-verify-readiness) for the
 baseline health-check commands.

@@ -1,15 +1,16 @@
-# DeepSeek-V4 Production Operations
+# DeepSeek-V4 Operations
 
 Canonical operations document for the DeepSeek-V4-Flash serving path on the dual DGX Spark (GB10,
-SM121) cluster. Three DeepSeek-V4 presets are retained in `presets/`: the **active** production
-preset (v0.27, native DSpark k=7, 256K), its **primary rollback** (v0.25.0, native DSpark k=7, 64K —
-itself production-proven since 2026-07-22), and a **legacy rollback** (MTP1). All other DeepSeek-V4
+SM121) cluster. Four DeepSeek-V4 presets are retained in `presets/`: the **active** operational
+preset (v0.27, native DSpark k=7, 256K), its optional attended MS=4 profile, its **primary rollback**
+(v0.25.0, native DSpark k=7, 64K — itself validated since 2026-07-22), and a **legacy rollback**
+(MTP1). All other DeepSeek-V4
 presets are superseded and available only through Git history.
 
-## 1. Current active production — vLLM 0.27, native DSpark k=7 (256K)
+## 1. Recommended route — vLLM 0.27, native DSpark k=7 (256K)
 
 - **Preset:** `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env`
-- **Status:** Active production since 2026-08-15 (promotion task B4.4C). Promoted from
+- **Status:** Recommended since 2026-08-15 (adoption task B4.4C). Evidence states:
   `B4_4A_PREWARM_VALIDATED_PROMOTION_READY` / `B4_4B_PROMOTED_PRESET_IMPLEMENTATION_VALIDATED`.
 - **Model:** `deepseek-ai/DeepSeek-V4-Flash-0731`.
 - **Image:** published tag
@@ -35,16 +36,16 @@ presets are superseded and available only through Git history.
   (task B4.4A).
 - **Operational limits:** 256K context validated (single-needle + ~496K-token combined-pressure
   correctness, four-cycle no-cooldown 128K×4 soak — task B4.3W/X/Z). `MAX_NUM_SEQS=1` is the
-  production default; a separate `MAX_NUM_SEQS=4` profile
+  operational default; a separate `MAX_NUM_SEQS=4` profile
   (`presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env`) is validated but is an
-  **optional, attended-use-only profile — not production, not default** (see §7, Residual Risk R1).
+  **optional, attended-use-only profile — attended use only, not default** (see §7, Residual Risk R1).
 - **Full candidate documentation:** [`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](deepseek-v4-v027-b43s-promotion-candidate.md).
 
 ## 2. Primary rollback — vLLM 0.25.0, native DSpark k=7 (64K)
 
 - **Preset:** `presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env`
-- **Status:** Primary rollback (stopped). This was the active production route from 2026-07-22 until
-  2026-08-15; it has the longest in-production track record of any DeepSeek-V4 route in this
+- **Status:** Primary rollback (stopped). This was the recommended route from 2026-07-22 until
+  2026-08-15; it has the longest serving track record of any DeepSeek-V4 route in this
   repository and is the preferred fallback if the v0.27/256K route needs to be reverted.
 - **Model:** `deepseek-ai/DeepSeek-V4-Flash-DSpark`.
 - **Image (immutable, digest-pinned):**
@@ -76,23 +77,23 @@ presets are superseded and available only through Git history.
 
 ## 4. Supported presets
 
-Three DeepSeek-V4 presets are retained:
+Four DeepSeek-V4 presets are retained:
 
-- `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` — active production.
+- `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` — Recommended.
 - `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env` — optional
-  higher-concurrency profile for the active route, **not** production/default.
+  higher-concurrency profile for the active route, **not** the default.
 - `presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env` — primary rollback.
 - `presets/deepseek-v4-flash-mtp1-production-tp2.env` — legacy rollback.
 
 Superseded DeepSeek-V4 presets (intermediate, experimental, candidate, legacy, deep-recovery,
 historical reproduction) are available through Git history and are not retained in `presets/`.
 
-## 5. Production status matrix
+## 5. Operational status matrix
 
 | Item | Status |
 |---|---|
-| vLLM 0.27, native DSpark k=7, 256K, MS=1 | **Active production** |
-| MS=4 (same v0.27 image) | Optional validated profile — not default, not production |
+| vLLM 0.27, native DSpark k=7, 256K, MS=1 | **Recommended** |
+| MS=4 (same v0.27 image) | Optional validated profile — attended use only, not default |
 | vLLM 0.25.0, native DSpark k=7, 64K | **Primary rollback** (stopped) |
 | MTP1 | **Legacy rollback** (stopped) |
 | 256K single-needle / ~496K combined-pressure correctness | Validated (B4.3W/X) |
@@ -107,7 +108,7 @@ They do not expand the active route beyond `MAX_NUM_SEQS=1` and do not supersede
 
 ## 6. Activation and rollback
 
-Active production launches through the committed Compose project plus its health/prewarm overlay.
+Launch the recommended route through the committed Compose project plus its health/prewarm overlay.
 Before startup, verify both nodes use the same clean tracked Git revision. Run from the repository root
 on both nodes, with the MP worker first. The preset already pins the recorded immutable digest:
 
@@ -134,12 +135,12 @@ Rollback (to §2, primary): stop the v0.27 containers, reboot both nodes if UVM 
 correctness check. If §2 is also unavailable, §3 (MTP1) is the second-tier fallback with the same
 procedure. Preserve all rollback images on both nodes; do not delete or prune them.
 
-## 7. Residual risks (carried from B4.4A/B4.4B; none block this promotion)
+## 7. Residual risks (carried from B4.4A/B4.4B; none block this validation)
 
 - **R1 — historical spark01 abrupt host power loss.** Occurred once (task B4.3X) during an immediate
   zero-cooldown repeat of a 128K×4 combined-pressure run under **MAX_NUM_SEQS=4**. Not reproduced
   across two dedicated follow-up tasks (B4.3Y, B4.3Z). Root cause unknown. This is why MAX_NUM_SEQS=4
-  remains an optional, attended-use-only profile rather than the production default.
+  remains an optional, attended-use-only profile rather than the operational default.
 - **R2 — hardware watchdog unavailable.** Confirmed platform limitation: this platform's ARM SBSA
   watchdog is permanently disabled at the kernel level (NMI not fully supported). A host-level hard
   hang has no OS-level automatic recovery path — physical intervention is required.
@@ -164,23 +165,23 @@ across 8 canonical MS1 requests; the Aiden MTP candidate failed drafter weight l
 benchmarking were therefore not run. See
 [`docs/deepseek-v4-external-runtime-qualification-2026-08-28.md`](deepseek-v4-external-runtime-qualification-2026-08-28.md).
 
-**v0.27/256K route (current active production):** B4.3S (first TP=2+DSpark k=7 success on v0.27) →
+**v0.27/256K route (currently recommended):** B4.3S (first TP=2+DSpark k=7 success on v0.27) →
 B4.3T (performance/acceptance baseline) → B4.3U (concurrency to c=8) → B4.3V/W (long-context to 256K)
 → B4.3X/Y/Z (combined-pressure soak, host-stability investigation) → B4.4A (JIT inventory + prewarm
-design, promotion-readiness audit) → B4.4B (repository implementation, live-validated) → B4.4C (this
-promotion). Full chain: [`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](deepseek-v4-v027-b43s-promotion-candidate.md)
+design, operational-readiness audit) → B4.4B (repository implementation, live-validated) → B4.4C (operational
+adoption). Full chain: [`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](deepseek-v4-v027-b43s-promotion-candidate.md)
 and this project's memory index.
 
 **v0.25.0/64K route (primary rollback), historical:**
 
 - **DS3U** — corrected fixed-length E2E comparison (short / LC32 / LC64) of the DSpark candidate vs
-  the MTP1 production route; three-stage geometric mean 1.188× production; stability + rollback
+  the MTP1 operational route; three-stage geometric mean 1.188× operational; stability + rollback
   rehearsal PASS.
 - **DS3V** — isolated single-shot LC131 characterization on both routes; single-shot safe (candidate
   min `MemAvailable` ~17.07 GiB), **repeated LC131 not validated**; reboot-only UVM recovery confirmed.
   Basis for the 64K cap.
 - **DS3X** — isolated-port (18000) activation canary: startup + graph `[8]` + correctness 4/4 +
   short/LC32/LC64 + 25-minute stability + teardown/recovery + MTP1 rollback rehearsal PASS.
-- **DS3Y** — default production activation on port 8000 (zero-config: OpenWebUI already targeted
-  spark01:8000, Traefik fronts only OpenWebUI); direct-API + 30-minute active-production observation
+- **DS3Y** — default operational activation on port 8000 (zero-config: OpenWebUI already targeted
+  spark01:8000, Traefik fronts only OpenWebUI); direct-API + 30-minute active-operational observation
   PASS; `DS3Y_64K_DEFAULT_PRODUCTION_ACTIVE`.

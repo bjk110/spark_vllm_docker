@@ -1,5 +1,5 @@
 FROM vllm/vllm-openai@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e
-LABEL org.vllm-spark.candidate.purpose="LOCAL NON-PRODUCTION experimental deterministic persistent_topk evaluation; not promoted or pushed"
+LABEL org.vllm-spark.candidate.purpose="LOCAL experimental deterministic persistent_topk evaluation; manual opt-in only; not published"
 LABEL org.vllm-spark.candidate.base-image="vllm/vllm-openai@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e"
 LABEL org.vllm-spark.candidate.base-image-id="sha256:d464f3b466fa9c45ddbff8a812e80564503b6879a9fd95c1a47514f3f0df5a4a"
 LABEL org.vllm-spark.candidate.vllm-version="0.1.dev20073+g8e685d198"

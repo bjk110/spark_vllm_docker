@@ -1,12 +1,12 @@
 # DeepSeek-V4 v0.27 frozen runtime build base
 
-Status: **released build/reproducibility artifact; not a new runtime promotion**.
+Status: **released build/reproducibility artifact; no runtime status change**.
 
 ## Purpose
 
 Avoid rebuilding the validated NGC 26.07 + vLLM 0.27 + FlashInfer/DeepGEMM/Quack closure for every
 future DeepSeek-V4 derivative. This base is explicitly **DSV4-specific**, not model-neutral: it already
-contains the B4.3R/B4.3S sparse-MLA dispatch changes and the production dependency closure.
+contains the B4.3R/B4.3S sparse-MLA dispatch changes and the serving dependency closure.
 
 ## Immutable identity
 
@@ -16,7 +16,7 @@ contains the B4.3R/B4.3S sparse-MLA dispatch changes and the production dependen
 - local image ID: `sha256:a7f0f4b8a508c0b2510fc7e4dcb916491efa03c380c9c7b84dddd4c16ad6f38d`
 - architecture: `linux/arm64`
 
-Both aliases are a registry retag of the already-qualified production artifact. Registry and Spark02
+Both aliases are a registry retag of the already-qualified serving artifact. Registry and Spark02
 pull readback confirmed the same manifest and local image ID; no layer was rebuilt or altered.
 
 ## Included frozen contract
@@ -51,13 +51,13 @@ promise for network-cold pulls or runtime startup.
 The base removes repeated image construction of the common stack. It does not eliminate model shard
 loading, TP/NCCL initialization, shape-specific JIT/autotuning, CUDA graph capture, or startup prewarm.
 A derivative that changes filesystem content has a new image identity and must pass the normal static,
-startup, canonical MS1, conditional MS8, and benchmark gates before promotion.
+startup, canonical MS1, conditional MS8, and benchmark gates before operational adoption.
 
-## Production recipe effect
+## Recipe effect
 
 The active MS1 and optional MS4 presets now pin the immutable manifest directly instead of a mutable
 tag. Because the digest is unchanged, this is an identity-hardening change, not a new runtime image.
-No production container was started or modified as part of this release.
+No serving container was started or modified as part of this release.
 
 Host-local release evidence:
 `/home/bjk110/docker-build/dsv4-v027-runtime-base-release-20260828/`.

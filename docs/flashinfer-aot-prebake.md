@@ -3,7 +3,7 @@
 `ghcr.io/bjk110/vllm-spark:v022-d568-fi-aot` is a thin overlay on `v022-d568`
 (NGC 26.04, vLLM 0.21.0+PR#35568, FlashInfer 0.6.11.post3, Transformers 5.8.1)
 that pre-builds a fixed set of FlashInfer
-SM120/SM121 CUTLASS kernel modules at **image build time** and promotes each
+SM120/SM121 CUTLASS kernel module at **image build time** and copies each
 built `.so` from FlashInfer's JIT cache path (`spec.jit_library_path`) to its
 AOT path (`spec.aot_path`).
 
@@ -26,7 +26,7 @@ time (`dockerfiles/scripts/flashinfer_aot_build.py`), copy it to
 
 ## Validated specs
 
-The following 7 specs are prebuilt and AOT-promoted in `v022-d568-fi-aot`
+The following 7 specs are prebuilt and installed in the AOT path in `v022-d568-fi-aot`
 (`is_aot=True`, `is_compiled=True` for all 7, on both head and worker):
 
 - `fp4_quantization_121`
@@ -71,7 +71,7 @@ docker buildx build -f dockerfiles/active/Dockerfile.v022-d568-fi-aot \
   -t vllm-spark:v022-d568-fi-aot --load .
 ```
 
-`Dockerfile.v022-d568-fi-aot-extra` is an idempotent addendum (re-promotes the
+`Dockerfile.v022-d568-fi-aot-extra` is an idempotent addendum (reinstalls the
 two general FA2/sampling specs) kept for incremental rebuilds; the main
 Dockerfile already covers all 7 specs via
 `dockerfiles/scripts/flashinfer_aot_build.py`.

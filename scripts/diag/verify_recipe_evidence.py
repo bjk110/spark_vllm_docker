@@ -15,6 +15,16 @@ ALLOWED_STATUS_CLASSES = {
     "production-qualified",
     "validated-non-production",
 }
+STATUS_CLASS_GRAMMAR = (
+    (r"recommended", "production"),
+    (r"recommended \(since \d{4}-\d{2}-\d{2}, spark01:8000(?: when deployed)?\)", "production"),
+    (r"primary rollback(?: \(stopped\))?", "rollback"),
+    (r"legacy rollback(?: \(stopped\))?", "rollback"),
+    (r"manual profile(?: \(manual activation only, not auto-start\))?", "production-qualified"),
+    (r"optional validated profile(?: \(attended use only, not default\))?", "production-qualified"),
+    (r"main_merge_approved_opt_in — opt-in interactive c1 only; not the operational default; no auto-start", "production-qualified"),
+    (r"validated(?: \(manual activation only\))?", "validated-non-production"),
+)
 
 
 def sha256(path):
@@ -62,15 +72,12 @@ def preset_status_class(path):
     if not match:
         return None
     status = match.group(1).strip().lower()
-    if status.startswith("active production"):
-        return "production"
-    if "rollback" in status:
-        return "rollback"
-    if status.startswith(("production-qualified", "optional validated profile",
-                          "main_merge_approved_opt_in")):
-        return "production-qualified"
-    if status.startswith("validated"):
-        return "validated-non-production"
+    # Public taxonomy is neutral; manifest classes retain their evidence meaning.
+    if re.search(r"\b(?:production|promot\w*)\b", status):
+        return None
+    for pattern, status_class in STATUS_CLASS_GRAMMAR:
+        if re.fullmatch(pattern, status):
+            return status_class
     return None
 
 

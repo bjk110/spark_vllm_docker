@@ -2,7 +2,7 @@
 # =========================================================================
 # DeepSeek-V4-Flash SM12x — EXPERIMENTAL build path
 #
-# Status: EXPERIMENTAL. Not validated, not promoted, not production.
+# Status: EXPERIMENTAL. Not validated; not recommended for serving.
 #
 # Strategy (v0.23-stack-derived, PR41834-based — NOT vLLM 0.23 itself):
 #   Reuse the project's current v0.23 image TOOLCHAIN (NGC 26.05 base,

@@ -1,0 +1,419 @@
+{
+  "PATCH_STATUS.md": {
+    "identifiers": [
+      "docs/solar-open2-production.md"
+    ]
+  },
+  "docs/architecture.md": {
+    "identifiers": [
+      "deepseek-v4-production.md",
+      "deepseek-v4-production.md"
+    ]
+  },
+  "docs/dsv4-flash-tp2.md": {
+    "identifiers": [
+      "deepseek-v4-production.md",
+      "deepseek-v4-production.md"
+    ]
+  },
+  "docs/solar-open2-launch-reference.md": {
+    "identifiers": [
+      "solar-open2-production.md",
+      "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "compose/solar-open2/docker-compose.r4-production.yml",
+      "compose/solar-open2/docker-compose.r4-production.yml"
+    ]
+  },
+  "README.md": {
+    "identifiers": [
+      "docs/deepseek-v4-production.md",
+      "docs/deepseek-v4-production.md",
+      "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "docs/solar-open2-production.md",
+      "docs/solar-open2-production.md",
+      "docs/deepseek-v4-production.md",
+      "docs/deepseek-v4-production.md",
+      "docs/deepseek-v4-production.md",
+      "docs/deepseek-v4-production.md"
+    ]
+  },
+  "benchmarks/evidence/README.md": {
+    "identifiers": [
+      "docs/deepseek-v4-production.md",
+      "../../docs/deepseek-v4-production.md",
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "../../docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "docs/solar-open2-production.md",
+      "../../docs/solar-open2-production.md"
+    ]
+  },
+  "dockerfiles/README.md": {
+    "identifiers": [
+      "../docs/solar-open2-production.md"
+    ]
+  },
+  "docs/README.md": {
+    "identifiers": [
+      "deepseek-v4-production.md",
+      "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "deepseek-v4-production.md",
+      "deepseek-v4-production.md",
+      "deepseek-v4-production.md",
+      "solar-open2-production.md",
+      "solar-open2-production.md",
+      "presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "deepseek-v4-production.md",
+      "deepseek-v4-production.md",
+      "solar-open2-production.md",
+      "solar-open2-production.md"
+    ]
+  },
+  "docs/deepseek-v4-flash-vision-exp-tp2.md": {
+    "identifiers": [
+      "deepseek-v4-production.md"
+    ]
+  },
+  "docs/deepseek-v4-production.md": {
+    "identifiers": [
+      "B4_4A_PREWARM_VALIDATED_PROMOTION_READY",
+      "B4_4B_PROMOTED_PRESET_IMPLEMENTATION_VALIDATED",
+      "ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production",
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "deepseek-v4-v027-b43s-promotion-candidate.md",
+      "presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "presets/deepseek-v4-flash-mtp1-production-tp2.env",
+      "presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "presets/deepseek-v4-flash-mtp1-production-tp2.env",
+      "presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "deepseek-v4-v027-b43s-promotion-candidate.md",
+      "DS3Y_64K_DEFAULT_PRODUCTION_ACTIVE"
+    ]
+  },
+  "docs/images.md": {
+    "identifiers": [
+      "aidendle94/sparkrun-vllm-ds4-gb10:production-ready",
+      "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "docs/solar-open2-production.md",
+      "solar-open2-production.md",
+      "v027-ngc2607-dsv4-0731-dspark-k7-256k-production",
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "deepseek-v4-v027-b43s-promotion-candidate.md",
+      "docs/deepseek-v4-production.md",
+      "deepseek-v4-production.md"
+    ]
+  },
+  "docs/qwen3.8-flash-next-tp2.md": {
+    "identifiers": [
+      "deepseek-v4-production.md",
+      "deepseek-v4-production.md",
+      "deepseek-v4-v027-b43s-promotion-candidate.md",
+      "deepseek-v4-v027-b43s-promotion-candidate.md"
+    ]
+  },
+  "docs/software-stack.md": {
+    "identifiers": [
+      "deepseek-v4-production.md",
+      "deepseek-v4-production.md",
+      "solar-open2-v0251-r4-bf16-production-fasttrack-20260808T153704Z",
+      "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "docs/solar-open2-production.md",
+      "solar-open2-production.md",
+      "docs/solar-open2-production.md",
+      "solar-open2-production.md"
+    ]
+  },
+  "docs/solar-open2-production.md": {
+    "identifiers": [
+      "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "compose/solar-open2/docker-compose.r4-production.yml",
+      "docker-compose.r4-production.yml",
+      "SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_READY",
+      "solar-open2-v0251-r4-bf16-production-fasttrack-20260808T153704Z",
+      "solar-open2-v0251-r4-bf16-production-promotion-20260809T053857Z",
+      "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "compose/solar-open2/docker-compose.r4-production.yml",
+      "solar-open2-v0251-r4-bf16-production-fasttrack-20260808T153704Z",
+      "SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_READY",
+      "solar-open2-v0251-r4-bf16-production-promotion-20260809T053857Z",
+      "SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_PROMOTED",
+      "SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_PROMOTION_PUSHED",
+      "docker-compose.r4-production.yml"
+    ]
+  },
+  "presets/README.md": {
+    "identifiers": [
+      "docs/deepseek-v4-production.md",
+      "../docs/deepseek-v4-production.md",
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "../docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production",
+      "../docs/deepseek-v4-production.md",
+      "../docs/deepseek-v4-production.md",
+      "deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "../docs/deepseek-v4-production.md",
+      "deepseek-v4-flash-mtp1-production-tp2.env",
+      "deepseek-v4-flash-mtp1-production-tp2.env",
+      "../docs/deepseek-v4-production.md",
+      "docs/solar-open2-production.md",
+      "../docs/solar-open2-production.md",
+      "solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "../docs/solar-open2-production.md",
+      "../docs/solar-open2-production.md",
+      "docs/solar-open2-production.md",
+      "../docs/solar-open2-production.md#3-preset-retention-policy-and-status",
+      "docs/solar-open2-production.md"
+    ]
+  },
+  "presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env": {
+    "identifiers": [
+      "presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "presets/deepseek-v4-flash-mtp1-production-tp2.env",
+      "docs/deepseek-v4-production.md",
+      "B4_4C_FORMALLY_PROMOTED_AND_PUBLISHED",
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "presets/deepseek-v4-flash-mtp1-production-tp2.env",
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md"
+    ],
+    "runtime_sha256": "043e711424748a37dc0795ccf1076d0923839f18c0a117adceae7eb359bf5f0d"
+  },
+  "presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env": {
+    "identifiers": [
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "docs/deepseek-v4-production.md"
+    ],
+    "runtime_sha256": "fdd959789e7d3dd61ff681219d7b5d24824a5dbe457b48ec3fd375f2b0235a7a"
+  },
+  "presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env": {
+    "identifiers": [
+      "presets/deepseek-v4-flash-mtp1-production-tp2.env",
+      "docs/deepseek-v4-production.md"
+    ],
+    "runtime_sha256": "241ca439de5f2e3a2967780df5c4ae5b56fbf4d8b2796a99a950fe6344a9924c"
+  },
+  "presets/deepseek-v4-flash-mtp1-production-tp2.env": {
+    "identifiers": [
+      "presets/deepseek-v4-flash-dspark-k7-64k-production-tp2.env",
+      "docs/deepseek-v4-production.md"
+    ],
+    "runtime_sha256": "f884b1d23e11605e7edbd904a2b4ecb179d9b516331b5d53f786a12456839531"
+  },
+  "presets/deepseek-v4-flash-vision-exp-tp2.env": {
+    "identifiers": [],
+    "runtime_sha256": "ef6ce49a5d73a09d238b8d467a7e0e0dc95beeb7094248ab5af02628c15fd4c4"
+  },
+  "presets/gemma4-26b-a4b-tq.env": {
+    "identifiers": [],
+    "runtime_sha256": "9f02b18176d536aa1ff185096bd333e35e3a7c8c36c3adb1fbf0f8473a232578"
+  },
+  "presets/gemma4-26b-a4b.env": {
+    "identifiers": [],
+    "runtime_sha256": "0a803a6af874eb643d729c7785e310b430ffb87a608ce350fc2cd729666a21f4"
+  },
+  "presets/gemma4-31b-it.env": {
+    "identifiers": [],
+    "runtime_sha256": "8d55dd9efd7d23fd317cbeec5425d5ecd87c7161480eb108d183041f0e794d04"
+  },
+  "presets/intel-122b-int4.env": {
+    "identifiers": [],
+    "runtime_sha256": "6040aac1186ed6fd7821243bf02e9c9f026dc965672c13435ae60057fb541336"
+  },
+  "presets/qwen3.5-122b-fp8.env": {
+    "identifiers": [],
+    "runtime_sha256": "f6c321609ec73726d17db08e8db22951762a5d6c92f121e5a0c2229f0c272d1d"
+  },
+  "presets/qwen3.5-122b-nvfp4-tp2.env": {
+    "identifiers": [],
+    "runtime_sha256": "678b6771e1b609f2f857a943fee08700bc1f98ce1e78fe58302725e9833b90ba"
+  },
+  "presets/qwen3.5-122b-nvfp4.env": {
+    "identifiers": [],
+    "runtime_sha256": "997fe2a666b503e88aa344bf841fb4668c66aabdf9bf974643a52b0ae553ccf0"
+  },
+  "presets/qwen3.5-122b-prismaquant.env": {
+    "identifiers": [],
+    "runtime_sha256": "b05fb95352eb3884bb8bed0ce981158a72da8967d9e186bd4d5b54fe456ebfd7"
+  },
+  "presets/qwen3.5-397b-int4-tq.env": {
+    "identifiers": [],
+    "runtime_sha256": "b168de71f6aeb1970e8747438eddf4ef04f0cb827921f582ccdee38d08f23709"
+  },
+  "presets/qwen3.5-397b-int4.env": {
+    "identifiers": [],
+    "runtime_sha256": "bc61f3fc6e405d6e1bceb9784cca7cc818f7c5883d1f0f932b13b3e7e049ed8a"
+  },
+  "presets/qwen3.6-27b-base-bf16-tp2.env": {
+    "identifiers": [],
+    "runtime_sha256": "d03e194168adeda4353be6d2affbe24d6ecda8bd003862ad92f7032ef2db2811"
+  },
+  "presets/qwen3.6-27b-prismascout-nvfp4-tp2-v022-d568.env": {
+    "identifiers": [],
+    "runtime_sha256": "c68f3088a197161a667dade6c807698e9e0cf581030bb05e9713fc9e2c92e336"
+  },
+  "presets/qwen3.6-27b-prismascout-nvfp4-tp2-v022-fi0611.env": {
+    "identifiers": [],
+    "runtime_sha256": "de10372759c56b9d8e31bc40d6a0527880ec34dae7b7011bf4aff1a4932faa04"
+  },
+  "presets/qwen3.6-27b-prismascout-nvfp4-tp2-v022-nccl234.env": {
+    "identifiers": [],
+    "runtime_sha256": "df7d302c3f604d7492b5d9f24f2a16ce31f20b189ee489e181e45bc52eea213d"
+  },
+  "presets/qwen3.6-27b-prismascout-nvfp4-tp2-v022-ngc2604.env": {
+    "identifiers": [],
+    "runtime_sha256": "4f54efa2547cb0feb5f6f72675030db6c93d2cd26af1c6a78a0a018616cb93bf"
+  },
+  "presets/qwen3.6-27b-prismascout-nvfp4-tp2-v022-trt37.env": {
+    "identifiers": [],
+    "runtime_sha256": "0ce37246be23187aefa76de63d0acde7a7abd22624c70498f29492164f268023"
+  },
+  "presets/qwen3.6-27b-prismascout-nvfp4-tp2-v022-tx581.env": {
+    "identifiers": [],
+    "runtime_sha256": "4e9a773c552c67be1d812595dc891e5e94477169d7cb0db05227f65713f6095a"
+  },
+  "presets/qwen3.6-27b-prismascout-nvfp4-tp2-v022.env": {
+    "identifiers": [],
+    "runtime_sha256": "8b1657d4904032f7890cf3894dc3ba4342e6ba60b4ea4e5f92cf077c8c6dfca1"
+  },
+  "presets/qwen3.6-27b-prismascout-nvfp4-tp2.env": {
+    "identifiers": [],
+    "runtime_sha256": "72c335a2b9d25f32183c2b266936c18d6fa2d6663d97804e1fefca68bb903a73"
+  },
+  "presets/qwen3.6-35b-a3b-fi-aot-tp2.env": {
+    "identifiers": [],
+    "runtime_sha256": "430175aed8b9d00b24f26ef3f41b6e89361c3a6c7b7782eb27f98831f89c5030"
+  },
+  "presets/qwen3.6-35b-a3b.env": {
+    "identifiers": [],
+    "runtime_sha256": "b77b5ac7fdf709989f2707b7d35c73a23d6daecfa00e246b1cfed0f113d5e417"
+  },
+  "presets/qwen3.6-35b-fp16.env": {
+    "identifiers": [],
+    "runtime_sha256": "2d54a0bd2225a6642c359e32fb093f56eed03212f7838bebfd92f733dad473d1"
+  },
+  "presets/qwen3.8-flash-next-fp8-tp2-candidate.env": {
+    "identifiers": [],
+    "runtime_sha256": "e0bd486037494e93a79fdbcd82189a6a25c56f0ad52e912bb0d0af5d6f4e8bc3"
+  },
+  "presets/qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env": {
+    "identifiers": [],
+    "runtime_sha256": "f5df564ad97e972912d189ac382180fbf44d1c60f32c60b1937cf94da9226787"
+  },
+  "presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env": {
+    "identifiers": [],
+    "runtime_sha256": "37da94582b9324e2d621ef7a45182051fd3b589ddd84152f11a59daed314562d"
+  },
+  "presets/redhatai-122b-nvfp4-tq.env": {
+    "identifiers": [],
+    "runtime_sha256": "81119fac54ba7f939b9c2c89ffa8ab1ae19d29d593d6de3e2cb67fbfd1f3a0cd"
+  },
+  "presets/redhatai-122b-nvfp4.env": {
+    "identifiers": [],
+    "runtime_sha256": "abfbb6bd8c3c04cb7549b4569a2ee70b90b33558e08e9902426dec7b5abe6b12"
+  },
+  "presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env": {
+    "identifiers": [
+      "compose/solar-open2/docker-compose.r4-production.yml",
+      "compose/solar-open2/docker-compose.r4-production.yml"
+    ],
+    "runtime_sha256": "43a6880705ea18b36d0d2d6ad2f60ac0c01da28880696c6e71da593cc2f5b611"
+  },
+  "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env": {
+    "identifiers": [
+      "compose/solar-open2/docker-compose.r4-production.yml",
+      "docs/solar-open2-production.md",
+      "SOLAR_OPEN2_V0251_R4_BF16_PRODUCTION_READY",
+      "solar-open2-v0251-r4-bf16-production-fasttrack-20260808T153704Z",
+      "solar-open2-v0251-r4-bf16-production-promotion-20260809T053857Z",
+      "docs/solar-open2-production.md",
+      "docs/solar-open2-production.md",
+      "compose/solar-open2/docker-compose.r4-production.yml",
+      "docs/solar-open2-production.md",
+      "docs/solar-open2-production.md",
+      "compose/solar-open2/docker-compose.r4-production.yml",
+      "compose/solar-open2/docker-compose.r4-production.yml"
+    ],
+    "runtime_sha256": "9e3c128c327217d9cfdf677dd1c9ad9529829d526ec100689ee070d83bcc95d3"
+  },
+  "presets/step37-flash-fp8-tp2.env": {
+    "identifiers": [],
+    "runtime_sha256": "a136319b2df17ec3ef4f18861171746965e3aa4a9358769ddb1d7e40636d93fb"
+  },
+  "presets/step37-flash-fp8-v023-tp2.env": {
+    "identifiers": [],
+    "runtime_sha256": "fd06a84c9954200f426c54aa645b2c04305c57a650d2c6a3ea7dbc6f53d6a9dc"
+  },
+  "presets/step37-flash-nvfp4-tp2.env": {
+    "identifiers": [],
+    "runtime_sha256": "101da54e0931297d3c19a18678a5f41d0be3e0849867574dcfa89ac371888c98"
+  },
+  "presets/step37-flash-nvfp4-v023-tp2-latency.env": {
+    "identifiers": [],
+    "runtime_sha256": "054ebc3e6ffbee7150268b7d36b9b723c8e0c41056fd724007a157c78c51b481"
+  },
+  "presets/wangzhang-122b-abliterix-fp8-tp2-v022-d568.env": {
+    "identifiers": [],
+    "runtime_sha256": "16b4beeb8fd82a15223ecafaec923b2026982616f369412c5722d8da1a8cef99"
+  },
+  "presets/wangzhang-122b-abliterix-fp8-tp2-v022.env": {
+    "identifiers": [],
+    "runtime_sha256": "5774646510240f4594fea0b0c56d6175114871c3e0a12b2701a337bd79faec4b"
+  },
+  "presets/wangzhang-122b-abliterix-fp8-tp2.env": {
+    "identifiers": [],
+    "runtime_sha256": "dcec68b57f2a41939396ecdc42038167dde867afa7c2bb3a09de21d79db1e84b"
+  },
+  "presets/wangzhang-122b-abliterix-nvfp4-tp2.env": {
+    "identifiers": [],
+    "runtime_sha256": "1854de87e77b91d56be2bc4c337f15a38dd0d3d6b5d26b5d4a22d31bbab1739f"
+  },
+  "presets/wangzhang-122b-fp8.env": {
+    "identifiers": [],
+    "runtime_sha256": "c273ff551619a8278754e1708e645495660cd50fac96acc2fb74b85fc34290f8"
+  },
+  "presets/wangzhang-122b-nvfp4.env": {
+    "identifiers": [],
+    "runtime_sha256": "0e9a2cde978d868031dfbe935dea81e2bb6a370d91b035603d059a903fade13f"
+  },
+  "scripts/prewarm_dsv4_v027_b43s.py": {
+    "identifiers": [
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "deepseek-v4-0731-vllm027-b44a-prewarm-promotion-readiness-20260815T172634KST"
+    ]
+  },
+  "compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml": {
+    "identifiers": [
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md",
+      "docs/deepseek-v4-v027-b43s-promotion-candidate.md"
+    ],
+    "runtime_sha256": "0d786c4fcbc3ef834ae53876df85dc9a28dd6d4ea79a40b20143941447109f29"
+  },
+  "compose/qwen3.8-flash-next/docker-compose.candidate.yml": {
+    "identifiers": [],
+    "runtime_sha256": "3976ab0f46bc466df58b7d6268bf2ab8545629250cf8d7b6685098cc195aab36"
+  },
+  "compose/solar-open2/docker-compose.b12x-cache.yml": {
+    "identifiers": [
+      "docs/solar-open2-production.md",
+      "docker-compose.r4-production.yml",
+      "docs/solar-open2-production.md"
+    ],
+    "runtime_sha256": "1680d0c44f71a8ded8faab7fa4ca99cf95646817ed0992f293b356affed8cc03"
+  },
+  "compose/solar-open2/docker-compose.r4-production.yml": {
+    "identifiers": [
+      "compose/solar-open2/docker-compose.r4-production.yml",
+      "docs/solar-open2-production.md",
+      "docs/solar-open2-production.md",
+      "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
+      "compose/solar-open2/docker-compose.r4-production.yml"
+    ],
+    "runtime_sha256": "ab220d3fc946617f4ae92b4ea900ddccff1e5caec1803ad373faae3b5b188965"
+  }
+}

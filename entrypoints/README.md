@@ -37,7 +37,7 @@ This default is implicit in `docker-compose.yml` — no explicit value is requir
 **unholy-fusion path — historical, not runnable from `main`.** All three files it required
 (`entrypoint.unholy.sh`, `.env.unholy-fusion`, `compose/docker-compose.unholy.yml`) have been
 removed from the active tree (2026-08-11) as historical/experimental and not a recommended
-production path. All three are recoverable from Git history at commit `282e656` or earlier — see
+operational path. All three are recoverable from Git history at commit `282e656` or earlier — see
 [`docs/unholy-fusion-benchmark.md`](../docs/unholy-fusion-benchmark.md) for the retained
 configuration and benchmark record.
 

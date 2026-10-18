@@ -32,7 +32,7 @@ KERNEL_DEST = "/opt/llm/kernel-det/_C_det.so"
 QSA_DEST = "/usr/local/lib/python3.12/dist-packages/vllm/models/qwen3_8_flash_next/nvidia/ops/qsa.py"
 COPY_FLAGS = ["--chmod=0644"]
 EXPECTED_LABELS = {
-    "org.vllm-spark.candidate.purpose": "LOCAL NON-PRODUCTION experimental deterministic persistent_topk evaluation; not promoted or pushed",
+    "org.vllm-spark.candidate.purpose": "LOCAL experimental deterministic persistent_topk evaluation; manual opt-in only; not published",
     "org.vllm-spark.candidate.base-image": EXPECTED_BASE,
     "org.vllm-spark.candidate.base-image-id": "sha256:d464f3b466fa9c45ddbff8a812e80564503b6879a9fd95c1a47514f3f0df5a4a",
     "org.vllm-spark.candidate.vllm-version": "0.1.dev20073+g8e685d198",
@@ -74,8 +74,9 @@ INDEX_ENTRIES = {
     "patches/README.md": ("qwen/pr55122/_C_det.so", "qwen/pr55122/qsa.det.py", "qwen/pr55122/persistent_topk.cuh"),
 }
 SCOPE_STATEMENT = "Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope."
-OPT_IN_REQUIRED = ("MAIN_MERGE_APPROVED_OPT_IN", "opt-in", SCOPE_STATEMENT)
-RUNTIME_REQUIRED = ("NOT the production default", "no auto-start", "MTP1 c2/c8",
+PUBLIC_SCOPE_STATEMENT = SCOPE_STATEMENT.replace("production-default", "default")
+OPT_IN_REQUIRED = ("MAIN_MERGE_APPROVED_OPT_IN", "opt-in", PUBLIC_SCOPE_STATEMENT)
+RUNTIME_REQUIRED = ("NOT the operational default", "no auto-start", "MTP1 c2/c8",
                     "prefix-cache ON exact", "MAX_NUM_SEQS=8", "excluded")
 INDEX_RUNTIME_KEYS = {"qwen3.8-flash-next-pr55122-mtp1-c1",
                       "qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env",
@@ -83,8 +84,8 @@ INDEX_RUNTIME_KEYS = {"qwen3.8-flash-next-pr55122-mtp1-c1",
 # Small fixture entries for mutation tests; these are not exact rendered row contracts.
 PROMOTION_INDEX_REQUIRED_LINES = {
     name: tuple("| `" + key + "` | " + (
-        "Production-qualified manual not auto-start" if key in ("qwen3.8-flash-next-c1-c2", "qwen3.8-flash-next-fp8-tp2-candidate.env")
-        else "MAIN_MERGE_APPROVED_OPT_IN opt-in; " + SCOPE_STATEMENT
+        "Manual profile manual not auto-start" if key in ("qwen3.8-flash-next-c1-c2", "qwen3.8-flash-next-fp8-tp2-candidate.env")
+        else "MAIN_MERGE_APPROVED_OPT_IN opt-in; " + PUBLIC_SCOPE_STATEMENT
     ) + " |" for key in keys) for name, keys in INDEX_ENTRIES.items()
 }
 
@@ -357,7 +358,7 @@ def check_promotion_indexes(r):
                 r.fail(f"promotion index {name} entry {key} must appear exactly once; count={len(entries)}")
                 continue
             entry = entries[0]
-            required = ("production-qualified", "manual", "not auto-start") if key in ("qwen3.8-flash-next-c1-c2", "qwen3.8-flash-next-fp8-tp2-candidate.env") else OPT_IN_REQUIRED
+            required = ("manual profile", "manual", "not auto-start") if key in ("qwen3.8-flash-next-c1-c2", "qwen3.8-flash-next-fp8-tp2-candidate.env") else OPT_IN_REQUIRED
             if key in INDEX_RUNTIME_KEYS: required += RUNTIME_REQUIRED
             if name == "patches/README.md":
                 required += ({"qwen/pr55122/_C_det.so": EXPECTED_KERNEL_SHA, "qwen/pr55122/qsa.det.py": EXPECTED_QSA_SHA, "qwen/pr55122/persistent_topk.cuh": EXPECTED_UPSTREAM_KERNEL_SHA}[key],)

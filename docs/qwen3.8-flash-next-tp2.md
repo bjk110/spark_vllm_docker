@@ -1,11 +1,11 @@
-# Qwen3.8-Flash-Next-FP8 — Dual DGX Spark TP=2 (PRODUCTION-QUALIFIED — c1/c2)
+# Qwen3.8-Flash-Next-FP8 — Dual DGX Spark TP=2 (Manual profile — c1/c2)
 
 | Field | Value |
 |---|---|
-| Status | `PRODUCTION-QUALIFIED -- c1/c2` -- Gate 0/1/2 passed at `MAX_NUM_SEQS=1` (c1, 2026-08-29); `MAX_NUM_SEQS=2` CUDA-graph production requalification PASSED (2026-08-31 -> 2026-09-01, §5.8); `MAX_NUM_SEQS=4` unbounded (c4) remains BLOCKED |
-| Current state | Runtime-qualified at c1 (2026-08-29, §5.5) and, separately, production-requalified at `MAX_NUM_SEQS=2` with CUDA-graph capture `[1,2]` (2026-08-31 -> 2026-09-01, §5.8): bounded c2 Gate PASS, full 12-row/135-request llama-benchy suite (12/12 rows, 135/135 requests, c8 protocol/syntax/semantic 8/8, 0 errors/fatals), and a 4-hour c1/c2 soak (target 14400s, actual 14400.0001s; 1120/1120 records -- 640 model requests + 480 health; post-c1/post-c2 both PASS; 0 fatal/restart/OOM). `MAX_NUM_SEQS=4` unbounded concurrency is still BLOCKED (§5.5/§5.6, unchanged). Not running as a persistent service. |
-| Scope | Production runtime recipe for `Qwen/Qwen3.8-Flash-Next-FP8` on 2x DGX Spark (GB10, SM121), TP=2, over 200 Gbps RoCE, at server-side `MAX_NUM_SEQS=2` |
-| Production status | **Production-qualified runtime config at `MAX_NUM_SEQS=2` (§5.8). This is a validated runtime configuration, not an auto-start service** -- a launch still requires the worker-first procedure in §6 under this repository's normal operational authorization. Server-side `MAX_NUM_SEQS=2` means client concurrency above 2 (c4/c8) is accepted and queued by vLLM, not rejected -- it exercises queue pressure on a 2-slot server, not an independently qualified c4/c8 concurrency level. Do not raise `MAX_NUM_SEQS` above 2 or extend `cudagraph_capture_sizes` beyond `[1,2]` without separately re-qualifying. |
+| Status | `Manual profile -- c1/c2` -- Gate 0/1/2 passed at `MAX_NUM_SEQS=1` (c1, 2026-08-29); `MAX_NUM_SEQS=2` CUDA-graph operational requalification PASSED (2026-08-31 -> 2026-09-01, §5.8); `MAX_NUM_SEQS=4` unbounded (c4) remains BLOCKED |
+| Current state | Runtime-qualified at c1 (2026-08-29, §5.5) and, separately, operational-requalified at `MAX_NUM_SEQS=2` with CUDA-graph capture `[1,2]` (2026-08-31 -> 2026-09-01, §5.8): bounded c2 Gate PASS, full 12-row/135-request llama-benchy suite (12/12 rows, 135/135 requests, c8 protocol/syntax/semantic 8/8, 0 errors/fatals), and a 4-hour c1/c2 soak (target 14400s, actual 14400.0001s; 1120/1120 records -- 640 model requests + 480 health; post-c1/post-c2 both PASS; 0 fatal/restart/OOM). `MAX_NUM_SEQS=4` unbounded concurrency is still BLOCKED (§5.5/§5.6, unchanged). Not running as a persistent service. |
+| Scope | Runtime recipe for `Qwen/Qwen3.8-Flash-Next-FP8` on 2x DGX Spark (GB10, SM121), TP=2, over 200 Gbps RoCE, at server-side `MAX_NUM_SEQS=2` |
+| Operational status | **Manual profile runtime config at `MAX_NUM_SEQS=2` (§5.8). This is a validated runtime configuration, not an auto-start service** -- a launch still requires the worker-first procedure in §6 under this repository's normal operational authorization. Server-side `MAX_NUM_SEQS=2` means client concurrency above 2 (c4/c8) is accepted and queued by vLLM, not rejected -- it exercises queue pressure on a 2-slot server, not an independently qualified c4/c8 concurrency level. Do not raise `MAX_NUM_SEQS` above 2 or extend `cudagraph_capture_sizes` beyond `[1,2]` without separately re-qualifying. |
 | Preset | [`presets/qwen3.8-flash-next-fp8-tp2-candidate.env`](../presets/qwen3.8-flash-next-fp8-tp2-candidate.env) |
 | Compose overlay (required) | [`compose/qwen3.8-flash-next/docker-compose.candidate.yml`](../compose/qwen3.8-flash-next/docker-compose.candidate.yml) |
 | Static verifier | [`scripts/diag/verify_qwen38_flash_next_recipe.py`](../scripts/diag/verify_qwen38_flash_next_recipe.py) |
@@ -17,16 +17,16 @@
 > measured deployment's Graph-NONE and fixed 8 GiB KV settings are explicitly not universalized.
 
 > **Status note:** Gate 0/1/2 were executed at c1 (`MAX_NUM_SEQS=1`) on 2026-08-29 -- see the ledger
-> in §5.5 for the raw evidence pointer. The `MAX_NUM_SEQS=2` CUDA-graph production requalification
+> in §5.5 for the raw evidence pointer. The `MAX_NUM_SEQS=2` CUDA-graph operational requalification
 > (§5.8) is a separate, later, bounded runtime result (2026-08-31 -> 2026-09-01) with its own full
-> evidence trail -- it is what promotes this document's status to production-qualified, not the
+> evidence trail -- it supports this manual profile, not the
 > c1-only §5.5 ledger or the narrower 32K/c2 follow-up in §5.6. `MAX_NUM_SEQS=4` unbounded (c4) is
 > still **BLOCKED**, not qualified -- do not cite this document as evidence of working concurrent
 > inference beyond the bounded `MAX_NUM_SEQS=2` envelope recorded in §5.8.
 
 This follows the same validation/Git policy used for DeepSeek-V4 in this repository (see
 [`deepseek-v4-production.md`](deepseek-v4-production.md) and the static-only candidate docs it
-links, e.g. [`h1z-b1s-indexer-route-candidate.md`](h1z-b1s-indexer-route-candidate.md)): prepare and
+links, e.g. [`deepseek-v4-v027-b43s-promotion-candidate.md`](deepseek-v4-v027-b43s-promotion-candidate.md)): prepare and
 statically verify a candidate first, gate real hardware runtime behind explicit staged approval,
 and never claim a status this document has not itself earned.
 
@@ -198,7 +198,7 @@ gate.** Persist raw evidence (logs, full response bodies, checksums) for every g
 
 Gate 0/1/2 have been executed at c1 (`MAX_NUM_SEQS=1`) -- see §5.5 for the raw ledger. This
 document's Gate 3 procedure describes the fixed-byte c1->c2->c4 determinism sweep in the abstract;
-the concrete result that promotes this document to production status is the separate, bounded
+the concrete result that supports this runtime recipe is the separate, bounded
 `MAX_NUM_SEQS=2` CUDA-graph requalification in §5.8 (2026-08-31 -> 2026-09-01), not a completion of
 this abstract Gate 3 sweep at c4. `MAX_NUM_SEQS=4` unbounded concurrency remains BLOCKED per §5.5/
 §5.6; do not treat it as qualified. Further gate execution beyond what §5.5/§5.8 record requires
@@ -231,7 +231,7 @@ separate explicit authorization per this repository's confirmation policy (`CLAU
   before MTP was ever reached.
 - **Historical note (superseded by §5.8):** at the time this ledger was recorded (2026-08-29),
   `MAX_NUM_SEQS=1` (c1) was the only qualified value and nothing here authorized a persistent service
-  or a promotion. That has since changed -- §5.8 (2026-08-31 -> 2026-09-01) separately production-
+  or adoption as a recommended profile. That has since changed -- §5.8 (2026-08-31 -> 2026-09-01) separately operational-
   requalified a bounded `MAX_NUM_SEQS=2` CUDA-graph envelope. This ledger's own c1 findings and the
   `MAX_NUM_SEQS=4` (c2/c4) BLOCKED finding above are unchanged and remain historically accurate.
 
@@ -266,19 +266,19 @@ separate explicit authorization per this repository's confirmation policy (`CLAU
 **Supervisor stopping point (2026-08-29):** the 32K/c2 exact-output determinism above is a bounded
 protocol-stability observation, not a general concurrent-serving qualification -- open-ended
 generation (the code-generation payload) remains nondeterministic under `MAX_NUM_SEQS=2` at this
-context length. Per this stopping point (as it stood on 2026-08-29): **do not** create or promote a
+context length. Per this stopping point (as it stood on 2026-08-29): **do not** create or adopt a
 c2 preset from this result, **do not** run MTP, and **retain** the `MAX_MODEL_LEN=262144` /
 `MAX_NUM_SEQS=1` default candidate above as-is. DeepGEMM / batch-dependent MoE numeric behavior
 remains the leading inference for the c2 code-generation divergence but is **unproven** -- prefix
 caching and expert-parallel/all-to-all have both been excluded by the single-variable probes above.
 
 **Historical note (superseded by §5.8):** this 32K/c2 follow-up predates and is distinct from the
-`MAX_NUM_SEQS=2` CUDA-graph production requalification in §5.8 (2026-08-31 -> 2026-09-01), which ran
+`MAX_NUM_SEQS=2` CUDA-graph operational requalification in §5.8 (2026-08-31 -> 2026-09-01), which ran
 at this candidate's actual `MAX_MODEL_LEN=262144` default (not the narrower 32768 probed here) and is
-the result that actually promotes `MAX_NUM_SEQS=2` to production. The findings above (prefix caching
+the result that actually validates operation at `MAX_NUM_SEQS=2`. The findings above (prefix caching
 and expert-parallel excluded as root cause of 32K code-generation divergence; DeepGEMM/batch-
 dependent MoE numerics unproven as leading hypothesis) remain historically accurate for the narrower
-32K scope and are not retracted, but "do not create or promote a c2 preset" no longer describes this
+32K scope and are not retracted, but "do not create or adopt a c2 preset" no longer describes this
 document's current status -- see §5.8.
 
 ## 5.7. Follow-up -- 2026-08-29 (batch-invariant support preflight; static check, no runtime launch)
@@ -309,20 +309,20 @@ document's current status -- see §5.8.
   no nonofficial patch was attempted -- this stays within the "official pinned image only" posture of
   this candidate (§0).
 - **Does not change anything else in this document.** This finding is independent of the
-  `MAX_NUM_SEQS=2` CUDA-graph production requalification in §5.8 -- `VLLM_BATCH_INVARIANT` plays no
+  `MAX_NUM_SEQS=2` CUDA-graph operational requalification in §5.8 -- `VLLM_BATCH_INVARIANT` plays no
   role in that recipe either.
   `presets/qwen3.8-flash-next-fp8-tp2-candidate.env` does not set `VLLM_BATCH_INVARIANT`.
   `MAX_NUM_SEQS=4` unbounded concurrency remains **BLOCKED** per §5.5/§5.6 -- `VLLM_BATCH_INVARIANT=1`
   was never a candidate for resolving that blocker on this backend, and this finding forecloses it as
   a future option on this image without an unofficial patch (not attempted, not authorized). The
-  bounded `MAX_NUM_SEQS=2` envelope is separately production-qualified via CUDA-graph capture, not
+  bounded `MAX_NUM_SEQS=2` envelope is separately validated via CUDA-graph capture, not
   batch-invariant mode -- see §5.8.
 - Evidence: `/home/bjk110/docker-build/qwen38-fp8-bic-support-check-20260829/`.
 
-## 5.8. Production requalification -- 2026-08-31 -> 2026-09-01 (`MAX_NUM_SEQS=2`, CUDA-graph `FULL_DECODE_ONLY` capture `[1,2]`)
+## 5.8. Runtime requalification -- 2026-08-31 -> 2026-09-01 (`MAX_NUM_SEQS=2`, CUDA-graph `FULL_DECODE_ONLY` capture `[1,2]`)
 
-> This is the runtime result that promotes this document and
-> `presets/qwen3.8-flash-next-fp8-tp2-candidate.env` to production status. It is distinct from, and
+> This is the runtime result that validates this document and
+> `presets/qwen3.8-flash-next-fp8-tp2-candidate.env` for manual use. It is distinct from, and
 > later than, both the c1-only §5.5 ledger and the narrower 32K/c2 protocol-stability follow-up in
 > §5.6. It runs at this candidate's actual `MAX_MODEL_LEN=262144` default, replaces `--enforce-eager`
 > with `--compilation-config {"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[1,2]}`,
@@ -373,7 +373,7 @@ document's current status -- see §5.8.
   launch of this or any other memory-heavy runtime if that low-headroom state is still current at
   launch time.
 - **This is a validated runtime configuration, not an auto-start service.** Nothing in this section
-  starts, restarts, or leaves running any container -- promotion to production status means this
+  starts, restarts, or leaves running any container -- validation means this
   preset's values are qualified for a future launch via the worker-first procedure in §6 under this
   repository's normal operational authorization, not that a service is currently running.
 - Evidence:
@@ -458,9 +458,9 @@ improvement for this model without measuring it the same deliberate way.
 
 ## 10. Known limitations
 
-- **Production-qualified at `MAX_NUM_SEQS=2` with CUDA-graph capture `[1,2]`; `MAX_NUM_SEQS=4`
+- **Manual configuration: `MAX_NUM_SEQS=2` with CUDA-graph capture `[1,2]`; `MAX_NUM_SEQS=4`
   unbounded remains BLOCKED.** Gate 0/1/2 passed at `MAX_NUM_SEQS=1` (c1) on 2026-08-29 (§5.5); the
-  `MAX_NUM_SEQS=2` production requalification (§5.8, 2026-08-31 -> 2026-09-01) separately passed a
+  `MAX_NUM_SEQS=2` operational requalification (§5.8, 2026-08-31 -> 2026-09-01) separately passed a
   bounded c2 gate, a full 12-row/135-request llama-benchy suite, and a 4-hour c1/c2 soak. `MAX_NUM_SEQS=4`
   (unbounded c4) is still BLOCKED -- content diverged across repeats in the 2026-08-29 ledger, and
   thinking mode returned null content at both a 256- and a 1024-token budget. Do not raise
@@ -477,8 +477,8 @@ improvement for this model without measuring it the same deliberate way.
   under the original `MAX_NUM_SEQS=1`/`--enforce-eager` envelope. Per this repository's GB10
   UMA-recovery lesson, teardown does not release the full memory back to the host; reboot spark01/
   spark02 before the next fresh launch if that low-headroom post-teardown state is still current.
-- **Production default is a validated runtime configuration, not an auto-start service.** Nothing in
-  this promotion starts, restarts, or schedules a persistent service -- a launch still requires the
+- **This manual profile is a validated runtime configuration, not an auto-start service.** Nothing in
+  this validation starts, restarts, or schedules a persistent service -- a launch still requires the
   explicit worker-first procedure in §6 under this repository's normal operational authorization.
 - **`GPU_MEMORY_UTILIZATION=0.83` and `MAX_NUM_BATCHED_TOKENS=8192` remain untuned.** These two values
   come from the original known dual-Spark community command, not from this cluster's own
@@ -510,7 +510,7 @@ improvement for this model without measuring it the same deliberate way.
   behavior remains the leading unproven hypothesis for that narrower 32K scope. This follow-up by
   itself did not requalify `MAX_NUM_SEQS>1` at this candidate's actual `MAX_MODEL_LEN=262144`
   default -- the later §5.8 CUDA-graph requalification (2026-08-31 -> 2026-09-01), run at
-  `MAX_MODEL_LEN=262144`, is what actually qualifies `MAX_NUM_SEQS=2` for production.
+  `MAX_MODEL_LEN=262144`, is what actually qualifies `MAX_NUM_SEQS=2` for serving.
 - **`VLLM_BATCH_INVARIANT=1` is unsupported on this pinned image (2026-08-29 static preflight, §5.7).**
   `GDNAttentionBackend.supports_batch_invariance` resolves to the inherited (always-`False`)
   `AttentionBackend.supports_batch_invariance` -- vLLM would reject batch-invariant mode for this
@@ -538,8 +538,8 @@ improvement for this model without measuring it the same deliberate way.
 
 ## 13. Status (repeat, for anyone skimming to the bottom)
 
-**PRODUCTION-QUALIFIED -- c1/c2.** Gate 0/1/2 passed at `MAX_NUM_SEQS=1` (c1) on 2026-08-29 (§5.5).
-The `MAX_NUM_SEQS=2` CUDA-graph production requalification (§5.8, 2026-08-31 -> 2026-09-01) --
+**Manual profile -- c1/c2.** Gate 0/1/2 passed at `MAX_NUM_SEQS=1` (c1) on 2026-08-29 (§5.5).
+The `MAX_NUM_SEQS=2` CUDA-graph operational requalification (§5.8, 2026-08-31 -> 2026-09-01) --
 `--compilation-config {"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[1,2]}`
 in place of `--enforce-eager` -- separately passed a bounded c2 gate, a full 12-row/135-request
 llama-benchy suite (12/12 rows, 135/135 requests, c8 protocol/syntax/semantic 8/8, 0 errors/fatals),
@@ -551,6 +551,6 @@ server-side cap, not a client ceiling -- c4/c8 client load is accepted and queue
 independently qualified concurrency level. Minimum measured `MemAvailable` during the §5.8
 qualification was ~9.9 GB (spark01) / ~14.2 GB (spark02); teardown leaves ~19 GB on both nodes --
 reboot before the next fresh launch if that low-headroom state is still current. This is a validated
-production **runtime configuration**, not an auto-start service -- a launch still requires the
+operational **runtime configuration**, not an auto-start service -- a launch still requires the
 explicit worker-first procedure in §6 under this repository's normal operational authorization. No
 MTP in this preset (§9, unchanged).

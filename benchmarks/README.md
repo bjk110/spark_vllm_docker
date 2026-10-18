@@ -2,8 +2,8 @@
 
 This directory distinguishes **canonical recipe evidence** from historical benchmark output.
 
-- [`evidence/`](evidence/README.md) — authority for the 15 production/rollback/production-qualified and
-  validated non-production presets in catalog sections 1–2. It contains a per-recipe evidence map,
+- [`evidence/`](evidence/README.md) — authority for the 15 recommended/rollback/manual and
+  validated presets in catalog sections 1–2. It contains a per-recipe evidence map,
   small retained decision summaries, immutable hashes, and the external-archive ledger.
 - [`llama-benchy/`](llama-benchy/README.md) — tracked historical benchmark summaries. They remain contextual
   records and must not be treated as recommended runtime settings by filename alone.

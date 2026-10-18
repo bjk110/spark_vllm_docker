@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.6
 # =========================================================================
-# DS3J-R1 — reproducibility / promotion-readiness candidate (== DS3H behavior).
+# DS3J-R1 — reproducibility / operational-readiness candidate (== DS3H behavior).
 #          Corrective revision of DS3J: the migrated DS3F Cutlass-block step-5
 #          o_proj LINEAGE assertion (which assumed the DS3E intermediate recipe)
 #          is REMOVED from the Cutlass block; the final SM121 o_proj recipe is
 #          validated by a dedicated SEMANTIC gate AFTER the patch is applied.
 #          No source pin / dependency / package / patch-content / runtime change.
 #
-# Status: EXPERIMENTAL promotion CANDIDATE. Not promoted, not production.
+# Status: EXPERIMENTAL candidate. Not recommended for serving.
 #
 # Consolidated from-NGC, fully-pinned rebuild = DS3B-R2 (native DSpark base) +
 # DS3F Cutlass 4.5.2 coherence (o_proj lineage check removed) + DS3H SM121 o_proj
@@ -492,6 +492,6 @@ LABEL org.vllm-spark.arc="DS3" \
       org.vllm-spark.ds3j-reproduces="be279190ff12 (DS3H/DS3I validated)" \
       org.vllm-spark.ds3j-oproj-recipe="major12=(1,1,128),tma_aligned=True" \
       org.vllm-spark.ds3j-mandatory-runtime="VLLM_USE_DEEP_GEMM_E8M0=1" \
-      org.opencontainers.image.description="EXPERIMENTAL DS3J-R1 promotion candidate: consolidated from-NGC rebuild == DS3B-R2 + DS3F cutlass-dsl 4.5.2 coherence + DS3H SM121 o_proj scale recipe (major12 (1,1,128) tma=True). Native DSpark (vLLM v0.25.0 @702f4814) k=7 greedy. Requires VLLM_USE_DEEP_GEMM_E8M0=1."
+      org.opencontainers.image.description="EXPERIMENTAL DS3J-R1 qualification candidate: consolidated from-NGC rebuild == DS3B-R2 + DS3F cutlass-dsl 4.5.2 coherence + DS3H SM121 o_proj scale recipe (major12 (1,1,128) tma=True). Native DSpark (vLLM v0.25.0 @702f4814) k=7 greedy. Requires VLLM_USE_DEEP_GEMM_E8M0=1."
 
 EXPOSE 8000

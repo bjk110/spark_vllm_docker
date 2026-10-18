@@ -2,6 +2,9 @@ name: Preset integrity
 on:
   pull_request:
     paths:
+      - '*.md'
+      - '**/*.md'
+      - '.env.example'
       - 'presets/**'
       - 'docs/**'
       - 'README.md'
@@ -12,6 +15,11 @@ on:
       - 'patches/**'
       - 'entrypoints/**'
       - 'benchmarks/evidence/**'
+      - 'benchmarks/README.md'
+      - 'benchmarks/llama-benchy/README.md'
+      - 'scripts/prewarm*.py'
+      - 'scripts/diag/test_documentation_policy.py'
+      - 'scripts/diag/documentation_policy_pins.json'
       - 'scripts/diag/verify_preset_catalog.py'
       - 'scripts/diag/test_verify_preset_catalog.py'
       - 'scripts/diag/verify_recipe_evidence.py'
@@ -22,6 +30,9 @@ on:
   push:
     branches: [main]
     paths:
+      - '*.md'
+      - '**/*.md'
+      - '.env.example'
       - 'presets/**'
       - 'docs/**'
       - 'README.md'
@@ -32,6 +43,11 @@ on:
       - 'patches/**'
       - 'entrypoints/**'
       - 'benchmarks/evidence/**'
+      - 'benchmarks/README.md'
+      - 'benchmarks/llama-benchy/README.md'
+      - 'scripts/prewarm*.py'
+      - 'scripts/diag/test_documentation_policy.py'
+      - 'scripts/diag/documentation_policy_pins.json'
       - 'scripts/diag/verify_preset_catalog.py'
       - 'scripts/diag/test_verify_preset_catalog.py'
       - 'scripts/diag/verify_recipe_evidence.py'
@@ -56,8 +72,10 @@ jobs:
           python -m pytest -q scripts/diag/test_verify_preset_catalog.py
           scripts/diag/test_verify_recipe_evidence.py
           scripts/diag/test_solar_incremental_provenance.py
+          scripts/diag/test_documentation_policy.py
           scripts/diag/test_verify_qwen38_flash_next_recipe.py
           scripts/diag/test_verify_qwen38_pr55122_mtp1_c1_candidate_recipe.py
+          scripts/diag/test_verify_qwen38_ngc2609_mtp_k2_c2_recipe.py
       - name: Static integrity and Compose rendering (no GPU/build/deploy)
         env:
           QWEN38_PR55122_REQUIRE_LOCAL_IMAGE_ID: '0'
@@ -66,3 +84,4 @@ jobs:
           python scripts/diag/verify_recipe_evidence.py
           python scripts/diag/verify_qwen38_flash_next_recipe.py
           python scripts/diag/verify_qwen38_pr55122_mtp1_c1_candidate_recipe.py
+          python scripts/diag/verify_qwen38_ngc2609_mtp_k2_c2_recipe.py

@@ -51,7 +51,7 @@ checkpoint, TP/EP topology, KV policy, graph mode, and cache policy fixed.
 | Repeat 1 readiness | 3496.1 s | 1828.6 s |
 | Repeat 2 readiness | 3408.5 s | 1791.7 s |
 
-The promoted operational source then passed a separate clean boot at **1845.7** seconds. That run
+The adopted operational source then passed a separate clean boot at **1845.7** seconds. That run
 also passed:
 
 - deterministic c1: 5/5, content SHA-256
@@ -145,13 +145,13 @@ By default, the overlay resolves source files from
 absolute source root; verify hashes and rendered source/destination/read-only fields on both roles.
 
 A separately authorized runtime launch remains worker-first. The overlay itself does not start,
-restart, stop, promote, or enable auto-start for any service.
+restart, stop, adopt, or enable auto-start for any service.
 
 ## 7. Per-checkpoint qualification gate
 
 Use one clean-boot baseline and one clean-boot candidate when applying the mechanism to a new
 checkpoint. A checkpoint with materially different copy-site coverage or memory behavior requires an
-A–B–A confirmation before promotion.
+A–B–A confirmation before operational adoption.
 
 Fail closed unless all gates pass:
 
@@ -168,8 +168,8 @@ Fail closed unless all gates pass:
    setting blindly.
 7. **Correctness:** deterministic c1 for the interactive profile and protocol/semantic validity at
    the representative batch profile.
-8. **Promotion:** move qualified sources to a stable, checksummed operational path and verify one
-   ordinary clean boot from the promoted source.
+8. **Adoption:** move qualified sources to a stable, checksummed operational path and verify one
+   ordinary clean boot from the adopted source.
 
 Stop after decisive evidence. Do not retry unsafe fast loaders, lower the memory floor, increase swap,
 drop caches, or combine a vLLM/image upgrade with prefault qualification.

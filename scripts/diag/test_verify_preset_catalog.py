@@ -66,6 +66,27 @@ def test_preset_mutations(repo, old, new, needle):
     path.write_text(path.read_text().replace(old, new))
     assert any(needle in error for error in check(repo))
 
+
+def test_allowed_status_prefix_with_unknown_suffix_is_rejected(repo):
+    path = repo / 'presets/a.env'
+    path.write_text(path.read_text().replace(
+        '# Status: General supported',
+        '# Status: General supported but unclassified',
+    ))
+    assert any('status' in error for error in check(repo))
+
+
+@pytest.mark.parametrize('section,status', [
+    ('1', 'recommended (since 2026-08-15, spark01:8000)'),
+    ('2', 'validated'),
+    ('3', 'general supported'),
+    ('4', 'experimental'),
+    ('5', 'historical reproduction'),
+])
+def test_every_allowed_status_prefix_rejects_unknown_suffix(section, status):
+    assert not catalog.valid_status(section, status + ' but unclassified')
+
+
 @pytest.mark.parametrize('mutation,needle', [
     ('duplicate', 'catalog row'), ('missing', 'catalog row'),
     ('anchor', 'anchor'), ('generic', 'generic'), ('link', 'link'),
@@ -174,9 +195,9 @@ def test_token_counts_are_not_credentials(repo):
 
 def test_validated_general_configuration_can_use_generic_launch(repo):
     path = repo / 'presets/a.env'
-    path.write_text(path.read_text().replace('Status: General supported', 'Status: Validated (non-production)'))
+    path.write_text(path.read_text().replace('Status: General supported', 'Status: Validated'))
     index = repo / 'presets/README.md'
-    index.write_text(index.read_text().replace('3. General supported presets', '2. Validated presets (non-production)'))
+    index.write_text(index.read_text().replace('3. General supported presets', '2. Validated presets'))
     assert check(repo) == []
 
 @pytest.mark.parametrize('old,new,needle', [
@@ -206,11 +227,11 @@ def test_production_overlay_is_declared_and_rendered(repo, monkeypatch, docker_p
     (repo / 'compose/a.yml').write_text('services: {}\n')
     subprocess.run(['git', '-C', str(repo), 'add', 'compose/a.yml'], check=True)
     path = repo / 'presets/a.env'
-    path.write_text(path.read_text().replace('General supported', 'Active production').replace('None documented; use docker-compose.yml', 'compose/a.yml (with docker-compose.yml)'))
+    path.write_text(path.read_text().replace('General supported', 'Recommended').replace('None documented; use docker-compose.yml', 'compose/a.yml (with docker-compose.yml)'))
     (repo / 'docs.md').write_text('# Runbook\n')
     subprocess.run(['git', '-C', str(repo), 'add', 'docs.md'], check=True)
     index = repo / 'presets/README.md'
-    index.write_text(index.read_text().replace('3. General supported presets', '1. Production presets').replace('[Generic TP1](#generic-tp1-launch)', 'Active production [Runbook](../docs.md)'))
+    index.write_text(index.read_text().replace('3. General supported presets', '1. Recommended presets').replace('[Generic TP1](#generic-tp1-launch)', 'Recommended [Runbook](../docs.md)'))
     calls = []
     real_run = catalog.subprocess.run
     def run(args, **kwargs):
@@ -238,7 +259,7 @@ def test_production_section_cannot_bless_experimental_status(repo):
     path = repo / 'presets/a.env'
     path.write_text(path.read_text().replace('Status: General supported', 'Status: Experimental'))
     index = repo / 'presets/README.md'
-    index.write_text(index.read_text().replace('3. General supported presets', '1. Production presets').replace('| single TP1 |', '| Experimental single TP1 |'))
+    index.write_text(index.read_text().replace('3. General supported presets', '1. Recommended presets').replace('| single TP1 |', '| Experimental single TP1 |'))
     assert any('status' in error for error in check(repo))
 
 @pytest.fixture
@@ -284,3 +305,9 @@ def test_vision_contract_drift_fails_closed(vision_repo, old, new):
     path = vision_repo / 'presets/deepseek-v4-flash-vision-exp-tp2.env'
     path.write_text(path.read_text().replace(old, new))
     assert any('contract drift' in error for error in check(vision_repo))
+
+@pytest.mark.parametrize('status', ['Active production', 'Production-qualified', 'Validated (non-production)', 'Promoted', 'Unclassified'])
+def test_maturity_and_unknown_statuses_fail_closed(repo, status):
+    path = repo / 'presets/a.env'
+    path.write_text(path.read_text().replace('General supported', status))
+    assert any('status' in error for error in check(repo))

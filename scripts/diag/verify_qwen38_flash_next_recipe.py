@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # =============================================================================
 # Static recipe verifier for the Qwen/Qwen3.8-Flash-Next-FP8
-# PRODUCTION-QUALIFIED DEFAULT recipe (MAX_NUM_SEQS=2, CUDA-graph
+# MANUAL PROFILE recipe (MAX_NUM_SEQS=2, CUDA-graph
 # FULL_DECODE_ONLY capture [1,2])
 # (presets/qwen3.8-flash-next-fp8-tp2-candidate.env +
 #  compose/qwen3.8-flash-next/docker-compose.candidate.yml).
@@ -82,9 +82,9 @@ REQUIRED_EXTRA_ARGS_TOKENS = [
 ]
 
 # Substrings that must NOT appear anywhere in VLLM_EXTRA_ARGS for this
-# recipe to keep its stated production safety contract.
+# recipe to keep its stated runtime safety contract.
 FORBIDDEN_EXTRA_ARGS_SUBSTRINGS = [
-    "--speculative-config",   # MTP must stay off in this production recipe
+    "--speculative-config",   # MTP must stay off in this manual profile
     "--language-model-only",  # multimodal support must be preserved
     "--load-format",          # default lazy/mmap safetensors loading must not be overridden
     "offload",                # case-normalized check below covers PLE / cpu-offload flags
@@ -232,7 +232,7 @@ def check_extra_args_contract(r, env):
             "(MTP/PLE/BF16/NVFP4/load-format/--enforce-eager)"
         )
 
-    # --compilation-config must carry exactly this production recipe's
+    # --compilation-config must carry exactly this manual profile's
     # measured contract -- not merely be present. A wrong or looser value
     # here (e.g. a larger cudagraph_capture_sizes set, or mode>0) would
     # silently exceed what §5.8 actually re-qualified.
@@ -240,11 +240,11 @@ def check_extra_args_contract(r, env):
         idx = tokens.index("--compilation-config")
         got = tokens[idx + 1] if idx + 1 < len(tokens) else None
         if got == EXPECTED_COMPILATION_CONFIG:
-            r.ok(f"--compilation-config value matches the exact production contract ({EXPECTED_COMPILATION_CONFIG})")
+            r.ok(f"--compilation-config value matches the exact runtime contract ({EXPECTED_COMPILATION_CONFIG})")
         else:
             r.fail(
                 f"--compilation-config value {got!r} does NOT match the required exact "
-                f"production contract {EXPECTED_COMPILATION_CONFIG!r}"
+                f"runtime contract {EXPECTED_COMPILATION_CONFIG!r}"
             )
     else:
         r.fail("VLLM_EXTRA_ARGS missing required --compilation-config token")
@@ -286,7 +286,7 @@ def check_doc_identities_and_status(r):
         ("HF revision pin", EXPECTED_HF_REVISION),
         ("weight byte count", EXPECTED_WEIGHT_BYTES),
         ("image digest", EXPECTED_DIGEST),
-        ("status banner", "PRODUCTION-QUALIFIED -- c1/c2"),
+        ("status banner", "Manual profile -- c1/c2"),
         ("not-an-auto-start-service disclaimer", "not an auto-start service"),
         ("MAX_NUM_SEQS=4 blocked disclaimer", "remains BLOCKED"),
         ("compilation-config exact contract", EXPECTED_COMPILATION_CONFIG),
@@ -374,10 +374,10 @@ def check_followup_ledger(r):
     # Fail closed if the doc doesn't explicitly disclaim the obvious
     # misreading of this follow-up -- that c2 exact-output determinism
     # authorizes a c2 preset or general concurrent serving. It does not.
-    if re.search(r"do not.{0,20}(create|promote).{0,20}c2 preset", text, re.IGNORECASE | re.DOTALL):
+    if re.search(r"do not.{0,20}(create|adopt).{0,20}c2 preset", text, re.IGNORECASE | re.DOTALL):
         r.ok("doc explicitly states the 32K/c2 result does not authorize a c2 preset")
     else:
-        r.fail("doc does not explicitly disclaim c2-preset promotion from the 32K/c2 follow-up")
+        r.fail("doc does not explicitly disclaim adopting a c2 preset from the 32K/c2 follow-up")
 
     # No c2-oriented preset file in this base recipe family should exist as a
     # result of this follow-up. Separately qualified variants have independent
@@ -387,10 +387,10 @@ def check_followup_ledger(r):
     if c2_candidates:
         r.fail(f"found unexpected base Qwen3.8-Flash-Next FP8 c2 preset file(s): {c2_candidates}")
     else:
-        r.ok("no base Qwen3.8-Flash-Next FP8 c2 preset exists (no premature promotion)")
+        r.ok("no base Qwen3.8-Flash-Next FP8 c2 preset exists (no premature adoption)")
 
-    # This preset's MAX_NUM_SEQS pin is 2 in production, but it must be
-    # justified by the separate, later §5.8 CUDA-graph production
+    # This manual profile's MAX_NUM_SEQS pin is 2, but it must be
+    # justified by the separate, later §5.8 CUDA-graph runtime
     # requalification -- NOT by this 32K/c2 follow-up alone. Checked again
     # here (in addition to check_preset_identities) specifically in the
     # follow-up's context so a future edit that raises MAX_NUM_SEQS "because
@@ -398,11 +398,11 @@ def check_followup_ledger(r):
     # caught under this section too.
     env = parse_env_file(PRESET_PATH)
     if env.get("MAX_NUM_SEQS") == "2":
-        r.ok("preset MAX_NUM_SEQS is 2, per the separate later §5.8 production requalification")
+        r.ok("preset MAX_NUM_SEQS is 2, per the separate later §5.8 runtime requalification")
     else:
         r.fail(
             f"preset MAX_NUM_SEQS={env.get('MAX_NUM_SEQS')!r} -- expected 2, matching the §5.8 "
-            "production requalification pin (this 32K/c2 follow-up alone does not authorize it)"
+            "runtime requalification pin (this 32K/c2 follow-up alone does not authorize it)"
         )
 
     if "did not requalify" in text:
@@ -410,7 +410,7 @@ def check_followup_ledger(r):
     else:
         r.fail(
             "doc does not explicitly distinguish the 32K/c2 follow-up from the later §5.8 "
-            "production requalification that actually justifies MAX_NUM_SEQS=2"
+            "runtime requalification that actually justifies MAX_NUM_SEQS=2"
         )
 
     # The pinned image's Qwen GDN backend explicitly reports no batch-invariant
@@ -583,7 +583,7 @@ def main():
         print("FATAL: recipe verification failed closed. See [FAIL] lines above.")
         return 1
     print("Recipe verification PASSED (static checks only -- see docs/qwen3.8-flash-next-tp2.md "
-          "for the production-qualified c1/c2 ledger with MAX_NUM_SEQS=4 unbounded still blocked).")
+          "for the manual-profile c1/c2 ledger with MAX_NUM_SEQS=4 unbounded still blocked).")
     return 0
 
 

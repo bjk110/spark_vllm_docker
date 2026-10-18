@@ -26,7 +26,7 @@
 # (Step3VLProcessor(tokenizer=self.get_tokenizer()), step3p7 inherits step3_vl)
 # resolve from the explicit --tokenizer path.
 #
-# Status: EXPERIMENTAL. Not production, not promoted.
+# Status: EXPERIMENTAL. Manual validation only; not recommended for serving.
 # Build tag: vllm-spark:v023-step37-promfix-tokenizer-overlay-exp
 # Build host: spark01 or spark02 (aarch64 GB10/SM121).
 # Docs: docs/step3.7-tokenizer-overlay.md

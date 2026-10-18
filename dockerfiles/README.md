@@ -15,11 +15,11 @@ dockerfiles/
 | Dockerfile | Image tag | Role |
 |---|---|---|
 | `Dockerfile.v022-d568` | `v022-d568` | Forward-stack validation base (NGC 26.04 + vLLM 0.21.0 + SM121 FP8 cherry-pick). General-purpose base for non-DSV4 model presets. **On GHCR.** |
-| `Dockerfile.dsv4-d568` | `dsv4-d568` | Primary DeepSeek-V4-Flash image path. `FROM v022-d568` + SM12x DSV4 vLLM patches (sparse MLA, Lightning Indexer, fp8_ds_mla KV, MTP). **On GHCR. Currently frozen — do not update casually.** |
-| `Dockerfile.v022-d568-fi-aot` | `v022-d568-fi-aot` | `FROM v022-d568` + FlashInfer SM120/SM121 AOT kernel prebake (7 specs, AOT-promoted to skip runtime ninja). Drop-in replacement for `v022-d568`. See [`docs/flashinfer-aot-prebake.md`](../docs/flashinfer-aot-prebake.md). |
-| `Dockerfile.v022-d568-fi-aot-extra` | `v022-d568-fi-aot` | Idempotent addendum on top of `Dockerfile.v022-d568-fi-aot` (re-promotes 2 general FA2/sampling specs). Same output tag — strict superset. |
+| `Dockerfile.dsv4-d568` | `dsv4-d568` | Frozen historical/reproduction DeepSeek-V4-Flash image path. `FROM v022-d568` + SM12x DSV4 vLLM patches (sparse MLA, Lightning Indexer, fp8_ds_mla KV, MTP). **On GHCR. Frozen — do not update casually; use the vLLM 0.27 native-DSpark route for current operation.** |
+| `Dockerfile.v022-d568-fi-aot` | `v022-d568-fi-aot` | `FROM v022-d568` + FlashInfer SM120/SM121 AOT kernel prebake (7 specs, AOT-prepared to skip runtime ninja). Drop-in replacement for `v022-d568`. See [`docs/flashinfer-aot-prebake.md`](../docs/flashinfer-aot-prebake.md). |
+| `Dockerfile.v022-d568-fi-aot-extra` | `v022-d568-fi-aot` | Idempotent addendum on top of `Dockerfile.v022-d568-fi-aot` (prepares 2 general FA2/sampling specs). Same output tag — strict superset. |
 | `Dockerfile.v027-ngc2607-dsv4-from-runtime-base` | local derivative tag chosen by caller | `FROM` the immutable DSV4-specific NGC 26.07/vLLM 0.27 frozen build base; validates package/import/dispatch pins without rebuilding the 37.1GB common stack. Use `scripts/build/build-dsv4-v027-from-runtime-base.sh`. |
-| `Dockerfile.qwen38-pr55122-mtp1-c1-candidate` | no tag authorized | `MAIN_MERGE_APPROVED_OPT_IN` reconstruction-only Dockerfile for the opt-in Qwen3.8 PR55122 MTP1 interactive-c1 recipe. Preserves immutable build-time provenance labels and documents COPY closure; it does not reproduce image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
+| `Dockerfile.qwen38-pr55122-mtp1-c1-candidate` | no tag authorized | `MAIN_MERGE_APPROVED_OPT_IN` reconstruction-only Dockerfile for the opt-in Qwen3.8 PR55122 MTP1 interactive-c1 recipe. Preserves immutable build-time provenance labels and documents COPY closure; it does not reproduce image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and default change remain out of scope. |
 
 Build commands (always build from **repo root** with `.` as context):
 
@@ -83,7 +83,7 @@ docker buildx build -f dockerfiles/legacy/Dockerfile.v022-nccl234  -t vllm-spark
 Dockerfiles, canonical patch copies, and patched Python COPY inputs. Each directory is its
 original build context, with byte hashes/source paths in `PROVENANCE.md`; the eight-file
 SHA256 test checks identity without importing runtime code or building. Historical
-EXPERIMENTAL comments are retained unchanged. The promoted production image remains the
+EXPERIMENTAL comments are retained unchanged. The recommended image remains the
 local ID in the [Solar runbook](../docs/solar-open2-production.md). The r2 parent is local-only;
 these artifacts do not establish full public-base reconstruction or reproduce an image ID.
 No image build, tag, publication or activation accompanies this repository change.

@@ -11,13 +11,13 @@ document provides the detailed image-tag history.
 | Path | Status | Config | Image source |
 |---|---|---|---|
 | `qwen38-ngc2609-e77-k2c2` | Validated Qwen3.8 manual recipe — eager TP2/EP2, MTP k=2, actual C2, BT8K, fixed KV8/rank, 262K, multimodal/tool | `presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env` + matching Compose overlay | immutable manifest `ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6`; local image ID after pull `sha256:8bb958ffb833c407cd642d72c3938c0f8f0ed31136851c1edcd868bf135651c4`; vLLM `e77daef89e18e08321ae7b8b24827eedd5fe8673` |
-| `dsv4-v027-0731` | **DeepSeek-V4 active production** — NGC 26.07/vLLM 0.27, native DSpark k=7, 256K/MS1 | `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` + health/prewarm overlay | immutable manifest `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c…`; same manifest released under the frozen DSV4 build-base aliases below |
+| `dsv4-v027-0731` | **DeepSeek-V4 Recommended** — NGC 26.07/vLLM 0.27, native DSpark k=7, 256K/MS1 | `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` + health/prewarm overlay | immutable manifest `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c…`; same manifest released under the frozen DSV4 build-base aliases below |
 | `dsv4-d568` | Frozen legacy/historical DSV4 baseline (NOT rebased onto NGC 26.05) | historical preset removed from the active surface; Git history | `ghcr.io/bjk110/vllm-spark:dsv4-d568` — reproduction only |
 | `unholy-fusion` | Historical/experimental high-prefill DSV4 path (config removed from the active surface 2026-08-11; Git history) | formerly `.env.unholy-fusion` + `compose/docker-compose.unholy.yml` | External/upstream image (`aidendle94/sparkrun-vllm-ds4-gb10:production-ready`) or GHCR mirror — see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md) |
 | `v022-d568-ngc2605-tx5102-vllm022` | Active forward-stack (NGC 26.05 + vLLM 0.22.1) | `.env` with `VLLM_IMAGE=ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022` | `ghcr.io/bjk110/vllm-spark:v022-d568-ngc2605-tx5102-vllm022` |
 | `v022-d568` | Stable general base (NGC 26.04 + vLLM 0.21.0) | Various `presets/*.env` | `ghcr.io/bjk110/vllm-spark:v022-d568` |
 
-## Solar-Open2 r4 production and rollback (local build images, not on GHCR)
+## Solar-Open2 r4 operational and rollback (local build images, not on GHCR)
 
 These two images are **local Docker build images only** — they exist as local image IDs on
 spark01/spark02 and have **not** been pushed to GHCR or any other registry. Do not confuse a local
@@ -25,19 +25,18 @@ Docker image ID (`sha256:` prefix, `docker images` output) with a registry manif
 (`ghcr.io/...@sha256:...`, pullable) — the two are different kinds of identifiers, and inventing a
 GHCR digest for an unpublished image would be incorrect.
 
-| Path | Status | Local image ID | Stack lineage | Production preset |
+| Path | Status | Local image ID | Stack lineage | operational preset |
 |---|---|---|---|---|
-| `solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp` | **Solar-Open2 promoted production** (r4 BF16, promoted 2026-08-09) | `sha256:ecb7bfe3978a5241c5c304d52ce91e061e22b750178d21a4ef7788a08e86e774` (identical on spark01 and spark02) | NGC 26.05 base -> r2 (`7e282758328c`) -> r3 (`001dcd2fb66d`, + raw-g1 KDA fix + ST_PREAD gate) -> r4 (+ B12X shared-workspace gate). vLLM 0.25.1 @`752a3a504485`. FlashInfer 0.6.15. Upstage overlay `00907fc`. Source patches: `patches/solar/` (see `PATCH_STATUS.md`). | `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` |
-| `solar-open2-nvfp4-v022d568-vllm0221-upstage00907fc-ecfix-exp` | **Solar-Open2 production rollback** (v0.22.1, stopped) | `sha256:1873d2174691f67e16b5588fcef01680d21f1e7b42ac5587bd23d7503cae1366` (identical on spark01 and spark02) | vLLM 0.22.1, Upstage overlay `00907fc`, `-ecfix-exp` child build (per-module cache-release fix). Predates the r2/r3/r4 raw-g1/ST_PREAD/B12X lineage. | `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` |
+| `solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp` | **Solar-Open2 recommended** (r4 BF16, validated 2026-08-09) | `sha256:ecb7bfe3978a5241c5c304d52ce91e061e22b750178d21a4ef7788a08e86e774` (identical on spark01 and spark02) | NGC 26.05 base -> r2 (`7e282758328c`) -> r3 (`001dcd2fb66d`, + raw-g1 KDA fix + ST_PREAD gate) -> r4 (+ B12X shared-workspace gate). vLLM 0.25.1 @`752a3a504485`. FlashInfer 0.6.15. Upstage overlay `00907fc`. Source patches: `patches/solar/` (see `PATCH_STATUS.md`). | `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` |
+| `solar-open2-nvfp4-v022d568-vllm0221-upstage00907fc-ecfix-exp` | **Solar-Open2 Primary rollback** (v0.22.1, stopped) | `sha256:1873d2174691f67e16b5588fcef01680d21f1e7b42ac5587bd23d7503cae1366` (identical on spark01 and spark02) | vLLM 0.22.1, Upstage overlay `00907fc`, `-ecfix-exp` child build (per-module cache-release fix). Predates the r2/r3/r4 raw-g1/ST_PREAD/B12X lineage. | `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env` |
 
 Both image IDs were independently re-verified identical on both nodes as part of the 2026-08-09
-production fast-track (Gate 5/6) and the subsequent hygiene pass. Full runtime contracts, activation,
+operational fast-track (Gate 5/6) and the subsequent hygiene pass. Full runtime contracts, activation,
 and rollback procedure: [`docs/solar-open2-production.md`](solar-open2-production.md).
 
-## Qwen3.8 production-qualified baseline
+## Qwen3.8 Manual profile baseline
 
-The base c1/c2 profile is production-qualified for **manual activation**, not promoted/current
-production and not auto-started. The tracked mapping is:
+The base c1/c2 profile is a profile for **manual activation**, not auto-started. The tracked mapping is:
 
 | Preset | Required overlay | Mutable tag | Immutable registry manifest |
 |---|---|---|---|
@@ -49,17 +48,17 @@ The digest controls content; the tag alone is mutable. See the [manual activatio
 
 ## Qwen3.8 PR55122 MTP1 c1 registry-free local image authority
 
-This authority is a local Docker image ID, not a pullable registry manifest. Repository integration approval did not rebuild, retag, publish, or release the image. The immutable `LOCAL NON-PRODUCTION...not promoted` image/Dockerfile label is retained as build-time provenance and is not a statement that a rebuild or retag occurred.
+This authority is a local Docker image ID, not a pullable registry manifest. Repository integration approval did not rebuild, retag, publish, or release the image. The immutable image/Dockerfile provenance label is retained as build-time provenance and is not a statement that a rebuild or retag occurred.
 
 | Path | Status | Local image ID | Config authority |
 |---|---|---|---|
-| `qwen3.8-flash-next-pr55122-mtp1-c1` | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610` (registry-free local image authority on spark01/spark02) | TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. |
+| `qwen3.8-flash-next-pr55122-mtp1-c1` | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the operational default; no auto-start | `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610` (registry-free local image authority on spark01/spark02) | TP2, MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`; MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and default change remain out of scope. |
 
-## DeepSeek-V4-Flash-0731 / vLLM 0.27 — active production (published to GHCR, task B4.4C)
+## DeepSeek-V4-Flash-0731 / vLLM 0.27 — Recommended (published to GHCR, task B4.4C)
 
-| Path | Status | Local image ID | Registry digest | Stack lineage | Production preset |
+| Path | Status | Local image ID | Registry digest | Stack lineage | operational preset |
 |---|---|---|---|---|---|
-| `v027-ngc2607-dsv4-0731-dspark-k7-256k-production` | **DeepSeek-V4 active production** (promoted+published 2026-08-15; B4.3S-B4.4C validated) | `sha256:a7f0f4b8a508c0b2510fc7e4dcb916491efa03c380c9c7b84dddd4c16ad6f38d` (identical on spark01 and spark02, unchanged since B4.3S) | `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f` | NGC 26.07 base, vLLM 0.27, native DSpark k=7, `DSV4_DISPATCH(32,256)@pbs=64` sparse-MLA decode dispatch fix (B4.3S). | `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` (and its MAX_NUM_SEQS=4 optional variant) |
+| `v027-ngc2607-dsv4-0731-dspark-k7-256k-production` | **DeepSeek-V4 Recommended** (validated+published 2026-08-15; B4.3S-B4.4C validated) | `sha256:a7f0f4b8a508c0b2510fc7e4dcb916491efa03c380c9c7b84dddd4c16ad6f38d` (identical on spark01 and spark02, unchanged since B4.3S) | `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f` | NGC 26.07 base, vLLM 0.27, native DSpark k=7, `DSV4_DISPATCH(32,256)@pbs=64` sparse-MLA decode dispatch fix (B4.3S). | `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env` (and its MAX_NUM_SEQS=4 optional variant) |
 
 Formerly a local-only build (tagged `v027-ngc2607-sm121-dsv4-0731-b43s-topk256-exp`, not on GHCR)
 through task B4.4B; published under the stable tag above in task B4.4C. The underlying image content
@@ -91,9 +90,9 @@ this table when you need to reproduce or roll back to a specific image.
 | `v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release` (active, Step-3.7-Flash NVFP4 base) | `FROM v022-d568-ngc2605-tx5102-vllm022-step3p7` | + `patches/patch_step3p7_modelopt_cache_release.py` (ModelOpt MoE post-load `empty_cache` after each of 42 modules; `VLLM_SPARK_EMPTY_CACHE_AFTER_MODELOPT_MOE=1`) | Step-3.7-Flash NVFP4 dual-rdma TP=2 EP=2. Workaround for cumulative CUDA reserved-memory growth during MARLIN conversion (42 × 6.68 GiB without fix → Ray OOM). Accepted 2026-06-14: 42/42 modules flushed per rank, 781,611 KV tokens, 5-min stability 10/10 PASS. GHCR digest `sha256:08ae8f2a`. See [`docs/step3.7-flash-tp2.md §4.2`](step3.7-flash-tp2.md). |
 | `v022-d568-step3p7-memcheck-bypass` (active, UMA bypass layer) | `FROM v022-d568-ngc2605-tx5102-vllm022-step3p7-modelopt-cache-release` | + patches 1–3: `patch_envs_register_skip_memcheck.py`, `patch_skip_init_memory_check.py`, `patch_relax_profile_assertion.py` | Adds `VLLM_SKIP_INIT_MEMORY_CHECK=1` bypass for GB10 UMA startup free-memory check. Required for EP-on/mp/CUDA-graph long-context path. spark01/spark02: ID `0bac1cfc9fd2`. See [`docs/benchmarks/step37-v022-long-context-validation.md`](benchmarks/step37-v022-long-context-validation.md). |
 | `v022-d568-step3p7-memcheck-bypass-prompt-cap` (active, EXPERIMENTAL operational image) | `FROM v022-d568-step3p7-memcheck-bypass` | + patches 4–5: `patch_envs_register_prompt_cap.py`, `patch_prompt_token_admission.py` — adds `VLLM_SPARK_MAX_PROMPT_TOKENS` admission control to both serving paths | Operational image for `presets/step37-flash-nvfp4-tp2.env`. `VLLM_SPARK_MAX_PROMPT_TOKENS=245009` rejects requests above the Stage D validated ceiling (HTTP 400) before engine enqueue. spark01/spark02: `a73ea6723649` (identical — synchronized via `docker save` transfer 2026-06-20). Built 2026-06-20. See [`docs/benchmarks/step37-v022-long-context-validation.md §Prompt-Token Admission Control`](benchmarks/step37-v022-long-context-validation.md). |
-| `dsv4-d568` (active, DSV4-specific) | repository HEAD at build time | `FROM v022-d568` + SM12x DSV4 vLLM patches | DeepSeek-V4-Flash primary path; used only by the frozen DSV4-Flash baseline preset (removed from the active surface; Git history). See [`docs/dsv4-flash-tp2.md`](dsv4-flash-tp2.md). **Frozen — NOT rebased onto NGC 26.05.** |
+| `dsv4-d568` (historical, DSV4-specific) | repository HEAD at build time | `FROM v022-d568` + SM12x DSV4 vLLM patches | Frozen DeepSeek-V4-Flash reproduction baseline; its preset was removed from the active surface and remains in Git history. See [`docs/dsv4-flash-tp2.md`](dsv4-flash-tp2.md). **Frozen — NOT rebased onto NGC 26.05.** |
 | `v022-d568` (active, stable general base) | repository HEAD at build time | NGC 26.04 + vLLM 0.21.0+PR#35568 + FlashInfer 0.6.11.post3 + Triton 3.7.0 + NCCL 2.30.4 + Transformers 5.8.1 | Stable base for Qwen3.6, Gemma 4 31B, abliterix NVFP4 presets. Digest `sha256:88b544ed`. |
-| `v022-d568-fi-aot` (validated, optional) | `FROM v022-d568` | + FlashInfer SM120/SM121 AOT kernel prebake (7 specs, AOT-promoted) | Drop-in replacement for `v022-d568`. Validated dual-node RDMA TP=2 with Qwen3.6-35B-A3B (2026-06-11): no runtime `ninja`/`nvcc`/`cicc`/`ptxas` for the 7 prebaked specs. GHCR: `ghcr.io/bjk110/vllm-spark:v022-d568-fi-aot` (manifest digest `sha256:4e36c238`). See [`docs/flashinfer-aot-prebake.md`](flashinfer-aot-prebake.md). |
+| `v022-d568-fi-aot` (validated, optional) | `FROM v022-d568` | + FlashInfer SM120/SM121 AOT kernel prebake (7 specs, AOT-prepared) | Drop-in replacement for `v022-d568`. Validated dual-node RDMA TP=2 with Qwen3.6-35B-A3B (2026-06-11): no runtime `ninja`/`nvcc`/`cicc`/`ptxas` for the 7 prebaked specs. GHCR: `ghcr.io/bjk110/vllm-spark:v022-d568-fi-aot` (manifest digest `sha256:4e36c238`). See [`docs/flashinfer-aot-prebake.md`](flashinfer-aot-prebake.md). |
 | `v021-tq` | `3070f9a` | base + TQ patches + Inductor-graph-partition fix | Required for any `*-tq.env` preset (legacy preset base for TurboQuant presets). |
 | `v021-ngc2603` | `8623187` | vLLM `95995bbe` + FlashInfer `v0.6.9` | Retained for older presets — most non-TQ `presets/*.env` files reference this. |
 | `v020-ngc2603` (superseded) | `8efdf0b` (base-refresh-20260417 base bump) | vLLM `978a4462` + FlashInfer `v0.6.8` | Superseded by v021; only kept on GHCR for historical reproduction. |
@@ -116,7 +115,7 @@ this table when you need to reproduce or roll back to a specific image.
 Derived from tracked preset assignments and metadata, without registry queries. Tags are mutable;
 local image IDs identify locally available content and are **not** pullable registry manifests.
 “not recorded” means the tracked preset does not record that identity. Supported configuration
-references without validation evidence are not production-qualified.
+references without validation evidence remain unvalidated.
 
 | Exact mutable tag/reference | Immutable manifest | Local image ID | Tracked presets |
 |---|---|---|---|

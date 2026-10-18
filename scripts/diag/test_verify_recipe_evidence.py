@@ -26,14 +26,14 @@ def repo(tmp_path):
     (tmp_path / "benchmarks/evidence/retained").mkdir(parents=True)
     presets = ["prod.env", "validated.env"]
     for name in presets:
-        status = "Active production" if name == "prod.env" else "Validated (non-production)"
+        status = "Recommended" if name == "prod.env" else "Validated"
         (tmp_path / "presets" / name).write_text(f"# Status: {status}\nMODEL={name}\n")
     (tmp_path / "presets/README.md").write_text(
         "# Catalog\n"
-        "## 1. Production presets\n"
+        "## 1. Recommended presets\n"
         "| Preset | Evidence |\n|---|---|\n"
         "| [prod.env](prod.env) | [evidence](../docs/prod.md) |\n"
-        "## 2. Validated presets (non-production)\n"
+        "## 2. Validated presets\n"
         "| Preset | Evidence |\n|---|---|\n"
         "| [validated.env](validated.env) | [evidence](../docs/validated.md) |\n"
         "## 3. General supported presets\n"
@@ -170,3 +170,17 @@ def test_experimental_recipe_does_not_expand_evidence_scope(repo):
     subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
     assert len(recipe_evidence.catalog_scope(repo)) == 2
     assert recipe_evidence.verify(repo, expected_count=2) == []
+
+@pytest.mark.parametrize('status,expected', [
+    ('Recommended', 'production'), ('Primary rollback', 'rollback'),
+    ('Legacy rollback', 'rollback'), ('Manual profile', 'production-qualified'),
+    ('Optional validated profile', 'production-qualified'),
+    ('Validated', 'validated-non-production'),
+    ('Active production', None), ('Production-qualified', None),
+    ('Validated (non-production)', None), ('Unclassified rollback', None),
+    ('Recommended (unclassified)', None), ('Validated — unclassified', None),
+])
+def test_neutral_status_mapping_is_fail_closed(tmp_path, status, expected):
+    path = tmp_path / 'profile.env'
+    path.write_text(f'# Status: {status}\n')
+    assert recipe_evidence.preset_status_class(path) == expected

@@ -1,7 +1,7 @@
 # Canonical recipe evidence
 
 This directory is the evidence authority for the **15 presets in catalog sections 1–2**:
-8 production/rollback/production-qualified presets and 7 validated non-production presets.
+8 recommended/rollback/manual presets and 7 validated presets.
 The machine-readable contract is [`manifest.json`](manifest.json).
 
 ## Retention rule
@@ -9,7 +9,7 @@ The machine-readable contract is [`manifest.json`](manifest.json).
 Keep in Git only material that directly establishes at least one of the following for a final recipe:
 
 - immutable image/source provenance;
-- promotion, rollback, correctness, stability, or bounded performance gates;
+- validation, rollback, correctness, stability, or bounded performance gates;
 - a known limit that changes how the recipe may be used;
 - the authoritative runbook or activation contract.
 
@@ -21,11 +21,11 @@ kept in the external archive and represented here by [`archive-manifest.sha256`]
 
 | Family | Final recipe coverage | Canonical evidence |
 |---|---|---|
-| DeepSeek-V4 | v0.27 active production, optional attended MS4, v0.25 primary rollback, MTP1 legacy rollback | [`docs/deepseek-v4-production.md`](../../docs/deepseek-v4-production.md), [`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](../../docs/deepseek-v4-v027-b43s-promotion-candidate.md), retained MTP1 cold/soak/long-context summaries |
-| Solar-Open2 | v0.25.1 r4 active production and v0.22.1 rollback | [`docs/solar-open2-production.md`](../../docs/solar-open2-production.md), tracked r3/r4 source provenance, retained promotion/readiness/build/cache/performance summaries |
-| Qwen3.8 | production-qualified c1/c2 manual baseline, PR55122 MTP1 c1 opt-in, and validated uncensored NGC 26.09 eager MTP k=2/actual-C2/BT8K/262K multimodal-tool recipe | [`docs/qwen3.8-flash-next-tp2.md`](../../docs/qwen3.8-flash-next-tp2.md), [`docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md`](../../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md), [`docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md`](../../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md), [retained full-benchmark summary](retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md) |
+| DeepSeek-V4 | v0.27 Recommended, optional attended MS4, v0.25 primary rollback, MTP1 legacy rollback | [`docs/deepseek-v4-production.md`](../../docs/deepseek-v4-production.md), [`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](../../docs/deepseek-v4-v027-b43s-promotion-candidate.md), retained MTP1 cold/soak/long-context summaries |
+| Solar-Open2 | v0.25.1 r4 Recommended and v0.22.1 rollback | [`docs/solar-open2-production.md`](../../docs/solar-open2-production.md), tracked r3/r4 source provenance, retained validation/readiness/build/cache/performance summaries |
+| Qwen3.8 | Manual c1/c2 baseline, PR55122 MTP1 c1 opt-in, and validated uncensored NGC 26.09 eager MTP k=2/actual-C2/BT8K/262K multimodal-tool recipe | [`docs/qwen3.8-flash-next-tp2.md`](../../docs/qwen3.8-flash-next-tp2.md), [`docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md`](../../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md), [`docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md`](../../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md), [retained full-benchmark summary](retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md) |
 | Step-3.7 | NVFP4 v0.23 latency, FP8 v0.23 tokenizer-overlay, FP8 v0.22 bounded paths | tracked benchmark and model guides under [`docs/`](../../docs/README.md) |
-| Gemma 4 / Qwen3.6 | bounded validated non-production presets | [`docs/model-serving-validation-history.md`](../../docs/model-serving-validation-history.md), [`docs/flashinfer-aot-prebake.md`](../../docs/flashinfer-aot-prebake.md) |
+| Gemma 4 / Qwen3.6 | bounded validated presets | [`docs/model-serving-validation-history.md`](../../docs/model-serving-validation-history.md), [`docs/flashinfer-aot-prebake.md`](../../docs/flashinfer-aot-prebake.md) |
 
 The exact per-preset evidence paths and explicit limits are in `manifest.json`. Retained summary files
 are byte-pinned by SHA-256 there; they are intentionally small and do not include raw prompt/response
@@ -53,9 +53,9 @@ hashes, and archive-ledger format/count without requiring machine-local benchmar
 
 ## Status boundaries
 
-- A retained report does not promote a recipe. `presets/README.md` and each preset's metadata remain
+- A retained report does not validate a recipe. `presets/README.md` and each preset's metadata remain
   the status authority.
 - Failed or mixed results are retained only when they explain a current limit or rollback decision.
-- July Solar summaries predate the authoritative August production fast-track; the production runbook
-  remains authoritative for the six-gate promotion.
-- MTP1 staged long-context passes do not authorize repeated large-context production operation.
+- July Solar summaries predate the authoritative August operational fast-track; the operational runbook
+  remains authoritative for the six-gate validation.
+- MTP1 staged long-context passes do not authorize repeated large-context serving.

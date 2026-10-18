@@ -7,9 +7,9 @@
 | Current replacement | None |
 | Last validated | Not recorded (living reference; live-state snapshot 2026-05-26) |
 | Runtime or image identity | Not applicable (architecture reference) |
-| Historical relevance | Living architecture reference. Where a current production example is needed, the authoritative serving path is the SM121 indexer baseline — see [`deepseek-v4-production.md`](deepseek-v4-production.md). |
+| Historical relevance | Living architecture reference with a 2026-05-26 topology/runtime snapshot. For the current DeepSeek serving recipe, use the vLLM 0.27 native-DSpark route — see [`deepseek-v4-production.md`](deepseek-v4-production.md). |
 
-> 최종 갱신: 2026-05-26 · 라이브 상태 기준 (spark01 head + spark02 worker, `dsv4-d568-relax` 가동 중)
+> 2026-05-26 당시 라이브 상태 스냅샷 (spark01 head + spark02 worker, `dsv4-d568-relax` 가동 중). 현재 권장 recipe는 위 링크를 따른다.
 
 ---
 

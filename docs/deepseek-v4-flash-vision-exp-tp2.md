@@ -3,7 +3,7 @@
 This is an attended, bounded correctness experiment, **UNVALIDATED on GB10**.
 The supplied NVIDIA validation scope is **GB200 TP4+EP, NOT GB10**. Dual GB10
 TP2 is experimental; static checks establish neither kernel support nor memory
-fit, multimodal correctness, or RoCE transport. No autostart or promotion.
+fit, multimodal correctness, or RoCE transport. No autostart or status change.
 The pins below are user-supplied facts, not independently acquired runtime evidence.
 
 Use [the preset](../presets/deepseek-v4-flash-vision-exp-tp2.env) with the
@@ -19,7 +19,7 @@ confirmed against this exact image before launch; unsupported flags are a blocke
 
 On 2026-10-03 the operator explicitly authorized removal of the previously live
 Qwen service, old model snapshots, and unused serving images to make room for this
-experiment. Acquisition is authorized; launch and promotion remain separate gates.
+experiment. Acquisition is authorized; launch and operational adoption remain separate gates.
 Checkpoint: `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`, HF revision
 `6821d6ad3681a4b137b066b76094fa82ebd0a380`, **48 shards / 167819404368 bytes**
 (shard total, not whole snapshot disk usage). Allow space for metadata, caches,
@@ -93,9 +93,9 @@ provenance. Both containers mount the verified snapshot read-only and run offlin
 ## Exact attended launch order (future, separately authorized work)
 
 Use a maintenance window with both GPUs idle. Different container names and
-port 8001 do **not** permit simultaneous production use. If production is running,
+port 8001 do **not** permit simultaneous serving use. If the primary service is running,
 abort this recipe and arrange a separately authorized maintenance/restore plan
-using the [production runbook](deepseek-v4-production.md). Record the actually
+using the [serving runbook](deepseek-v4-production.md). Record the actually
 running family, exact image, preset, overlays, health, model ID and restart policy
 before any maintenance; the catalog is not proof of live state.
 
@@ -157,7 +157,7 @@ skipped gate means overall UNVALIDATED, and any failure requires teardown.
 This gate set qualifies only the recorded small-input c1 envelope. It does not
 validate 32K-length requests, concurrency, video, throughput, speculative decoding
 or unattended operation. Even all gates passing requires a separately reviewed
-GB10 validation report before changing status; it never authorizes promotion.
+GB10 validation report before changing status; it never authorizes operational adoption.
 
 ## Stop and rollback (future operations only)
 
@@ -175,11 +175,11 @@ Capture logs before teardown if management remains responsive:
 ```
 
 Stop head then worker, including after partial startup. Never use global Docker
-prune, Ray stop, image deletion or generic production container stops. If a node
+prune, Ray stop, image deletion or generic serving-container stops. If a node
 is unresponsive, end the experiment and use the separately authorized host
 recovery procedure; do not launch replacements. Verify both experiment containers
 are absent, ports released, GPU processes gone and memory stable. GB10 UMA may
 require a separately authorized reboot before reuse. Restore only the exact
-previously recorded production family with its canonical runbook and digest,
+previously recorded serving family with its canonical runbook and digest,
 then verify health/models and its smoke gate. No previous service means leave
 the slot idle. Keep experiment evidence; do not edit `.env`, defaults or autostart.

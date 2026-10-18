@@ -1,12 +1,12 @@
 # Software Stack
 
 This document describes the full image/stack lineage used by this repository:
-the primary DeepSeek-V4-Flash derivative (`dsv4-d568`), the forward-stack
-validation base it is built on (`v022-d568`), the `v021` production-default
+the recommended vLLM 0.27 native-DSpark DeepSeek-V4 route, its frozen historical
+`dsv4-d568` predecessor, the forward-stack `v022-d568` base, the `v021` default
 series, and older/legacy stacks.
 
 The top-level [`README.md`](../README.md) only lists the current recommended
-serving paths — see [`README.md` § Current serving paths](../README.md#current-serving-paths)
+serving paths — see [`README.md` § Representative serving paths](../README.md#representative-serving-paths)
 for the short summary.
 
 ## Current stack summary
@@ -16,10 +16,11 @@ Current image roles:
 - `v021-tq`: TurboQuant preset base (required for `*-tq.env` presets)
 - `v022-d568`: stable general base (NGC 26.04 + vLLM 0.21.0) for Qwen3.6/Gemma/abliterix presets
 - `v022-d568-ngc2605-tx5102-vllm022`: active forward-stack (NGC 26.05 + vLLM 0.22.1 + FlashInfer v0.6.12 + Transformers 5.10.2)
-- `dsv4-d568`: primary DeepSeek-V4-Flash path — **frozen, not rebased onto NGC 26.05**
+- `dsv4-v027-0731`: recommended DeepSeek-V4-Flash native-DSpark route (NGC 26.07 + vLLM 0.27)
+- `dsv4-d568`: frozen historical DeepSeek-V4-Flash baseline — **not rebased onto NGC 26.05**
 - `unholy-fusion`: experimental high-prefill DeepSeek-V4-Flash path
-- `solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp`: Solar-Open2-250B promoted
-  production path (NGC 26.05 + vLLM 0.25.1) — local build image, not on GHCR
+- `solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp`: recommended Solar-Open2-250B
+  path (NGC 26.05 + vLLM 0.25.1) — local build image, not on GHCR
 
 `unholy-fusion` is a third-party image with custom GB10 (Blackwell sm_120/sm_121)
 kernels (B12X_MOE etc.) not present in `dsv4-d568`. Its full stack/configuration
@@ -28,9 +29,11 @@ detail, operational limits, and benchmark comparison live in
 this document — see [Relationship to images and presets](#relationship-to-images-and-presets)
 below.
 
-## dsv4-d568 — Primary DeepSeek-V4-Flash path
+## dsv4-d568 — Frozen historical DeepSeek-V4-Flash baseline
 
-**This is the primary documented path for DeepSeek-V4-Flash on 2× DGX Spark / GB10.**
+**This is a historical/reproduction baseline for DeepSeek-V4-Flash on 2× DGX Spark / GB10.**
+For current operation, use the vLLM 0.27 native-DSpark route documented in
+[`deepseek-v4-production.md`](deepseek-v4-production.md).
 
 Layered on top of `v022-d568`. Uses a fork of vLLM with SM12x DSV4 support (sparse MLA, Lightning Indexer, fp8_ds_mla KV cache, MTP heads). Preset: the frozen DSV4-Flash baseline preset (removed from the active surface; Git history).
 
@@ -46,12 +49,12 @@ Verified preset: the frozen DSV4-Flash baseline preset (removed from the active 
 
 **Full guide + 9-way benchmark sweep + MTP/backend analysis**: [`docs/dsv4-flash-tp2.md`](dsv4-flash-tp2.md).
 
-> **DSV4 path summary**: For DeepSeek-V4-Flash, use `dsv4-d568` as the primary path. For users who specifically want higher prefill throughput, `unholy-fusion` is available as an experimental alternative (see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md)). Earlier jasl-based DSV4 image notes are deferred and kept only for historical reference.
+> **DSV4 path summary**: For current DeepSeek-V4 operation, use the vLLM 0.27 native-DSpark route. `dsv4-d568` is retained as a frozen historical/reproduction baseline, while `unholy-fusion` is an experimental historical alternative (see [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md)). Earlier jasl-based DSV4 image notes are deferred and kept only for historical reference.
 
-## solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp — Solar-Open2-250B promoted production path
+## solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-b12xsw-r4-exp — recommended Solar-Open2-250B path
 
-**This is the promoted production path for Solar-Open2-250B on 2× DGX Spark / GB10** (promoted
-2026-08-09). Documented here only to the extent directly supported by the validated production
+**This is the recommended path for Solar-Open2-250B on 2× DGX Spark / GB10** (validated
+2026-08-09). Documented here only to the extent directly supported by the validated operational
 fast-track evidence (`solar-open2-v0251-r4-bf16-production-fasttrack-20260808T153704Z`) — versions
 not confirmed by that evidence are not listed.
 
@@ -66,13 +69,13 @@ not confirmed by that evidence are not listed.
 | Preset | `presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env` |
 | Source patches | `patches/solar/solar-open2-rawg1-contract-v025.patch`, `patches/solar/vllm-safetensors-pread-env-gate.patch`, `patches/solar/vllm-flashinfer-b12x-shared-workspace-env-gate.patch`, `patches/solar/solar-open2-support-v0251.patch` — see `PATCH_STATUS.md` |
 
-**Production runtime gates** (see [`docs/solar-open2-production.md`](solar-open2-production.md) for
+**Operational runtime gates** (see [`docs/solar-open2-production.md`](solar-open2-production.md) for
 the full contract): TP=2 Ray, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`,
 `MAX_NUM_SEQS=8`, `MAX_NUM_BATCHED_TOKENS=2048`, `GPU_MEMORY_UTILIZATION=0.80`, eager mode
 (no CUDA graphs), prefix caching on, chunked prefill on, `FLASH_ATTN` attention (auto), MoE
 `FLASHINFER_B12X`.
 
-Production rollback: `solar-open2-nvfp4-v022d568-vllm0221-upstage00907fc-ecfix-exp` (vLLM 0.22.1,
+Primary rollback: `solar-open2-nvfp4-v022d568-vllm0221-upstage00907fc-ecfix-exp` (vLLM 0.22.1,
 local image ID `sha256:1873d2174691f67e16b5588fcef01680d21f1e7b42ac5587bd23d7503cae1366`, stopped) —
 predates the raw-g1/ST_PREAD/B12X lineage. Preset:
 `presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`.
@@ -97,7 +100,7 @@ GHCR) and the local-ID-vs-registry-digest distinction: [`docs/images.md`](images
 
 Verified preset: Qwen3.5-122B-A10B-FP8 (TP=2, ray, MAX_MODEL_LEN=32768, KV cache ~45 GiB). Korean QA and English math verified. `--reasoning-parser qwen3` separates reasoning field correctly.
 
-> **Image policy**: This image is NOT a replacement for `dsv4-d568`. It is a separate forward-stack path for non-DSV4 models. `dsv4-d568` is frozen and will not be rebased onto this stack.
+> **Image policy**: This image is not the current DeepSeek route. It is a separate forward-stack path for non-DSV4 models. The historical `dsv4-d568` baseline is frozen and will not be rebased onto this stack.
 
 Required `.env` variables beyond standard presets (NGC 26.05 specifics):
 
@@ -135,7 +138,7 @@ overrides, see [`docs/model-serving-validation-history.md`](model-serving-valida
 
 | Stack | When to use | Details |
 |---|---|---|
-| `v021-ngc2603` / `v021-tq` | Production default for most presets (`presets/*.env` images column = `v021-ngc2603`); required for `*-tq` (TurboQuant) presets | [`docs/stack-v021.md`](stack-v021.md) |
+| `v021-ngc2603` / `v021-tq` | Default for most presets (`presets/*.env` images column = `v021-ngc2603`); required for `*-tq` (TurboQuant) presets | [`docs/stack-v021.md`](stack-v021.md) |
 
 ## Legacy stacks
 

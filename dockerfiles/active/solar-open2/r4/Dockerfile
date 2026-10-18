@@ -21,7 +21,7 @@
 #
 # Applied as SHA-verified COPY of the externally patched file (r3 lineage
 # ships no `patch` binary; canonical .patch kept in-image for provenance).
-# EXPERIMENTAL — do not promote, do not publish to GHCR.
+# EXPERIMENTAL — do not adopt as a recommended image; do not publish to GHCR.
 # =============================================================================
 FROM vllm-spark:solar-open2-nvfp4-v0251-upstage00907fc-rawg1-pread-r3-exp
 

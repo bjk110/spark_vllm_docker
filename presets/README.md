@@ -9,18 +9,18 @@ recipe/image/topology in its header comment.
 ## Launch / docs
 
 Every catalog row links its tracked preset and either a canonical generic launch below or the
-most specific existing runbook/evidence. Production and model-specific rows use their runbook;
+most specific existing runbook/evidence. Operational and model-specific rows use their runbook;
 experimental/historical links are **validation/reproduction only**, not recommended deployment paths.
 The preset header's **Required overlay wins**: include its required overlays and runtime setup,
 even when a generic command appears applicable. The current DeepSeek-V4 route requires its
-production overlay; omitting it skips health/prewarm.
+operational overlay; omitting it skips health/prewarm.
 
 All commands run from the **repository root** on the indicated node. Replace `<preset>` with the
 selected filename (without `.env`), resolve `MODEL_PATH` and model weights, network/RDMA settings,
 and the required image identity/availability before launch. See [image prerequisites](../docs/images.md)
 and [architecture/network setup](../docs/architecture.md). For TP2, resolve prerequisites on both nodes.
 Generic snippets apply only to general or validated configuration references whose header documents no required overlay;
-follow the linked runbook for production, tokenizer-overlay, Step-3.7, and FlashInfer-AOT setup.
+follow the linked runbook for model-specific, tokenizer-overlay, Step-3.7, and FlashInfer-AOT setup.
 
 ### Generic TP1 launch
 
@@ -38,33 +38,34 @@ docker compose --env-file presets/<preset>.env --profile worker up -d
 docker compose --env-file presets/<preset>.env --profile head up -d
 ```
 
-Navigation: **[1. Production presets](#1-production-presets)** · [2. Validated (non-production)](#2-validated-presets-non-production)
+Navigation: **[1. Operational presets](#1-operational-presets)** · [2. Validated](#2-validated-presets)
 · [3. General supported](#3-general-supported-presets) · [4. Experimental](#4-experimental-presets) · [5. Historical reproduction](#5-historical-reproduction-presets)
 
-**Selection order (any production model family):** use the family's **active production** preset
-for serving; use its **production rollback** preset only to revert. There is no other operational
-choice for a promoted model family. Superseded presets (intermediate, experimental, candidate,
-legacy, deep-recovery, historical) are **not** retained in the active preset directory — see each
-family's subsection below for where that provenance actually lives (Git history for DeepSeek-V4,
-local/untracked build-host artifacts referenced by hash for Solar-Open2).
+**Selection follows each family's declared status.** For DeepSeek-V4 and Solar-Open2, use each
+family's **Recommended** preset for serving and its **Primary rollback** only to revert. Manual,
+validated, and general-supported families instead use the profile and limits documented in their
+own row; no implicit rollback is assigned. Superseded presets (intermediate, experimental,
+candidate, legacy, deep-recovery, historical) are **not** retained in the active preset directory —
+see each family's subsection below for where that provenance actually lives (Git history for
+DeepSeek-V4, local/untracked build-host artifacts referenced by hash for Solar-Open2).
 
-**DeepSeek-V4 and Solar-Open2 are independently promoted production baselines.**
-Qwen3.8-Flash-Next is production-qualified for manual activation, not promoted/current production. They are not served simultaneously: all currently
+**DeepSeek-V4 and Solar-Open2 are independently recommended baselines.**
+Qwen3.8-Flash-Next has a validated manual profile. They are not served simultaneously: all currently
 target the same physical serving slot (spark01 head + spark02 worker, port 8000), so only one
 family's containers run at any given moment. Which one is *actually* running right now is **not**
-determined by this index or by either family's production document — check live container/health
+determined by this index or by either family's operational document — check live container/health
 state directly (`docker ps`, `GET :8000/health`, `GET :8000/v1/models`) before assuming any
 baseline is currently deployed.
 
 ---
 
-## 1. Production presets
+## 1. Operational presets
 
-### 1a. DeepSeek-V4 production presets
+### 1a. DeepSeek-V4 operational presets
 
-DeepSeek-V4-Flash has four production-operable presets: the active vLLM 0.27 / 256K production
+DeepSeek-V4-Flash has four operational presets: the active vLLM 0.27 / 256K operational
 preset, its optional MAX_NUM_SEQS=4 profile, its primary rollback (vLLM 0.25.0 / 64K, itself
-production-proven 2026-07-22 to 2026-08-15), and a legacy rollback (MTP1). Full operations,
+validated 2026-07-22 to 2026-08-15), and a legacy rollback (MTP1). Full operations,
 activation/rollback commands, and validation provenance:
 [`docs/deepseek-v4-production.md`](../docs/deepseek-v4-production.md); detailed technical reference
 (prewarm design, JIT inventory, residual risks):
@@ -72,25 +73,25 @@ activation/rollback commands, and validation provenance:
 
 | Preset | Model | Status | Notes | Launch / docs |
 |---|---|---|---|---|
-| [`deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env`](deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env) | DeepSeek-V4-Flash-0731 | **Active production** (since 2026-08-15, spark01:8000) | native DSpark k=7 greedy, vLLM 0.27, `MAX_MODEL_LEN=262144`, `MAX_NUM_SEQS=1`, KV 10 GiB FP8, `E8M0=1`, prefix caching off, TP=2 mp/RoCE, automatic startup prewarm via `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`. Published tag `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`; immutable manifest `sha256:7a005243701c…`. Production launch overrides the tag with this digest. Filename retains its original "candidate" naming from implementation (task B4.4B); the Status column here and in the preset's own header comment are authoritative. | [Production runbook](../docs/deepseek-v4-production.md) |
-| [`deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env`](deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env) | DeepSeek-V4-Flash-0731 | Optional validated profile (attended use only, not default) | Identical to the active preset except `MAX_NUM_SEQS=4`; not wired into automatic prewarm's global-topk target. See Residual Risk R1 in its own header | [Production runbook](../docs/deepseek-v4-production.md) |
-| [`deepseek-v4-flash-dspark-k7-64k-production-tp2.env`](deepseek-v4-flash-dspark-k7-64k-production-tp2.env) | DeepSeek-V4-Flash-DSpark | **Primary rollback** (stopped) | vLLM 0.25.0, native DSpark k=7 greedy, `MAX_MODEL_LEN=65536`, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:aacb06de60ec…`. No LC131 exposure; unrestricted 135168 not supported | [Production runbook](../docs/deepseek-v4-production.md) |
-| [`deepseek-v4-flash-mtp1-production-tp2.env`](deepseek-v4-flash-mtp1-production-tp2.env) | DeepSeek-V4-Flash | **Legacy rollback** (stopped) | Second-tier fallback if the primary rollback is also unavailable. MTP n=1, target FULL_DECODE_ONLY `[2]`, KV 4 GiB FP8, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:de69fa367137…`. Repeated large-context operation not approved | [Production runbook](../docs/deepseek-v4-production.md) |
+| [`deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env`](deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env) | DeepSeek-V4-Flash-0731 | **Recommended** (since 2026-08-15, spark01:8000) | native DSpark k=7 greedy, vLLM 0.27, `MAX_MODEL_LEN=262144`, `MAX_NUM_SEQS=1`, KV 10 GiB FP8, `E8M0=1`, prefix caching off, TP=2 mp/RoCE, automatic startup prewarm via `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`. Published tag `ghcr.io/bjk110/vllm-spark:v027-ngc2607-dsv4-0731-dspark-k7-256k-production`; immutable manifest `sha256:7a005243701c…`. Launch overrides the tag with this digest. Filename retains its original "candidate" naming from implementation (task B4.4B); the Status column here and in the preset's own header comment are authoritative. | [Operations runbook](../docs/deepseek-v4-production.md) |
+| [`deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env`](deepseek-v4-flash-0731-dspark-k7-256k-v027-ms4-optional-tp2.env) | DeepSeek-V4-Flash-0731 | Optional validated profile (attended use only, not default) | Identical to the active preset except `MAX_NUM_SEQS=4`; not wired into automatic prewarm's global-topk target. See Residual Risk R1 in its own header | [Operations runbook](../docs/deepseek-v4-production.md) |
+| [`deepseek-v4-flash-dspark-k7-64k-production-tp2.env`](deepseek-v4-flash-dspark-k7-64k-production-tp2.env) | DeepSeek-V4-Flash-DSpark | **Primary rollback** (stopped) | vLLM 0.25.0, native DSpark k=7 greedy, `MAX_MODEL_LEN=65536`, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:aacb06de60ec…`. No LC131 exposure; unrestricted 135168 not supported | [Operations runbook](../docs/deepseek-v4-production.md) |
+| [`deepseek-v4-flash-mtp1-production-tp2.env`](deepseek-v4-flash-mtp1-production-tp2.env) | DeepSeek-V4-Flash | **Legacy rollback** (stopped) | Second-tier fallback if the primary rollback is also unavailable. MTP n=1, target FULL_DECODE_ONLY `[2]`, KV 4 GiB FP8, max_num_seqs 1, TP=2 mp/RoCE. Digest `@sha256:de69fa367137…`. Repeated large-context operation not approved | [Operations runbook](../docs/deepseek-v4-production.md) |
 
 Superseded DeepSeek-V4 presets (intermediate, experimental, candidate, legacy, deep-recovery,
 historical) are available through Git history and are **not** retained in this directory.
 
-### 1b. Solar-Open2 production presets
+### 1b. Solar-Open2 operational presets
 
-Solar-Open2-250B has exactly two production-operable presets: the active r4 BF16 production preset
+Solar-Open2-250B has exactly two operational presets: the active r4 BF16 operational preset
 and its authoritative v0.22.1 rollback. Both pin their image by **local Docker image ID** (not yet
 published to a registry — see [`docs/images.md`](../docs/images.md) for the distinction). Full
 operations and validation provenance: [`docs/solar-open2-production.md`](../docs/solar-open2-production.md).
 
 | Preset | Model | Status | Notes | Launch / docs |
 |---|---|---|---|---|
-| [`solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`](solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env) | Solar-Open2-250B-Nota-NVFP4 | **Active production** (since 2026-08-09, spark01:8000 when deployed) | vLLM 0.25.1, TP=2 Ray, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`, eager, FLASH_ATTN auto, FLASHINFER_B12X MoE, ST_PREAD + B12X shared-workspace gates on. Local image ID `sha256:ecb7bfe3978a…`. 6-gate fast-track PASS, promotion commit `d966925`. | [Production/rollback runbook](../docs/solar-open2-production.md) |
-| [`solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`](solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env) | Solar-Open2-250B-Nota-NVFP4 | **Production rollback** (stopped) | Authoritative rollback for the active r4 production. vLLM 0.22.1, matched scheduler footprint (`MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`), BF16 KV. Local image ID `sha256:1873d21746…`. Rollback round-trip validated end-to-end (Gate 6). | [Production/rollback runbook](../docs/solar-open2-production.md) |
+| [`solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`](solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env) | Solar-Open2-250B-Nota-NVFP4 | **Recommended** (since 2026-08-09, spark01:8000 when deployed) | vLLM 0.25.1, TP=2 Ray, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`, eager, FLASH_ATTN auto, FLASHINFER_B12X MoE, ST_PREAD + B12X shared-workspace gates on. Local image ID `sha256:ecb7bfe3978a…`. 6-gate fast-track PASS, adoption commit `d966925`. | [Operations/rollback runbook](../docs/solar-open2-production.md) |
+| [`solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`](solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env) | Solar-Open2-250B-Nota-NVFP4 | **Primary rollback** (stopped) | Authoritative rollback for the active r4 route. vLLM 0.22.1, matched scheduler footprint (`MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`), BF16 KV. Local image ID `sha256:1873d21746…`. Rollback round-trip validated end-to-end (Gate 6). | [Operations/rollback runbook](../docs/solar-open2-production.md) |
 
 Superseded Solar-Open2 presets (r2/r3/r4 diagnostic variants, eager-4k smoke configs, marlin c2
 diagnostics, the superseded active-test baseline) are **not** tracked in Git and are **not**
@@ -100,44 +101,44 @@ on the build hosts (spark01/spark02) and are referenced by content hash only in
 [`docs/solar-open2-production.md` section 3](../docs/solar-open2-production.md#3-preset-retention-policy-and-status).
 Exact available r3/r4 incremental Dockerfiles and COPY inputs are now repository artifacts
 under `dockerfiles/active/solar-open2/`; the r2 parent, warm caches and launcher orchestration
-remain local-only. This is an incremental reproducibility limitation — both production and rollback presets are tracked in `origin/main`. The rollback preset
+remain local-only. This is an incremental reproducibility limitation — both operational and rollback presets are tracked in `origin/main`. The rollback preset
 and both `compose/solar-open2/` overlays have latest introducing/consolidating commit `357929a`
 (see `docs/solar-open2-production.md` sections 1-2).
 
-### 1c. Qwen3.8-Flash-Next production-qualified/manual opt-in presets
+### 1c. Qwen3.8-Flash-Next manual and opt-in presets
 
-Qwen3.8-Flash-Next has three indexed presets: the official production-qualified c1/c2 baseline,
+Qwen3.8-Flash-Next has three indexed presets: the official manual c1/c2 baseline,
 the PR55122 MTP1 interactive-c1 profile, and the independently qualified uncensored NGC 26.09
 MTP k=2/C2 profile. All are manual activation only and are not wired into auto-start. The profiles
 use different model revisions, images, graph modes, source overlays, and qualification contracts;
 do not mix their files or flags. Reboot after teardown before the next fresh launch.
 The MTP status label `MAIN_MERGE_APPROVED_OPT_IN` is historical; repository integration
-is complete on main and does not confer runtime promotion.
+is complete on main and does not confer runtime validation.
 Full gate ledger: [`docs/qwen3.8-flash-next-tp2.md`](../docs/qwen3.8-flash-next-tp2.md).
 
 | Preset | Model | Status | Notes | Launch / docs |
 |---|---|---|---|---|
-| [`qwen3.8-flash-next-fp8-tp2-candidate.env`](qwen3.8-flash-next-fp8-tp2-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | **Production-qualified** (manual activation only, not auto-start) | dual-rdma TP2 (mp), production-qualified at c1/c2, `MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`, `MAX_MODEL_LEN=262144`, `GPU_MEMORY_UTILIZATION=0.83`. Requires `compose/qwen3.8-flash-next/docker-compose.candidate.yml` overlay. Reboot before next fresh launch after teardown. `MAX_NUM_SEQS=4` remains BLOCKED (content diverges across identical repeats at c2/c4) and must not be raised. MTP and PLE-offloaded NVFP4 excluded from the default; MTP untested/off. | [Manual activation runbook](../docs/qwen3.8-flash-next-tp2.md) |
-| [`qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env`](qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the production default; no auto-start | dual-rdma TP2 (mp), MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, exact local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; requires `compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml`. MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and production-default change remain out of scope. | [Manual opt-in runbook](../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) |
+| [`qwen3.8-flash-next-fp8-tp2-candidate.env`](qwen3.8-flash-next-fp8-tp2-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | **Manual profile** (manual activation only, not auto-start) | dual-rdma TP2 (mp), validated at c1/c2, `MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`, `MAX_MODEL_LEN=262144`, `GPU_MEMORY_UTILIZATION=0.83`. Requires `compose/qwen3.8-flash-next/docker-compose.candidate.yml` overlay. Reboot before next fresh launch after teardown. `MAX_NUM_SEQS=4` remains BLOCKED (content diverges across identical repeats at c2/c4) and must not be raised. MTP and PLE-offloaded NVFP4 excluded from the default; MTP untested/off. | [Manual activation runbook](../docs/qwen3.8-flash-next-tp2.md) |
+| [`qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env`](qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the operational default; no auto-start | dual-rdma TP2 (mp), MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, exact local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; requires `compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml`. MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and default change remain out of scope. | [Manual opt-in runbook](../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) |
 
-## 2. Validated presets (non-production)
+## 2. Validated presets
 
-Validated, but **not** the current default serving path for any production model family.
+Validated, but **not** the current default serving path for any model family.
 
 | Preset | Model / stack | Topology | Status | Use | Launch / docs |
 |---|---|---|---|---|---|
-| [`qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) | orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8 · NGC 26.09/e77 immutable GHCR manifest | dual-rdma TP2/EP2 | **Validated (non-production)** — manual activation; not auto-started | Recommended profile for this checkpoint: eager MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262,144 context, simultaneous 262,112-token retrieval PASS, multimodal/tool support retained. | [Step-by-step recipe](../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) |
+| [`qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) | orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8 · NGC 26.09/e77 immutable GHCR manifest | dual-rdma TP2/EP2 | **Validated** — manual activation; not auto-started | Recommended profile for this checkpoint: eager MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262,144 context, simultaneous 262,112-token retrieval PASS, multimodal/tool support retained. | [Step-by-step recipe](../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) |
 | [`step37-flash-nvfp4-v023-tp2-latency.env`](step37-flash-nvfp4-v023-tp2-latency.env) | Step-3.7-Flash NVFP4 · v0.23 (EP-off, MARLIN, TRITON_ATTN) | dual-rdma TP=2 | Validated (Step-3.7 NVFP4 path) | Recommended Step-3.7 NVFP4 latency path ([bench](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md)) | [Latency recipe/benchmark](../docs/benchmarks/bt-matrix-step37-nvfp4-v023.md) |
-| [`step37-flash-fp8-v023-tp2.env`](step37-flash-fp8-v023-tp2.env) | Step-3.7 FP8 v023 tokenizer overlay; 8192 context, c1 | dual-rdma TP=2 | Validated (non-production) | Bounded validation evidence; no production promotion | [Tokenizer-overlay runbook](../docs/step3.7-tokenizer-overlay.md#validated-non-production-step-37-fp8-baseline-tracked-preset) |
-| [`gemma4-31b-it.env`](gemma4-31b-it.env) | Gemma 4 31B; verified 2026-05-20 | single TP=1 | Validated (non-production) | Bounded validation evidence; no production promotion | [Validation evidence](../docs/model-serving-validation-history.md) · [Generic TP1](#generic-tp1-launch) |
-| [`qwen3.6-35b-a3b.env`](qwen3.6-35b-a3b.env) | Qwen3.6 35B; verified 2026-05-20 | single TP=1 | Validated (non-production) | Bounded validation evidence; no production promotion | [Validation evidence](../docs/model-serving-validation-history.md) · [Generic TP1](#generic-tp1-launch) |
-| [`qwen3.6-35b-a3b-fi-aot-tp2.env`](qwen3.6-35b-a3b-fi-aot-tp2.env) | Qwen3.6 35B FlashInfer-AOT; bounded prebaked specs | dual-rdma TP=2 | Validated (non-production) | Bounded validation evidence; no production promotion | [AOT setup/recipe](../docs/flashinfer-aot-prebake.md) |
-| [`step37-flash-fp8-tp2.env`](step37-flash-fp8-tp2.env) | Step-3.7 FP8 v022; verified 32768 context | dual-rdma TP=2 | Validated (non-production) | Bounded validation evidence; no production promotion | [FP8 serving guide](../docs/step3.7-flash-tp2.md) |
+| [`step37-flash-fp8-v023-tp2.env`](step37-flash-fp8-v023-tp2.env) | Step-3.7 FP8 v023 tokenizer overlay; 8192 context, c1 | dual-rdma TP=2 | Validated | Bounded validation evidence; documented limits apply | [Tokenizer-overlay runbook](../docs/step3.7-tokenizer-overlay.md#validated-step-37-fp8-baseline-tracked-preset) |
+| [`gemma4-31b-it.env`](gemma4-31b-it.env) | Gemma 4 31B; verified 2026-05-20 | single TP=1 | Validated | Bounded validation evidence; documented limits apply | [Validation evidence](../docs/model-serving-validation-history.md) · [Generic TP1](#generic-tp1-launch) |
+| [`qwen3.6-35b-a3b.env`](qwen3.6-35b-a3b.env) | Qwen3.6 35B; verified 2026-05-20 | single TP=1 | Validated | Bounded validation evidence; documented limits apply | [Validation evidence](../docs/model-serving-validation-history.md) · [Generic TP1](#generic-tp1-launch) |
+| [`qwen3.6-35b-a3b-fi-aot-tp2.env`](qwen3.6-35b-a3b-fi-aot-tp2.env) | Qwen3.6 35B FlashInfer-AOT; bounded prebaked specs | dual-rdma TP=2 | Validated | Bounded validation evidence; documented limits apply | [AOT setup/recipe](../docs/flashinfer-aot-prebake.md) |
+| [`step37-flash-fp8-tp2.env`](step37-flash-fp8-tp2.env) | Step-3.7 FP8 v022; verified 32768 context | dual-rdma TP=2 | Validated | Bounded validation evidence; documented limits apply | [FP8 serving guide](../docs/step3.7-flash-tp2.md) |
 
 ## 3. General supported presets
 
 Supported configuration references on the stable/forward stacks. Entries without recorded
-validation evidence are not production-qualified. Evidence-backed validated rows are listed separately above.
+validation evidence remain unvalidated. Evidence-backed rows are listed separately above.
 Image bases: `v021-ngc2603` / `v021-tq` / `v022-d568` / `v022-d568-fi-aot` / step3p7 (see
 [`docs/software-stack.md`](../docs/software-stack.md)).
 
@@ -163,12 +164,12 @@ Image bases: `v021-ngc2603` / `v021-tq` / `v022-d568` / `v022-d568-fi-aot` / ste
 
 ## 4. Experimental presets
 
-Not promoted; tuning/bring-up/A-B and stack-bisection variants. **None is a production path**, and
+Experimental; tuning/bring-up/A-B and stack-bisection variants. **None is an operational path**, and
 each requires separate validation before any operational use.
 
 | Preset | Model / stack | Topology | Note | Launch / docs |
 |---|---|---|---|---|
-| [`deepseek-v4-flash-vision-exp-tp2.env`](deepseek-v4-flash-vision-exp-tp2.env) | deepseek-ai/DeepSeek-V4-Flash-Vision-Exp · pinned official image | dual-rdma TP2 | **UNVALIDATED** dual GB10; NVIDIA validation is GB200 TP4+EP, NOT GB10. 32K/c1, FP8 KV/block 256, MP/RoCE+EP, prefix off; no DSpark/speculation/autostart/promotion | [Experimental runbook](../docs/deepseek-v4-flash-vision-exp-tp2.md) — validation/reproduction only |
+| [`deepseek-v4-flash-vision-exp-tp2.env`](deepseek-v4-flash-vision-exp-tp2.env) | deepseek-ai/DeepSeek-V4-Flash-Vision-Exp · pinned official image | dual-rdma TP2 | **UNVALIDATED** dual GB10; NVIDIA validation is GB200 TP4+EP, NOT GB10. 32K/c1, FP8 KV/block 256, MP/RoCE+EP, prefix off; no DSpark/speculation/autostart/validation | [Experimental runbook](../docs/deepseek-v4-flash-vision-exp-tp2.md) — validation/reproduction only |
 | [`step37-flash-nvfp4-tp2.env`](step37-flash-nvfp4-tp2.env) | Step-3.7-Flash NVFP4 v0.22 (EP-on) | dual-rdma TP2 | Experimental long-context (`STAGE_D_PARTIALLY_VALIDATED_TO_245009`) | [Long-context evidence](../docs/benchmarks/step37-v022-long-context-validation.md) — validation/reproduction only |
 | [`qwen3.6-35b-fp16.env`](qwen3.6-35b-fp16.env) | Qwen/Qwen3.6-35B-A3B FP16 | single TP1 | Experimental FP16 | [Stack evidence](../docs/software-stack.md) — validation/reproduction only |
 | [`qwen3.6-27b-prismascout-nvfp4-tp2-v022.env`](qwen3.6-27b-prismascout-nvfp4-tp2-v022.env) | Qwen3.6-27B PrismaSCOUT NVFP4 · v022 | dual-rdma TP2 | v022 stack A/B (requires `--mm-encoder-tp-mode data`) | [Stack evidence](../docs/stack-v022.md) — validation/reproduction only |
@@ -181,7 +182,7 @@ each requires separate validation before any operational use.
 
 ## 5. Historical reproduction presets
 
-Legacy / reproduction references for non-production-family models. Preserved for provenance;
+Legacy / reproduction configuration references. Preserved for provenance;
 **not current, not recommended for new deployments.**
 
 | Preset | Model / stack | Topology | Note | Launch / docs |
@@ -205,7 +206,7 @@ This catalog remains authoritative for preset status and selection.
 Each `.env` file defines model-specific runtime settings passed to
 `docker compose --env-file presets/<preset>.env`. Typical settings: `MODEL_PATH`,
 `MODEL_CONTAINER_PATH`, `SERVED_MODEL_NAME`, `TP_SIZE`, `CLUSTER_MODE` (`single` or `dual-rdma`),
-`VLLM_IMAGE`, plus quantization / MTP / other vLLM flags. See the current-production document and
+`VLLM_IMAGE`, plus quantization / MTP / other vLLM flags. See the current operations document and
 [`docs/software-stack.md`](../docs/software-stack.md) for configuration internals rather than
 duplicating them here.
 

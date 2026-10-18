@@ -3,8 +3,8 @@
 # STATIC CANDIDATE overlay for Qwen/Qwen3.8-Flash-Next-FP8 (dual DGX Spark
 # TP=2, mp backend). Scoped to this candidate ONLY -- it is not merged into
 # the shared docker-compose.yml, so no other model family's or preset's
-# launch command is affected. NOT production. Does not extend, modify, or
-# supersede any other validated baseline or promoted preset in this
+# launch command is affected. Manual activation only; not auto-started. Does not extend, modify, or
+# supersede any other validated baseline or validated preset in this
 # repository.
 #
 # This overlay adds exactly two things on top of the base head/worker

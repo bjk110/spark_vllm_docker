@@ -2,7 +2,7 @@
 
 | Field | Qualified value |
 |---|---|
-| Status | **Validated (non-production); manual activation only; not auto-started** |
+| Status | **Validated; manual activation only; not auto-started** |
 | Model | `orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8` |
 | Model revision | `8bebbc05cbe65099f37c520865463c1377d8050d` |
 | Image | `ghcr.io/bjk110/vllm-spark@sha256:928d86903dfce3b11203f1f6d3118aa47998e55fee36fc73423e3bef8ab04cd6` |

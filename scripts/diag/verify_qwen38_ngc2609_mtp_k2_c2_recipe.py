@@ -234,7 +234,7 @@ def verify(repo_root: Path, render_compose: bool = True):
 
     doc = (repo_root / DOC).read_text()
     for phrase in (
-        "Validated (non-production)",
+        "Validated",
         "manual activation only",
         "immutable GHCR manifest digest",
         "not auto-started",

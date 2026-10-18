@@ -37,19 +37,19 @@ matters.
 |---|---|---|---|
 | `dsv4-flash-0731-v027` · `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c…` | DeepSeek-V4-Flash | `mp` | Native DSpark k=7, 256K, `MAX_NUM_SEQS=1`, FULL_DECODE_ONLY `[8]`, automatic startup prewarm, dual-node TP=2. |
 | `solar-open2-r4-bf16` · local image ID `sha256:ecb7bfe3978a…` | Solar-Open2-250B | `ray` | vLLM 0.25.1, TP=2, BF16 KV 4 GiB/rank, `MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`, eager. |
-| `qwen3.8-flash-next-c1-c2` | Qwen3.8-Flash-Next | `mp` | Production-qualified manual TP=2 baseline, not auto-start; `MAX_NUM_SEQS=2`, prefix cache ON, FULL_DECODE_ONLY `[1,2]`, MTP off. |
+| `qwen3.8-flash-next-c1-c2` | Qwen3.8-Flash-Next | `mp` | Manual profile TP=2 baseline, not auto-start; `MAX_NUM_SEQS=2`, prefix cache ON, FULL_DECODE_ONLY `[1,2]`, MTP off. |
 
-**DeepSeek-V4 promoted production** runs `deepseek-ai/DeepSeek-V4-Flash-0731` on vLLM 0.27,
+**DeepSeek-V4 recommended** runs `deepseek-ai/DeepSeek-V4-Flash-0731` on vLLM 0.27,
 native DSpark k=7, 256K, and `MAX_NUM_SEQS=1`. Its immutable image identity is
 `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f`
-(local image ID `sha256:a7f0f4b8a508…`). Launch uses the production preset plus its health/prewarm
+(local image ID `sha256:a7f0f4b8a508…`). Launch uses the operational preset plus its health/prewarm
 overlay; see [Quick Start](#quick-start) and
 [`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md). The v0.25.0/64K DSpark route is the
 primary rollback; MTP1 is the legacy second-tier rollback.
 
-**Solar-Open2-250B promoted production** runs the r4 BF16 route (vLLM 0.25.1) by its **local Docker
+**Solar-Open2-250B recommended** runs the r4 BF16 route (vLLM 0.25.1) by its **local Docker
 image ID** (`sha256:ecb7bfe3978a…` — not yet published to a registry, see
-[`docs/images.md`](docs/images.md) for the local-ID-vs-digest distinction), promoted 2026-08-09 via
+[`docs/images.md`](docs/images.md) for the local-ID-vs-digest distinction), validated 2026-08-09 via
 [`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env).
 Runtime contract: TP=2 Ray, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`,
 `MAX_NUM_SEQS=8`, eager mode, FLASH_ATTN (auto), FLASHINFER_B12X MoE, ST_PREAD + B12X
@@ -59,7 +59,7 @@ The authoritative rollback is the v0.22.1 preset
 [`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env)
 (local image ID `sha256:1873d2174691…`, matched scheduler footprint, BF16 KV).
 Full operations, activation, rollback (including the empirically required physical-reboot
-sequence), and validation provenance (6-gate production fast-track):
+sequence), and validation provenance (6-gate operational fast-track):
 [`docs/solar-open2-production.md`](docs/solar-open2-production.md).
 
 **Qwen3.8 Flash Next Uncensored FP8 validated manual recipe** uses the immutable NGC 26.09/e77 image
@@ -67,16 +67,16 @@ manifest, exact source overlay, eager execution, TP=2/EP=2, MTP k=2, `MAX_NUM_SE
 8 GiB KV/rank, and `MAX_MODEL_LEN=262144`. Qualification included vision/multimodal requests,
 tool calling, structured output, a simultaneous 262,112-token pair, and a complete `llama-benchy`
 matrix (12/12 benchmark objects; 24 consolidated pp/tg rows). It is not an autostart or
-repository-wide production default. Follow the dedicated
+repository-wide operational default. Follow the dedicated
 [step-by-step recipe](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md); do not combine it
 with the official-checkpoint Qwen profiles or their overlays.
 
 > **`dsv4-d568` is intentionally frozen** and will not be rebased onto NGC 26.05+. `dsv4-d568`
-> (JASL-era) and `unholy-fusion` are historical/experimental references, not recommended production paths.
+> (JASL-era) and `unholy-fusion` are historical/experimental references, not recommended operational paths.
 
 > **DeepSeek-V4 B3 sparse-attention investigation is CLOSED (2026-07-03).** Backporting the experimental
 > FlashInfer CUDA sparse-MLA prefill-only kernel was **performance-neutral** (64K c1 prefill parity,
-> −0.91% vs the MARLIN baseline) and is **not promoted**. Full record:
+> −0.91% vs the MARLIN baseline) and is **Experimental**. Full record:
 > [`docs/dsv4-sparse-mla-b3-investigation-closure.md`](docs/dsv4-sparse-mla-b3-investigation-closure.md).
 
 > **SM121 rowwise-MQA graph-safe fix (Issue #17, closed).** The graph-safe `ops/sm12x_mqa.py` signature
@@ -96,7 +96,7 @@ the repo and point `MODEL_PATH` / `MODEL_CONTAINER_PATH` at them.
 ### 1. Get the image
 
 Pull the image referenced by the selected preset on every participating node. For the current
-DeepSeek-V4 production route, use its immutable manifest digest:
+DeepSeek-V4 operational route, use its immutable manifest digest:
 
 ```bash
 docker pull ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f
@@ -112,16 +112,16 @@ images can reuse the published frozen runtime build base instead of rebuilding v
 Presets are cataloged by status in [`presets/README.md`](presets/README.md). Keep model weights outside
 the repository. Before startup, ensure both nodes use the same clean tracked Git revision and that
 `MODEL_PATH`, the RoCE addresses/interface, and the immutable image identity exist on both nodes. The
-current DeepSeek-V4 production artifacts are:
+current DeepSeek-V4 operational artifacts are:
 
 - `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env`;
 - `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`;
 - `scripts/prewarm_dsv4_v027_b43s.py`.
 
-The preset retains `candidate` in its historical filename but is the active production preset. Its
+The preset retains `candidate` in its historical filename but is the recommended preset. Its
 `VLLM_IMAGE` is pinned directly to the immutable manifest digest.
 
-### 3. Start current DeepSeek-V4 production
+### 3. Start the recommended DeepSeek-V4 route
 
 Run from the repository root on both nodes. Start the MP worker before the head. This is TP=2 startup,
 not two independent servers:
@@ -167,7 +167,7 @@ rollback and GB10 UMA recovery.
 
 ## Presets and model paths
 
-All model-serving presets live in [`presets/`](presets/), grouped by status (current production,
+All model-serving presets live in [`presets/`](presets/), grouped by status (recommended,
 rollback, validated, general supported, experimental, historical/reproduction) in
 [`presets/README.md`](presets/README.md). Each `.env` documents its own model, image/stack,
 topology, and flags in its header. Keep model weights outside the repository and point `MODEL_PATH`
@@ -202,10 +202,10 @@ model-specific flags. Active build/runtime patches are tracked in
 ## Documentation
 
 The [**documentation index**](docs/README.md) classifies every document by status (current
-production, rollback and operations, general stable stacks, model guides, diagnostics, benchmarks,
+operational, rollback and operations, general stable stacks, model guides, diagnostics, benchmarks,
 validated alternatives, experimental, historical/superseded). Start there. Frequently used:
 
-- DeepSeek-V4 production (active DSpark + MTP1 rollback, activation/rollback, provenance): [`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md)
+- DeepSeek-V4 operational (active DSpark, optional MS4, v0.25.0/64K primary rollback + MTP1 legacy rollback, activation/rollback, provenance): [`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md)
 - Qwen3.8 Uncensored FP8 validated manual recipe (eager k2/C2, 262K, multimodal/tool): [`docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md`](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md)
 - Stack lineage / images: [`docs/software-stack.md`](docs/software-stack.md), [`docs/images.md`](docs/images.md)
 - Architecture: [`docs/architecture.md`](docs/architecture.md)

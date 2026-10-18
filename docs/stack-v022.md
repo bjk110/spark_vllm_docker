@@ -1,8 +1,8 @@
 # Software Stack — v022 series (forward-stack lineage)
 
-The v022 series is the NGC 26.04 / vLLM v0.21.0 forward-stack. The final layer,
-`v022-d568`, is the current main image and is documented in the top-level
-[README → Current serving paths](../README.md#current-serving-paths) and [docs/software-stack.md](software-stack.md). The intermediate variants here are
+The v022 series is the NGC 26.04 / vLLM v0.21.0 forward-stack. Its final layer,
+`v022-d568`, is the stable general base for several non-DSV4 presets and is documented in the top-level
+[README → Representative serving paths](../README.md#representative-serving-paths) and [docs/software-stack.md](software-stack.md). The intermediate variants here are
 **local-build only** (kept on a build node for bisection / rollback;
 not pushed to GHCR).
 
@@ -14,7 +14,7 @@ not pushed to GHCR).
 | `v022-tx581` | `dockerfiles/legacy/Dockerfile.v022-tx581` | + Transformers 5.8.1 |
 | `v022-trt37` | `dockerfiles/legacy/Dockerfile.v022-trt37` | + Triton 3.7.0 |
 | `v022-nccl234` | `dockerfiles/legacy/Dockerfile.v022-nccl234` | + NCCL 2.30.4 (pip override) |
-| `v022-d568` (current) | `dockerfiles/active/Dockerfile.v022-d568` | + vLLM PR #35568 cherry-pick (SM121 FP8). **Only this is on GHCR.** |
+| `v022-d568` (stable general base) | `dockerfiles/active/Dockerfile.v022-d568` | + vLLM PR #35568 cherry-pick (SM121 FP8). **Only this series variant is on GHCR.** |
 
 ## v022-vllm021 — NGC 26.03 / vLLM v0.21.0 release-pinned
 
@@ -62,5 +62,5 @@ warm cache).
 ## v022-tx581 — NGC 26.04 / vLLM v0.21.0 / FlashInfer v0.6.11.post3 / Transformers 5.8.1
 
 Intermediate image in the stacked-upgrade chain; superseded by `v022-trt37` →
-`v022-nccl234` → `v022-d568` (the latter is the current main). Kept for
+`v022-nccl234` → `v022-d568` (the latter is the final layer in this series). Kept for
 bisection. Triton 3.6.0 / NCCL 2.29.7 here (older than the final `-d568`).

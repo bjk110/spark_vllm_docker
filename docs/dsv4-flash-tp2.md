@@ -4,13 +4,13 @@
 |---|---|
 | Status | `Historical` |
 | Scope | Legacy JASL-era DeepSeek-V4-Flash TP=2 model guide and reproduction reference (`dsv4-d568`) |
-| Current replacement | [`deepseek-v4-production.md`](deepseek-v4-production.md) (current production: DeepSeek-V4-Flash-0731, v0.27, native DSpark k=7, 256K, `MAX_NUM_SEQS=1`) |
+| Current replacement | [`deepseek-v4-production.md`](deepseek-v4-production.md) (recommended: DeepSeek-V4-Flash-0731, v0.27, native DSpark k=7, 256K, `MAX_NUM_SEQS=1`) |
 | Last validated | Not recorded (legacy `dsv4-d568` baseline, intentionally frozen) |
 | Runtime or image identity | image `ghcr.io/bjk110/vllm-spark:dsv4-d568` (frozen legacy baseline) |
-| Historical relevance | Not the default production path. Preserved for the historical configuration, JASL recipe, and 9-way benchmark sweep. |
+| Historical relevance | Not the default serving path. Preserved for the historical configuration, JASL recipe, and 9-way benchmark sweep. |
 
 > **Status note:** this is the **legacy/frozen** `dsv4-d568` DeepSeek-V4-Flash guide,
-> not the current production path. The current production baseline is the SM121
+> not the current serving path. The current recommended baseline is the SM121
 > indexer (see current replacement above).
 
 `deepseek-ai/DeepSeek-V4-Flash` (공식 FP8 체크포인트) 를 DGX Spark 두 대
@@ -81,7 +81,7 @@ ghcr.io/bjk110/vllm-spark:dsv4-d568
 
 - 빌드는 충분한 RAM(≥48 GiB 권장) 이 있는 호스트에서. 저메모리 호스트는 vLLM C++/CUDA 컴파일 중 OOM 위험.
 - 빌드 시간 ~22 분 (vLLM 휠 빌드 ~1344s + runner stage ~50s, ccache miss 기준). ccache hit 시 ~3 분.
-- 명령은 [`README`](../README.md#소스에서-빌드) 의 일반 패턴과 동일 — `docker buildx build -f dockerfiles/active/Dockerfile.dsv4-d568 ...`.
+- Dockerfile-specific build command: `docker buildx build -f dockerfiles/active/Dockerfile.dsv4-d568 ...`.
 
 ### 1.4. 양 노드 배포
 
@@ -128,10 +128,10 @@ sudo sync && sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
 
 ### 3.2. Ray 모드 (운영 권장)
 
-기동 명령은 [`README`](../README.md#3-start-services) 의 일반 패턴과 동일:
+현재 일반 기동 순서는 [`README`](../README.md#3-start-the-recommended-deepseek-v4-route) 를 따른다:
 
-1. spark head 노드에서 `docker compose ... --profile head up -d`
-2. head 의 Ray runtime 이 뜨면 spark worker 노드에서 `docker compose ... --profile worker up -d`
+1. spark02에서 worker를 먼저 시작한다: `docker compose ... --profile worker up -d`
+2. spark01에서 head를 시작한다: `docker compose ... --profile head up -d`
 
 `entrypoint.sh` 가 `ray start --head` → 노드 join 대기 → `vllm serve --distributed-executor-backend ray` 진행.
 
