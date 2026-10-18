@@ -149,21 +149,72 @@ def test_deepseek_rollback_headers_match_the_catalog_hierarchy():
     assert not re.search(r'\b(?:primary|authoritative) rollback\b', legacy, re.I)
 
 
-def test_public_catalog_summaries_preserve_family_specific_selection_and_rollback():
+def test_root_readme_uses_a_generic_model_serving_workflow():
     root_readme = (ROOT / 'README.md').read_text()
     preset_readme = (ROOT / 'presets/README.md').read_text()
-    assert 'v0.25.0/64K primary rollback + MTP1 legacy rollback' in root_readme
+    for heading in (
+        '### 1. Select a preset',
+        '### 2. Prepare and render',
+        '### 3. Start by topology and backend',
+        '### 4. Verify readiness',
+        '### 5. Stop, switch, or roll back',
+    ):
+        assert heading in root_readme
+    for contract in (
+        'Required overlay',
+        '`DISTRIBUTED_BACKEND=ray`',
+        '`DISTRIBUTED_BACKEND=mp`',
+        '`/health`',
+        '`/v1/models`',
+        '`OOMKilled=false`',
+        '`RestartCount=0`',
+    ):
+        assert contract in root_readme
+    assert root_readme.lower().count('deepseek-v4') <= 4
     assert 'For DeepSeek-V4 and Solar-Open2' in preset_readme
     assert 'There is no other operational choice for a validated model family' not in preset_readme
 
 
 def test_readme_qwen_uncensored_manifest_matches_preset():
     readme = (ROOT / 'README.md').read_text()
-    preset = (ROOT / 'presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env').read_text()
-    image = re.search(r'^VLLM_IMAGE=(.+)$', preset, re.MULTILINE).group(1)
-    assert readme.count(image) >= 2
     assert 'presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env' in readme
     assert 'compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml' in readme
+
+
+def test_root_readme_commands_preserve_the_rendered_environment_contract():
+    readme = (ROOT / 'README.md').read_text()
+    quick_start = readme.split('## Quick Start', 1)[1].split('## Repository layout', 1)[0]
+    clean = 'env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"'
+    commands = [
+        re.sub(r'\s+', ' ', line.strip())
+        for line in quick_start.replace('\\\n', ' ').splitlines()
+        if 'docker compose --env-file "$PRESET"' in line
+    ]
+    assert len(commands) == 8
+    for command in commands:
+        assert command.startswith(f'{clean} docker compose --env-file "$PRESET"')
+        assert '-f docker-compose.yml' in command
+        assert '-f "$OVERLAY"' in command
+    assert 'PRESET=presets/<' not in quick_start
+    assert 'OVERLAY=compose/<' not in quick_start
+    assert 'config --quiet' not in quick_start
+    assert "--profile '*' config" in quick_start
+
+    single = quick_start.split('#### Single Spark', 1)[1].split(
+        '#### Dual Spark with `DISTRIBUTED_BACKEND=ray`', 1
+    )[0]
+    ray = quick_start.split('#### Dual Spark with `DISTRIBUTED_BACKEND=ray`', 1)[1].split(
+        '#### Dual Spark with `DISTRIBUTED_BACKEND=mp`', 1
+    )[0]
+    mp = quick_start.split('#### Dual Spark with `DISTRIBUTED_BACKEND=mp`', 1)[1].split(
+        '### 4. Verify readiness', 1
+    )[0]
+    stop = quick_start.split('### 5. Stop, switch, or roll back', 1)[1]
+    profile_pattern = r'--profile (head|worker) (?:up -d|down)'
+    assert re.findall(profile_pattern, single) == ['head']
+    assert re.findall(profile_pattern, ray) == ['head', 'worker']
+    assert re.findall(profile_pattern, mp) == ['worker', 'head']
+    assert re.findall(profile_pattern, stop) == ['head', 'worker']
 
 
 def test_stack_references_identify_v027_as_current_deepseek_route():

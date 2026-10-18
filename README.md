@@ -2,238 +2,255 @@
 
 ## Overview
 
-Unified vLLM serving configuration for NVIDIA DGX Spark (GB10), supporting two topologies from the
-same repo / Dockerfile / compose file:
+Unified vLLM serving recipes for NVIDIA DGX Spark (GB10). The repository supports two deployment
+topologies from a shared Compose base:
 
-- **Single Spark** (default, zero RDMA setup) — one GB10 box, TP=1.
-- **Dual Spark + 200 Gbps RoCE/IB** — two GB10 boxes, TP=2 (Ray or `mp`/SPMD backend).
+- **Single Spark** — one GB10 node, normally TP=1.
+- **Dual Spark over 200 Gbps RoCE** — head + worker, normally TP=2 with Ray or `mp`/SPMD.
 
-Pick the topology with `CLUSTER_MODE=single` (default) or `CLUSTER_MODE=dual-rdma` in your `.env`.
+A runnable model path is a matched set of artifacts, not a single `.env` file:
 
-**Start here:** the [documentation index](docs/README.md) is the canonical map of all docs and their
-status. Preset catalog and status: [`presets/README.md`](presets/README.md). Release/patch detail:
-[`CHANGELOG.md`](CHANGELOG.md), [`PATCH_STATUS.md`](PATCH_STATUS.md).
+1. a preset under [`presets/`](presets/);
+2. `docker-compose.yml` plus every overlay named by the preset's **Required overlay** header;
+3. the referenced image, entrypoint, patches, model files, and model-specific runbook.
+
+Do not mix presets, overlays, or entrypoints from different model families. The preset catalog is
+[`presets/README.md`](presets/README.md), and the documentation map is
+[`docs/README.md`](docs/README.md). Release and patch details live in
+[`CHANGELOG.md`](CHANGELOG.md) and [`PATCH_STATUS.md`](PATCH_STATUS.md).
 
 ## Hardware and topology
 
-| Topology | Nodes | GPU / memory | Interconnect | Backend |
-|---|---|---|---|---|
-| `single` | one Spark | NVIDIA GB10 (Blackwell), 119 GiB unified | n/a | direct (no Ray, no `mp`) |
-| `dual-rdma` | spark01 (head) + spark02 (worker) | 2× GB10, 119 GiB unified each | 200 Gbps RoCE | `ray` (default) or `mp` |
+| Topology | Nodes | GPU / memory | Interconnect | Coordination |
+|---|---:|---|---|---|
+| `single` | 1 | NVIDIA GB10, 119 GiB unified memory | n/a | direct |
+| `dual-rdma` | 2 | 2× GB10, 119 GiB unified memory each | 200 Gbps RoCE | Ray or `mp`/SPMD |
 
-`dual-rdma` supports two coordination backends via `DISTRIBUTED_BACKEND=ray` (default) or `mp`
-(SPMD, no Ray). Full entrypoint dispatch (`CLUSTER_MODE` × `ROLE` × `TP_SIZE` × backend), topology
-diagrams, and the backend comparison are in [`docs/architecture.md`](docs/architecture.md).
+The base entrypoint dispatches on `CLUSTER_MODE`, `ROLE`, `TP_SIZE`, and `DISTRIBUTED_BACKEND`.
+Architecture and networking details are documented in [`docs/architecture.md`](docs/architecture.md).
 
 ## Representative serving paths
 
-The top-level README shows selected representative paths for primary model families; checkpoints with
-distinct runtime contracts may have separate entries. These entries describe repository recipes, not
-live process state; all use the same dual-Spark serving slot and are not intended to run simultaneously. See [`presets/README.md`](presets/README.md) for rollback,
-validated, experimental, and historical variants, and inspect the live endpoint when runtime state
-matters.
+The table is an index, not a launch command or statement about live process state. Each row has its
+own image and runtime contract; only one large-model stack should occupy the shared serving slot at a
+time.
 
-| Representative image / path | Model family | Backend | Serving profile |
+| Representative path | Model family | Typical topology / backend | Start here |
 |---|---|---|---|
-| `dsv4-flash-0731-v027` · `ghcr.io/bjk110/vllm-spark@sha256:7a005243701c…` | DeepSeek-V4-Flash | `mp` | Native DSpark k=7, 256K, `MAX_NUM_SEQS=1`, FULL_DECODE_ONLY `[8]`, automatic startup prewarm, dual-node TP=2. |
-| `solar-open2-r4-bf16` · local image ID `sha256:ecb7bfe3978a…` | Solar-Open2-250B | `ray` | vLLM 0.25.1, TP=2, BF16 KV 4 GiB/rank, `MAX_MODEL_LEN=4096`, `MAX_NUM_SEQS=8`, eager. |
-| `qwen3.8-flash-next-c1-c2` | Qwen3.8-Flash-Next FP8 | `mp` | Manual profile, manual activation only, not auto-start; official-checkpoint c1/c2 path with its dedicated preset and overlay. |
-| `ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5` | Qwen3.8-Flash-Next Uncensored FP8 | `ray` | Manual profile, not auto-started; Ray 2.59.0, TP=2/EP=2, eager MTP k=2, actual C2, BT8K, fixed 8 GiB KV/rank, 262K, multimodal/tool support. |
+| `dsv4-flash-0731-v027` | DeepSeek-V4 Flash | dual-RDMA, `mp` | [Preset catalog](presets/README.md) · [model runbook](docs/deepseek-v4-production.md) |
+| `solar-open2-r4-bf16` | Solar-Open2-250B | dual-RDMA, Ray | [`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env) · [model runbook](docs/solar-open2-production.md) |
+| `qwen3.8-flash-next-c1-c2` | Qwen3.8 Flash Next official; manual profile, manual activation, not auto-started | dual-RDMA, `mp` | [Preset catalog](presets/README.md) · [model guide](docs/qwen3.8-flash-next-tp2.md) |
+| `qwen3.8-uncensored-k2-c2` | Qwen3.8 Flash Next Uncensored FP8 | dual-RDMA, Ray | [`presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) · [`compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml`](compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml) · [model runbook](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) |
 
-**DeepSeek-V4 recommended** runs `deepseek-ai/DeepSeek-V4-Flash-0731` on vLLM 0.27,
-native DSpark k=7, 256K, and `MAX_NUM_SEQS=1`. Its immutable image identity is
-`ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f`
-(local image ID `sha256:a7f0f4b8a508…`). Launch uses the operational preset plus its health/prewarm
-overlay; see [Quick Start](#quick-start) and
-[`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md). The v0.25.0/64K DSpark route is the
-primary rollback; MTP1 is the legacy second-tier rollback.
-
-**Solar-Open2-250B recommended** runs the r4 BF16 route (vLLM 0.25.1) by its **local Docker
-image ID** (`sha256:ecb7bfe3978a…` — not yet published to a registry, see
-[`docs/images.md`](docs/images.md) for the local-ID-vs-digest distinction), validated 2026-08-09 via
-[`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env).
-Runtime contract: TP=2 Ray, BF16 KV fixed 4 GiB/rank (66,764 tok), `MAX_MODEL_LEN=4096`,
-`MAX_NUM_SEQS=8`, eager mode, FLASH_ATTN (auto), FLASHINFER_B12X MoE, ST_PREAD + B12X
-shared-workspace gates enabled.
-
-The authoritative rollback is the v0.22.1 preset
-[`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env)
-(local image ID `sha256:1873d2174691…`, matched scheduler footprint, BF16 KV).
-Full operations, activation, rollback (including the empirically required physical-reboot
-sequence), and validation provenance (6-gate operational fast-track):
-[`docs/solar-open2-production.md`](docs/solar-open2-production.md).
-
-**Qwen3.8 Flash Next Uncensored FP8 manual recipe** uses the immutable Ray 2.59.0 child image
-`ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5`,
-the exact source overlay, eager execution, TP=2/EP=2, MTP k=2, `MAX_NUM_SEQS=2`, BT8K, fixed
-8 GiB KV/rank, and `MAX_MODEL_LEN=262144`. Runtime checks covered vision/multimodal requests,
-tool calling, structured output, 262,112-token retrieval, MTP activity, and actual synchronized C2.
-The matched MP/Ray C2 comparison passed every declared retention gate; the former MP image and
-entrypoint remain available through the explicit rollback preset. This recipe is not auto-started.
-
-```bash
-docker pull ghcr.io/bjk110/vllm-spark@sha256:1308dca36201a271adbb928b7b2927fb0c049e5a6d6748900991e03484a09de5
-```
-
-Launch it with
-[`presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env)
-and the required
-[`compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml`](compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml)
-overlay. Follow the dedicated
-[step-by-step recipe](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md); do not combine it
-with the official-checkpoint Qwen profiles or their overlays. MP rollback uses
-[`presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env`](presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env).
-
-> **`dsv4-d568` is intentionally frozen** and will not be rebased onto NGC 26.05+. `dsv4-d568`
-> (JASL-era) and `unholy-fusion` are historical/experimental references, not recommended operational paths.
-
-> **DeepSeek-V4 B3 sparse-attention investigation is CLOSED (2026-07-03).** Backporting the experimental
-> FlashInfer CUDA sparse-MLA prefill-only kernel was **performance-neutral** (64K c1 prefill parity,
-> −0.91% vs the MARLIN baseline) and is **Experimental**. Full record:
-> [`docs/dsv4-sparse-mla-b3-investigation-closure.md`](docs/dsv4-sparse-mla-b3-investigation-closure.md).
-
-> **SM121 rowwise-MQA graph-safe fix (Issue #17, closed).** The graph-safe `ops/sm12x_mqa.py` signature
-> patch (PR #18, `tl.constexpr` 83→64) is installed in the MTP1 rollback image (`@de69fa367137`);
-> repository-recipe-level patched image, not an upstream fix, no performance claim. Technical record:
-> [`docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md`](docs/deepseek-v4-sm121-rowwise-mqa-cudagraph-fix.md).
-
-Component versions, stack lineage, and digests → [`docs/software-stack.md`](docs/software-stack.md).
-Image tag → Git-ref mapping → [`docs/images.md`](docs/images.md). Optional FlashInfer-AOT drop-in
-for `v022-d568` → [`docs/flashinfer-aot-prebake.md`](docs/flashinfer-aot-prebake.md).
+Exact image identities, stack lineage, and registry/local-image distinctions are maintained in
+[`docs/images.md`](docs/images.md) and [`docs/software-stack.md`](docs/software-stack.md). Detailed
+performance results and qualification history belong in model runbooks and retained evidence, not in
+this top-level launch guide.
 
 ## Quick Start
 
-Presets live in [`presets/`](presets/) (`.env` files only — no model weights). Keep weights outside
-the repo and point `MODEL_PATH` / `MODEL_CONTAINER_PATH` at them.
+### 1. Select a preset
 
-### 1. Get the image
+Choose a preset from [`presets/README.md`](presets/README.md), then read its header before running any
+command. Treat these fields as one contract:
 
-Pull the image referenced by the selected preset on every participating node. For the current
-DeepSeek-V4 operational route, use its immutable manifest digest:
+- `VLLM_IMAGE`, `ENTRYPOINT_FILE`, and model identity;
+- `CLUSTER_MODE`, `TP_SIZE`, and `DISTRIBUTED_BACKEND`;
+- model length, concurrency, batched-token, KV-cache, and backend settings;
+- **Required overlay** and linked runbook;
+- status, limits, startup order, and rollback path.
+
+Historical filenames are identifiers, not instructions to substitute another image or overlay. If a
+rollback is needed, use the rollback preset and its own required overlays as a complete set.
+
+### 2. Prepare and render
+
+Keep model weights outside this repository. On every participating node:
+
+1. use the same clean repository revision;
+2. make the preset's immutable image available;
+3. verify `MODEL_PATH`, model revision markers, cache paths, and RoCE device names required by the
+   selected runbook;
+4. render the final Compose configuration without starting containers.
+
+Example render from the repository root:
 
 ```bash
-docker pull ghcr.io/bjk110/vllm-spark@sha256:7a005243701c5df6f8945ea56d509f747f2c63ecff6091a0169d8109a736d09f
+PRESET='presets/selected-model.env'
+OVERLAY='compose/required-overlay.yml'  # replace both values; omit the second -f when none is required
+
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose --env-file "$PRESET" \
+  -f docker-compose.yml -f "$OVERLAY" \
+  --profile '*' config
 ```
 
-Other general bases are cataloged in [`docs/images.md`](docs/images.md). Future DSV4 derivative
-images can reuse the published frozen runtime build base instead of rebuilding vLLM/FlashInfer; see
-[`docs/deepseek-v4-v027-runtime-build-base.md`](docs/deepseek-v4-v027-runtime-build-base.md) and
-[`dockerfiles/`](dockerfiles/).
+Before launch, inspect the rendered image, entrypoint, mounts, role addresses, backend, context,
+concurrency, KV budget, and restart policy. A render failure or unexpected empty value is a
+configuration error; do not compensate by inventing an environment override.
 
-### 2. Check the preset and prerequisites
+### 3. Start by topology and backend
 
-Presets are cataloged by status in [`presets/README.md`](presets/README.md). Keep model weights outside
-the repository. Before startup, ensure both nodes use the same clean tracked Git revision and that
-`MODEL_PATH`, the RoCE addresses/interface, and the immutable image identity exist on both nodes. The
-current DeepSeek-V4 operational artifacts are:
+Use the exact preset and overlay arguments that passed rendering.
 
-- `presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env`;
-- `compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml`;
-- `scripts/prewarm_dsv4_v027_b43s.py`.
+#### Single Spark
 
-The preset retains `candidate` in its historical filename but is the recommended preset. Its
-`VLLM_IMAGE` is pinned directly to the immutable manifest digest.
-
-### 3. Start the recommended DeepSeek-V4 route
-
-Run from the repository root on both nodes. Start the MP worker before the head. This is TP=2 startup,
-not two independent servers:
+Start only the head profile:
 
 ```bash
-# spark02 — worker first
-docker compose \
-  --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
-  -f docker-compose.yml \
-  -f compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml \
-  --profile worker up -d
-
-# spark01 — head plus one-shot automatic prewarm
-docker compose \
-  --env-file presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env \
-  -f docker-compose.yml \
-  -f compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml \
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose --env-file "$PRESET" \
+  -f docker-compose.yml -f "$OVERLAY" \
   --profile head up -d
 ```
 
-For generic single-Spark and other dual-Spark presets, follow the preset header and
-[`presets/README.md`](presets/README.md); model-specific overlays must not be omitted. `entrypoint.sh`
-dispatches on `CLUSTER_MODE`×`ROLE`×`TP_SIZE`×`DISTRIBUTED_BACKEND`; details are in
-[`docs/architecture.md`](docs/architecture.md).
+#### Dual Spark with `DISTRIBUTED_BACKEND=ray`
+
+Start the head first, then join the worker within the runbook's bounded join timeout:
+
+```bash
+# head node
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose --env-file "$PRESET" -f docker-compose.yml -f "$OVERLAY" \
+  --profile head up -d
+
+# worker node
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose --env-file "$PRESET" -f docker-compose.yml -f "$OVERLAY" \
+  --profile worker up -d
+```
+
+#### Dual Spark with `DISTRIBUTED_BACKEND=mp`
+
+Start the worker first, then the head. Both containers are ranks of one TP service, not independent
+servers:
+
+```bash
+# worker node
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose --env-file "$PRESET" -f docker-compose.yml -f "$OVERLAY" \
+  --profile worker up -d
+
+# head node
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose --env-file "$PRESET" -f docker-compose.yml -f "$OVERLAY" \
+  --profile head up -d
+```
+
+A model runbook may add preflight, prewarm, revision, or cache requirements. Those requirements are
+additive and take precedence over these generic examples.
 
 ### 4. Verify readiness
 
-`/health` means engine alive, not prewarm complete. Wait for all three checks before serving traffic:
+`/health` proves that the API process is responding; it does not by itself prove model identity,
+capacity, correctness, or completion of an optional prewarm job. Verify all applicable gates:
 
 ```bash
 curl -fsS http://127.0.0.1:8000/health
 curl -fsS http://127.0.0.1:8000/v1/models
+curl -fsS http://127.0.0.1:8000/metrics | \
+  grep -E 'vllm:num_requests_(running|waiting)|vllm:gpu_cache_usage_perc'
 
-docker ps -a --filter name=vllm-spark-prewarm \
-  --format 'table {{.Names}}\t{{.Status}}'
-docker logs vllm-spark-prewarm
+docker inspect vllm-spark-head \
+  --format 'running={{.State.Running}} restart={{.RestartCount}} oom={{.State.OOMKilled}}'
 ```
 
-The model list must contain `deepseek-ai/DeepSeek-V4-Flash-0731` with
-`max_model_len: 262144`, and `vllm-spark-prewarm` must finish with exit code 0. Cold startup normally
-takes about 8–11 minutes. See [`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md) for
-rollback and GB10 UMA recovery.
+Require:
 
-## Presets and model paths
+- `/health` succeeds and `/v1/models` reports the expected served model and context length;
+- head and required worker containers are running with `OOMKilled=false` and `RestartCount=0`;
+- cluster membership matches the selected topology;
+- a bounded non-thinking generation returns HTTP 200 and expected content;
+- required tool, structured-output, multimodal, long-context, concurrency, MTP, or prewarm checks from
+  the model runbook pass;
+- container and kernel logs contain no fatal CUDA, NCCL, EngineCore, OOM, Xid, or fallen-GPU signal.
 
-All model-serving presets live in [`presets/`](presets/), grouped by status (recommended,
-rollback, validated, general supported, experimental, historical/reproduction) in
-[`presets/README.md`](presets/README.md). Each `.env` documents its own model, image/stack,
-topology, and flags in its header. Keep model weights outside the repository and point `MODEL_PATH`
-/ `MODEL_CONTAINER_PATH` at them.
+Cold loading can take a long time on unified memory. Forward progress without OOM, restart, API
+failure, or fatal logs is not by itself a failure. Use the selected runbook's timeout and hard-failure
+boundary rather than a timeout copied from another model.
+
+### 5. Stop, switch, or roll back
+
+Use the same preset and overlay set used for launch. Stop the head first, then the worker:
+
+```bash
+# head node
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose --env-file "$PRESET" -f docker-compose.yml -f "$OVERLAY" \
+  --profile head down
+
+# worker node, when present
+env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
+  docker compose --env-file "$PRESET" -f docker-compose.yml -f "$OVERLAY" \
+  --profile worker down
+```
+
+Before loading another large model or changing backend:
+
+1. confirm containers and distributed-runtime processes are gone;
+2. inspect host memory and swap;
+3. perform the runbook's cache cleanup or clean reboot when unified-memory state remains;
+4. render the next preset and overlays again;
+5. follow that backend's startup order.
+
+Never activate a rollback by changing only `VLLM_IMAGE` or only the preset. A rollback may require a
+different entrypoint, overlay, launch order, or validation boundary.
 
 ## Repository layout
 
-```
+```text
 vllm-spark/
-├── docker-compose.yml        # Unified compose (head + worker profiles)
-├── compose/                  # Model-specific Compose overlays (e.g. compose/solar-open2/)
-├── entrypoints/              # Container entrypoints (ENTRYPOINT_FILE); see entrypoints/README.md
-├── dockerfiles/              # active/ + legacy/ Dockerfiles; see dockerfiles/README.md
-├── presets/                  # .env model-serving presets (not weights); see presets/README.md
-├── patches/                  # Build/runtime patches by purpose; see patches/README.md
-├── scripts/                  # Cluster bootstrap, verification, diagnostics
-├── benchmarks/               # Raw benchmark artifacts; see benchmarks/README.md
-├── docs/                     # Documentation — start at docs/README.md
-├── CHANGELOG.md              # Release-by-release history
-└── PATCH_STATUS.md           # Per-patch purpose / status / removal condition
+├── docker-compose.yml        # Shared head + worker Compose base
+├── compose/                  # Model-specific Compose overlays
+├── entrypoints/              # Runtime entrypoints selected by presets
+├── dockerfiles/              # Image definitions and provenance
+├── presets/                  # Model-serving .env contracts; no weights
+├── patches/                  # Build/runtime patches grouped by purpose
+├── scripts/                  # Bootstrap, verification, and diagnostics
+├── benchmarks/               # Benchmark tooling and retained summaries
+├── docs/                     # Architecture, runbooks, operations, and history
+├── CHANGELOG.md
+└── PATCH_STATUS.md
 ```
 
-## Configuration
+## Configuration principles
 
-All configuration is via `.env` (see [`.env.example`](.env.example) for full documentation). Key
-variables: `VLLM_IMAGE`, `MODEL_PATH`, `MODEL_CONTAINER_PATH`, `SERVED_MODEL_NAME`, `CLUSTER_MODE`,
-`TP_SIZE`; for `dual-rdma`: `HEAD_ROCE_IP` / `WORKER_ROCE_IP` / `ROCE_IF_NAME` / `IB_HCA_NAME` and
-`DISTRIBUTED_BACKEND` (`ray` default, or `mp` with `MASTER_PORT`); plus `VLLM_EXTRA_ARGS` for
-model-specific flags. Active build/runtime patches are tracked in
-[`PATCH_STATUS.md`](PATCH_STATUS.md).
+- Presets contain configuration, not model weights or credentials.
+- Prefer immutable registry digests; distinguish them from local Docker image IDs.
+- Keep model mounts and pinned source overlays read-only.
+- Use a clean shell environment when rendering so ambient variables cannot override the preset.
+- Treat image, model revision, source overlay, backend, topology, context, concurrency, KV budget, and
+  decoding mode as one measured runtime contract.
+- Do not add restart/autostart policy unless the selected recipe explicitly defines and verifies it.
+
+The complete variable reference is [`.env.example`](.env.example). Common variables include
+`VLLM_IMAGE`, `MODEL_PATH`, `MODEL_CONTAINER_PATH`, `SERVED_MODEL_NAME`, `CLUSTER_MODE`, `TP_SIZE`,
+`DISTRIBUTED_BACKEND`, `HEAD_ROCE_IP`, `WORKER_ROCE_IP`, `ROCE_IF_NAME`, `IB_HCA_NAME`,
+`MASTER_PORT`, and `VLLM_EXTRA_ARGS`.
 
 ## Documentation
 
-The [**documentation index**](docs/README.md) classifies every document by status (current
-operational, rollback and operations, general stable stacks, model guides, diagnostics, benchmarks,
-validated alternatives, experimental, historical/superseded). Start there. Frequently used:
-
-- DeepSeek-V4 operational (active DSpark, optional MS4, v0.25.0/64K primary rollback + MTP1 legacy rollback, activation/rollback, provenance): [`docs/deepseek-v4-production.md`](docs/deepseek-v4-production.md)
-- Qwen3.8 Uncensored FP8 validated manual recipe (eager k2/C2, 262K, multimodal/tool): [`docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md`](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md)
-- Stack lineage / images: [`docs/software-stack.md`](docs/software-stack.md), [`docs/images.md`](docs/images.md)
-- Architecture: [`docs/architecture.md`](docs/architecture.md)
+- Documentation index: [`docs/README.md`](docs/README.md)
+- Preset catalog: [`presets/README.md`](presets/README.md)
+- Architecture and backend behavior: [`docs/architecture.md`](docs/architecture.md)
+- Images and stack lineage: [`docs/images.md`](docs/images.md), [`docs/software-stack.md`](docs/software-stack.md)
 - Troubleshooting: [`docs/troubleshooting.md`](docs/troubleshooting.md)
-- Presets: [`presets/README.md`](presets/README.md)
+- DeepSeek-V4 model operations: [model runbook](docs/deepseek-v4-production.md)
+- Solar-Open2 model operations: [`docs/solar-open2-production.md`](docs/solar-open2-production.md)
+- Qwen3.8 Uncensored FP8 model operations: [`docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md`](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md)
 
 ## Compatibility and safety notice
 
-- GB10 uses unified memory; a clean reboot + dedicated-cache-clear startup gate is required before a
-  full model load when UVM is retained (not automated by presets).
-- Recommended OS tuning: `sudo sysctl -w vm.swappiness=10`.
+- GB10 uses unified memory. Follow the selected runbook's clean-start and recovery requirements before
+  a full model load when UVM or swap pressure remains.
+- A model recipe can require elevated container capabilities or host-device mounts. Review its rendered
+  Compose configuration before launch and use it only on trusted nodes with trusted artifacts.
+- Recommended host tuning: `sudo sysctl -w vm.swappiness=10`.
 
 ## License
 
 Source code, Dockerfiles, scripts, presets, and documentation are licensed under Apache License 2.0
 (see [`LICENSE`](LICENSE)). This repository does **not** distribute model weights; users are
 responsible for obtaining weights and complying with upstream model licenses. Container images and
-dependencies remain governed by their upstream licenses — see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+dependencies remain governed by their upstream licenses; see
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

@@ -27,15 +27,12 @@
   "README.md": {
     "identifiers": [
       "docs/deepseek-v4-production.md",
-      "docs/deepseek-v4-production.md",
       "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
       "presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env",
       "docs/solar-open2-production.md",
+      "docs/deepseek-v4-production.md",
       "docs/solar-open2-production.md",
-      "docs/deepseek-v4-production.md",
-      "docs/deepseek-v4-production.md",
-      "docs/deepseek-v4-production.md",
-      "docs/deepseek-v4-production.md"
+      "docs/solar-open2-production.md"
     ]
   },
   "benchmarks/evidence/README.md": {
