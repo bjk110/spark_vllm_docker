@@ -125,6 +125,12 @@ and model mounts for both roles, the entrypoint flags, and the rendered Compose 
 Docker Compose is unavailable or a conflicting ambient shell variable could override the preset. It
 never starts a container.
 
+This recipe requires **Docker Compose 2.24.4 or newer**. Its overlay uses
+`environment: !override` to replace the generic base environment with the exact qualified Ray
+closure. Do not convert it back to ordinary merge semantics: Ray 2.59 and FlashInfer can treat
+present-but-empty variables as malformed active settings, and unrelated base tuning can also change
+the NCCL path. The verifier requires exact rendered environment equality for both roles.
+
 On both nodes, pull and verify the image and model before launch:
 
 ```bash
@@ -285,22 +291,23 @@ env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"
   --profile worker down
 ```
 
-After an authorized clean reboot, launch MP rollback worker-first by substituting the rollback preset
-in the same Compose commands:
+After an authorized clean reboot, launch MP rollback worker-first with its dedicated preset and
+overlay. The rollback overlay preserves the qualified MP environment and must not be replaced by the
+Ray overlay:
 
 ```bash
 # spark02 — MP worker first
 env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
   docker compose \
   --env-file presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env \
-  -f docker-compose.yml -f compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml \
+  -f docker-compose.yml -f compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2-mp-rollback.yml \
   --profile worker up -d
 
 # spark01 — MP head second
 env -i PATH="$PATH" HOME="$HOME" DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}" \
   docker compose \
   --env-file presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env \
-  -f docker-compose.yml -f compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml \
+  -f docker-compose.yml -f compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2-mp-rollback.yml \
   --profile head up -d
 ```
 

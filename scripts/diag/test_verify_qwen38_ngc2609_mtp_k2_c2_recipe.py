@@ -81,6 +81,31 @@ class RecipeVerifierTests(unittest.TestCase):
         failures, _ = self.module.verify(self.root, render_compose=False)
         self.assertTrue(any("compose shape" in item for item in failures), failures)
 
+    def test_rejects_mp_rollback_overlay_contract_drift(self):
+        overlay = self.root / "compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2-mp-rollback.yml"
+        overlay.write_text(overlay.read_text().replace("- NNODES=2", "- NNODES=3", 1))
+        failures, _ = self.module.verify(self.root, render_compose=False)
+        self.assertTrue(any("MP rollback compose shape" in item for item in failures), failures)
+
+    def test_rejects_override_semantics_on_mp_rollback_environment(self):
+        overlay = self.root / "compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2-mp-rollback.yml"
+        overlay.write_text(overlay.read_text().replace(
+            "    environment:\n", "    environment: !override\n"
+        ))
+        failures, _ = self.module.verify(self.root, render_compose=False)
+        self.assertTrue(any("MP rollback compose shape" in item for item in failures), failures)
+
+    def test_rejects_rendered_mp_rollback_contract_drift(self):
+        base = self.root / "docker-compose.yml"
+        base.write_text(base.read_text().replace(
+            "      - MASTER_PORT=${MASTER_PORT:-29501}\n", ""
+        ))
+        failures, _ = self.module.verify(self.root)
+        self.assertTrue(
+            any("rendered MP rollback Compose contract invalid" in item for item in failures),
+            failures,
+        )
+
     def test_rejects_raw_head_security_option_drift(self):
         overlay = self.root / "compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml"
         overlay.write_text(overlay.read_text().replace(

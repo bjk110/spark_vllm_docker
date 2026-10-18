@@ -14,6 +14,7 @@ import yaml
 PRESET = Path("presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env")
 ROLLBACK = Path("presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env")
 OVERLAY = Path("compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml")
+ROLLBACK_OVERLAY = Path("compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2-mp-rollback.yml")
 ENTRYPOINT = Path("entrypoints/qwen38-ngc2609-mtp-k2-c2-ray.sh")
 MP_ENTRYPOINT = Path("entrypoints/qwen38-ngc2609-mtp-k2-c2.sh")
 DOCKERFILE = Path("dockerfiles/experimental/Dockerfile.qwen38-ngc2609-ray259-candidate")
@@ -125,6 +126,17 @@ UniqueKeyLoader.add_constructor(
 )
 
 
+def _construct_override(loader, node):
+    if isinstance(node, yaml.SequenceNode):
+        return loader.construct_sequence(node, deep=True)
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node, deep=True)
+    return loader.construct_scalar(node)
+
+
+UniqueKeyLoader.add_constructor("!override", _construct_override)
+
+
 def parse_env(path: Path) -> dict[str, str]:
     result = {}
     for raw in path.read_text().splitlines():
@@ -143,7 +155,87 @@ def expected_mounts() -> list[str]:
     ]
 
 
-def expected_overlay_environment() -> list[str]:
+def expected_overlay_environment(role: str) -> list[str]:
+    role_ip = "HEAD_ROCE_IP" if role == "head" else "WORKER_ROCE_IP"
+    return [
+        f"ROLE={role}",
+        f"VLLM_HOST_IP=${{{role_ip}}}",
+        "MODEL_CONTAINER_PATH=${MODEL_CONTAINER_PATH}",
+        "SERVED_MODEL_NAME=${SERVED_MODEL_NAME}",
+        "HOST_PORT=${HOST_PORT}",
+        "TP_SIZE=${TP_SIZE}",
+        "NNODES=2",
+        "HEAD_ROCE_IP=${HEAD_ROCE_IP}",
+        "WORKER_ROCE_IP=${WORKER_ROCE_IP}",
+        "RAY_PORT=${RAY_PORT}",
+        "RAY_OBJECT_STORE_MEMORY_BYTES=${RAY_OBJECT_STORE_MEMORY_BYTES}",
+        "RAY_memory_monitor_refresh_ms=${RAY_memory_monitor_refresh_ms}",
+        "VLLM_USE_RAY_V2_EXECUTOR_BACKEND=${VLLM_USE_RAY_V2_EXECUTOR_BACKEND}",
+        "MAX_MODEL_LEN=${MAX_MODEL_LEN}",
+        "MAX_NUM_SEQS=${MAX_NUM_SEQS}",
+        "MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS}",
+        "GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION}",
+        "NCCL_DEBUG=${NCCL_DEBUG}",
+        "NCCL_IB_DISABLE=${NCCL_IB_DISABLE}",
+        "NCCL_IB_HCA=${IB_HCA_NAME}",
+        "NCCL_SOCKET_IFNAME=${ROCE_IF_NAME}",
+        "GLOO_SOCKET_IFNAME=${ROCE_IF_NAME}",
+        "NCCL_NVLS_ENABLE=${NCCL_NVLS_ENABLE}",
+        "TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=${TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC}",
+        "VLLM_MOE_USE_DEEP_GEMM=${VLLM_MOE_USE_DEEP_GEMM}",
+        "VLLM_USE_DEEP_GEMM_E8M0=${VLLM_USE_DEEP_GEMM_E8M0}",
+        "KV_CACHE_MEMORY_BYTES=${KV_CACHE_MEMORY_BYTES:-8589934592}",
+        "KV_CACHE_DTYPE=${KV_CACHE_DTYPE:-auto}",
+        "MODEL_REVISION=${MODEL_REVISION}",
+        "RAY_JOIN_TIMEOUT_SEC=${RAY_JOIN_TIMEOUT_SEC:-600}",
+        "RAY_INCLUDE_DASHBOARD=${RAY_INCLUDE_DASHBOARD:-false}",
+        "VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE=${VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE:-auto}",
+        "VLLM_ALL2ALL_BACKEND=${VLLM_ALL2ALL_BACKEND:-allgather_reducescatter}",
+        "UCX_NET_DEVICES=${ROCE_IF_NAME}",
+        "HF_HOME=/cache/huggingface",
+        "XDG_CACHE_HOME=/cache/xdg",
+        "VLLM_CACHE_ROOT=/cache/vllm",
+        "TRITON_CACHE_DIR=/cache/triton",
+        "TORCHINDUCTOR_CACHE_DIR=/cache/torchinductor",
+        "TOKENIZERS_PARALLELISM=false",
+    ]
+
+
+def expected_render_environment(role: str) -> dict[str, str]:
+    keys = (
+        "MODEL_CONTAINER_PATH", "SERVED_MODEL_NAME", "MODEL_REVISION",
+        "HOST_PORT", "TP_SIZE", "NNODES", "HEAD_ROCE_IP",
+        "WORKER_ROCE_IP", "RAY_PORT", "RAY_JOIN_TIMEOUT_SEC",
+        "RAY_INCLUDE_DASHBOARD", "RAY_OBJECT_STORE_MEMORY_BYTES",
+        "RAY_memory_monitor_refresh_ms", "VLLM_USE_RAY_V2_EXECUTOR_BACKEND",
+        "VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE", "MAX_MODEL_LEN",
+        "MAX_NUM_SEQS", "MAX_NUM_BATCHED_TOKENS", "GPU_MEMORY_UTILIZATION",
+        "KV_CACHE_MEMORY_BYTES", "KV_CACHE_DTYPE", "NCCL_DEBUG",
+        "NCCL_IB_DISABLE", "NCCL_NVLS_ENABLE",
+        "TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC", "VLLM_ALL2ALL_BACKEND",
+        "VLLM_MOE_USE_DEEP_GEMM", "VLLM_USE_DEEP_GEMM_E8M0",
+        "TOKENIZERS_PARALLELISM",
+    )
+    result = {key: EXPECTED_ENV[key] for key in keys}
+    result.update({
+        "ROLE": role,
+        "VLLM_HOST_IP": EXPECTED_ENV[
+            "HEAD_ROCE_IP" if role == "head" else "WORKER_ROCE_IP"
+        ],
+        "NCCL_IB_HCA": EXPECTED_ENV["IB_HCA_NAME"],
+        "NCCL_SOCKET_IFNAME": EXPECTED_ENV["ROCE_IF_NAME"],
+        "GLOO_SOCKET_IFNAME": EXPECTED_ENV["ROCE_IF_NAME"],
+        "UCX_NET_DEVICES": EXPECTED_ENV["ROCE_IF_NAME"],
+        "HF_HOME": "/cache/huggingface",
+        "XDG_CACHE_HOME": "/cache/xdg",
+        "VLLM_CACHE_ROOT": "/cache/vllm",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "TORCHINDUCTOR_CACHE_DIR": "/cache/torchinductor",
+    })
+    return result
+
+
+def expected_mp_rollback_overlay_environment(_role: str) -> list[str]:
     return [
         "KV_CACHE_MEMORY_BYTES=${KV_CACHE_MEMORY_BYTES:-8589934592}",
         "KV_CACHE_DTYPE=${KV_CACHE_DTYPE:-auto}",
@@ -163,10 +255,95 @@ def expected_overlay_environment() -> list[str]:
     ]
 
 
+def expected_mp_render_environment(role: str) -> dict[str, str]:
+    result = {
+        "ROLE": role,
+        "CLUSTER_MODE": "dual-rdma",
+        "TP_SIZE": "2",
+        "DISTRIBUTED_BACKEND": "mp",
+        "MASTER_PORT": "29538",
+        "MODEL_CONTAINER_PATH": "/model",
+        "SERVED_MODEL_NAME": MODEL,
+        "MODEL_REVISION": REVISION,
+        "HOST_PORT": "8000",
+        "MAX_MODEL_LEN": "262144",
+        "MAX_NUM_SEQS": "2",
+        "MAX_NUM_BATCHED_TOKENS": "8192",
+        "GPU_MEMORY_UTILIZATION": "0.83",
+        "KV_CACHE_MEMORY_BYTES": "8589934592",
+        "KV_CACHE_DTYPE": "auto",
+        "NNODES": "2",
+        "HEAD_ROCE_IP": "10.10.10.1",
+        "WORKER_ROCE_IP": "10.10.10.2",
+        "ROCE_IF_NAME": "enp1s0f0np0",
+        "IB_HCA_NAME": "rocep1s0f0",
+        "VLLM_HOST_IP": "10.10.10.1" if role == "head" else "10.10.10.2",
+        "NCCL_IB_HCA": "rocep1s0f0",
+        "NCCL_SOCKET_IFNAME": "enp1s0f0np0",
+        "GLOO_SOCKET_IFNAME": "enp1s0f0np0",
+        "UCX_NET_DEVICES": "enp1s0f0np0",
+        "NCCL_IB_DISABLE": "0",
+        "NCCL_DEBUG": "WARN",
+        "NCCL_NVLS_ENABLE": "0",
+        "TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC": "7200",
+        "VLLM_ALL2ALL_BACKEND": "allgather_reducescatter",
+        "VLLM_MOE_USE_DEEP_GEMM": "1",
+        "VLLM_USE_DEEP_GEMM_E8M0": "1",
+        "TOKENIZERS_PARALLELISM": "false",
+        "HF_HOME": "/cache/huggingface",
+        "XDG_CACHE_HOME": "/cache/xdg",
+        "VLLM_CACHE_ROOT": "/cache/vllm",
+        "TRITON_CACHE_DIR": "/cache/triton",
+        "TORCHINDUCTOR_CACHE_DIR": "/cache/torchinductor",
+    }
+    if role == "worker":
+        result["NODE_RANK"] = "1"
+    return result
+
+
+def validate_overlay_shape(
+    repo_root: Path, path: Path, expected_environment, expected_override_count: int
+) -> None:
+    text = (repo_root / path).read_text()
+    if text.count("environment: !override") != expected_override_count:
+        raise ValueError(
+            f"environment !override count drift: "
+            f"{text.count('environment: !override')} != {expected_override_count}"
+        )
+    data = yaml.load(text, Loader=UniqueKeyLoader)
+    if not isinstance(data, dict) or set(data) != {"services"}:
+        raise ValueError("top-level keys must be exactly services")
+    services = data.get("services")
+    if not isinstance(services, dict) or set(services) != {"head", "worker"}:
+        raise ValueError("services must be exactly head and worker")
+    allowed = {
+        "head": {"environment", "volumes", "cap_add", "security_opt", "oom_score_adj", "shm_size", "ulimits", "healthcheck"},
+        "worker": {"environment", "volumes", "cap_add", "security_opt", "oom_score_adj", "shm_size", "ulimits"},
+    }
+    for role in ("head", "worker"):
+        service = services[role]
+        if not isinstance(service, dict) or set(service) != allowed[role]:
+            raise ValueError(f"{role} keys must be exactly {sorted(allowed[role])}")
+        if service.get("volumes") != expected_mounts():
+            raise ValueError(f"{role} volume list is not exact")
+        if service.get("environment") != expected_environment(role):
+            raise ValueError(f"{role} environment list is not exact")
+        if service.get("cap_add") != ["SYS_PTRACE", "IPC_LOCK"]:
+            raise ValueError(f"{role} capability list drift")
+        if service.get("security_opt") != ["label=disable"]:
+            raise ValueError(f"{role} security option drift")
+        if service.get("oom_score_adj") != 1000:
+            raise ValueError(f"{role} oom_score_adj drift")
+        if service.get("shm_size") != "32gb":
+            raise ValueError(f"{role} shm_size drift")
+        if service.get("ulimits") != {"stack": 67108864}:
+            raise ValueError(f"{role} ulimits drift")
+
+
 def verify(repo_root: Path, render_compose: bool = True):
     failures: list[str] = []
     warnings: list[str] = []
-    paths = [PRESET, ROLLBACK, OVERLAY, ENTRYPOINT, MP_ENTRYPOINT, DOCKERFILE, MANIFEST, DOC]
+    paths = [PRESET, ROLLBACK, OVERLAY, ROLLBACK_OVERLAY, ENTRYPOINT, MP_ENTRYPOINT, DOCKERFILE, MANIFEST, DOC]
     for rel in paths:
         if not (repo_root / rel).is_file():
             failures.append(f"missing tracked recipe artifact: {rel}")
@@ -218,36 +395,15 @@ def verify(repo_root: Path, render_compose: bool = True):
             failures.append(f"source syntax error: {name}: {exc}")
 
     try:
-        data = yaml.load((repo_root / OVERLAY).read_text(), Loader=UniqueKeyLoader)
-        if not isinstance(data, dict) or set(data) != {"services"}:
-            raise ValueError("top-level keys must be exactly services")
-        services = data.get("services")
-        if not isinstance(services, dict) or set(services) != {"head", "worker"}:
-            raise ValueError("services must be exactly head and worker")
-        allowed = {
-            "head": {"environment", "volumes", "cap_add", "security_opt", "oom_score_adj", "shm_size", "ulimits", "healthcheck"},
-            "worker": {"environment", "volumes", "cap_add", "security_opt", "oom_score_adj", "shm_size", "ulimits"},
-        }
-        for role in ("head", "worker"):
-            service = services[role]
-            if not isinstance(service, dict) or set(service) != allowed[role]:
-                raise ValueError(f"{role} keys must be exactly {sorted(allowed[role])}")
-            if service.get("volumes") != expected_mounts():
-                raise ValueError(f"{role} volume list is not exact")
-            if service.get("environment") != expected_overlay_environment():
-                raise ValueError(f"{role} environment list is not exact")
-            if service.get("cap_add") != ["SYS_PTRACE", "IPC_LOCK"]:
-                raise ValueError(f"{role} capability list drift")
-            if service.get("security_opt") != ["label=disable"]:
-                raise ValueError(f"{role} security option drift")
-            if service.get("oom_score_adj") != 1000:
-                raise ValueError(f"{role} oom_score_adj drift")
-            if service.get("shm_size") != "32gb":
-                raise ValueError(f"{role} shm_size drift")
-            if service.get("ulimits") != {"stack": 67108864}:
-                raise ValueError(f"{role} ulimits drift")
+        validate_overlay_shape(repo_root, OVERLAY, expected_overlay_environment, 2)
     except Exception as exc:
         failures.append(f"compose shape invalid: {exc}")
+    try:
+        validate_overlay_shape(
+            repo_root, ROLLBACK_OVERLAY, expected_mp_rollback_overlay_environment, 0
+        )
+    except Exception as exc:
+        failures.append(f"MP rollback compose shape invalid: {exc}")
 
     script = (repo_root / ENTRYPOINT).read_text()
     required = [
@@ -318,23 +474,23 @@ def verify(repo_root: Path, render_compose: bool = True):
             else:
                 try:
                     rendered_services = json.loads(proc.stdout)["services"]
-                    render_env = {
-                        key: value for key, value in EXPECTED_ENV.items()
-                        if key not in {
-                            "VLLM_IMAGE", "MODEL_PATH", "ENTRYPOINT_FILE",
-                            "QWEN38_NGC2609_OVERLAY_ROOT",
-                        }
-                    }
                     for role in ("head", "worker"):
                         service = rendered_services[role]
                         if service.get("image") != IMAGE:
                             raise ValueError(f"{role} image drift")
                         actual_env = service.get("environment", {})
-                        for key, expected in render_env.items():
-                            if actual_env.get(key) != expected:
-                                raise ValueError(
-                                    f"{role} {key} drift: {actual_env.get(key)!r}"
-                                )
+                        expected_env = expected_render_environment(role)
+                        if actual_env != expected_env:
+                            missing = sorted(set(expected_env) - set(actual_env))
+                            extra = sorted(set(actual_env) - set(expected_env))
+                            drift = sorted(
+                                key for key in set(actual_env) & set(expected_env)
+                                if actual_env[key] != expected_env[key]
+                            )
+                            raise ValueError(
+                                f"{role} qualified environment drift: "
+                                f"missing={missing}, extra={extra}, values={drift}"
+                            )
                         if service.get("restart") != "no":
                             raise ValueError(f"{role} restart policy drift")
                         if service.get("cap_add") != ["SYS_PTRACE", "IPC_LOCK"]:
@@ -345,8 +501,6 @@ def verify(repo_root: Path, render_compose: bool = True):
                             raise ValueError(f"{role} rendered oom_score_adj drift")
                         if service.get("shm_size") != "34359738368":
                             raise ValueError(f"{role} rendered shm_size drift")
-                        if role == "worker" and actual_env.get("NODE_RANK") != "1":
-                            raise ValueError("worker rendered NODE_RANK drift")
                         volumes = {
                             item["target"]: item for item in service.get("volumes", [])
                         }
@@ -363,6 +517,62 @@ def verify(repo_root: Path, render_compose: bool = True):
                             raise ValueError(f"{role} model mount drift")
                 except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     failures.append(f"rendered Compose contract invalid: {exc}")
+
+            mp_cmd = [
+                "docker", "compose", "--env-file", str(ROLLBACK),
+                "-f", "docker-compose.yml", "-f", str(ROLLBACK_OVERLAY),
+                "--profile", "*", "config", "--format", "json",
+            ]
+            mp_proc = subprocess.run(
+                mp_cmd, cwd=repo_root, env=trusted_env, text=True, capture_output=True
+            )
+            if mp_proc.returncode:
+                failures.append(
+                    f"MP rollback Compose render failed: {mp_proc.stderr.strip()}"
+                )
+            else:
+                try:
+                    mp_services = json.loads(mp_proc.stdout)["services"]
+                    expected_counts = {"head": 95, "worker": 92}
+                    for role in ("head", "worker"):
+                        service = mp_services[role]
+                        if service.get("image") != PARENT_IMAGE:
+                            raise ValueError(f"{role} image drift")
+                        if service.get("entrypoint") != ["bash", "/entrypoint.sh"]:
+                            raise ValueError(f"{role} entrypoint drift")
+                        actual_env = service.get("environment", {})
+                        if len(actual_env) != expected_counts[role]:
+                            raise ValueError(
+                                f"{role} environment cardinality drift: "
+                                f"{len(actual_env)} != {expected_counts[role]}"
+                            )
+                        required_env = expected_mp_render_environment(role)
+                        drift = sorted(
+                            key for key, value in required_env.items()
+                            if actual_env.get(key) != value
+                        )
+                        if drift:
+                            raise ValueError(
+                                f"{role} required environment drift: {drift}"
+                            )
+                        if role == "head" and "NODE_RANK" in actual_env:
+                            raise ValueError("head unexpectedly defines NODE_RANK")
+                        volumes = {
+                            item["target"]: item for item in service.get("volumes", [])
+                        }
+                        entrypoint_mount = volumes.get("/entrypoint.sh", {})
+                        expected_entrypoint = str((repo_root / MP_ENTRYPOINT).resolve())
+                        if (entrypoint_mount.get("source") != expected_entrypoint
+                                or not entrypoint_mount.get("read_only")):
+                            raise ValueError(f"{role} MP entrypoint mount drift")
+                        model_mount = volumes.get("/model", {})
+                        if (model_mount.get("source") != EXPECTED_ENV["MODEL_PATH"]
+                                or not model_mount.get("read_only")):
+                            raise ValueError(f"{role} model mount drift")
+                except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                    failures.append(
+                        f"rendered MP rollback Compose contract invalid: {exc}"
+                    )
     return failures, warnings
 
 
