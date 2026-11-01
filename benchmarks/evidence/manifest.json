@@ -109,10 +109,14 @@
         "patches/qwen/ngc2609-e77-prefault/MANIFEST.json",
         "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md",
         "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/report.md",
-        "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/comparison.json"
+        "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/comparison.json",
+        "docs/qwen3.8-flash-next-v033rc3-qualification-20261101.md",
+        "benchmarks/evidence/retained/qwen38-v033rc3-20261101/report.md",
+        "benchmarks/evidence/retained/qwen38-v033rc3-20261101/comparison.json"
       ],
       "known_limits": [
-        "Manual activation only; not auto-started. The qualified contract is Ray 2.59.0, eager TP=2/EP=2, MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262144 context, and retained multimodal/tool support. Readiness-time memory warnings remain a documented operational warning, and changing the pinned image, model revision, overlay, MTP depth, concurrency, context, KV budget, scheduler cap, or multimodal path requires requalification."
+        "Manual activation only; not auto-started. The qualified contract is Ray 2.59.0, eager TP=2/EP=2, MTP k=2, actual server-side C2, BT8K, fixed 8 GiB KV/rank, 262144 context, and retained multimodal/tool support. Readiness-time memory warnings remain a documented operational warning, and changing the pinned image, model revision, overlay, MTP depth, concurrency, context, KV budget, scheduler cap, or multimodal path requires requalification.",
+        "The 2026-11-01 v0.33.0rc3 evaluation passed bounded correctness and exact 262112-token C2 retrieval but was not adopted because C2 decode, KV capacity, cold start, and an unresolved optional-plugin warning did not improve the established e77 path."
       ]
     },
     {
@@ -197,6 +201,8 @@
     "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md": "f9bc5d2057552d96af566c61e91c7c2f06d5abe82065060c4946d82c94724d44",
     "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/comparison.json": "15221d1ffb3532a82bf77a00800548704b0ae0c9c0e87dd16f7595719c2372ed",
     "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/report.md": "9496cb012844b4030bed253084e6f67b36135acc02116460a5f66d2c6a90c6c3",
+    "benchmarks/evidence/retained/qwen38-v033rc3-20261101/comparison.json": "bff7ff302b51431e93d55e847dd52e61ea64704422925e548a4636ed00517f1a",
+    "benchmarks/evidence/retained/qwen38-v033rc3-20261101/report.md": "0f5039f01b08b5880e622d1e59537b09f916c0ae68750d2a748c487ed90c47c7",
     "benchmarks/evidence/retained/solar-open2-nvfp4-fullbench-20260724-213546/summary.md": "bf58e2e672f777d4022a2305895e5124e2d15c4734864795a06cc78fa3770d8b",
     "benchmarks/evidence/retained/solar-open2-v0251-b12x-cold-warm-20260726T013344Z/report.md": "0d5235708e119160d99a870d467ec547b697b7311284d72a789ebc940ba99a6a",
     "benchmarks/evidence/retained/solar-open2-v0251-b12xsw-r4-20260726T053457Z/report.md": "c8a1ec0a3e68f05d6764f08a75d446f545575ee717481ad2664dae745614e67f",

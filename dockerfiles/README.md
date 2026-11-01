@@ -5,6 +5,7 @@ This directory is organized into two subdirectories:
 ```text
 dockerfiles/
   active/    Current active build targets
+  experimental/  Reproduction/evaluation records; not active targets
   legacy/    Historical, intermediate, and specialized variants
 ```
 
@@ -33,6 +34,18 @@ docker buildx build -f dockerfiles/active/Dockerfile.v022-d568-fi-aot -t vllm-sp
 
 `COPY patches/...`, `COPY scripts/...`, and other relative paths inside these Dockerfiles
 resolve from the repo root build context, not from the Dockerfile's location.
+
+---
+
+## Experimental records — `dockerfiles/experimental/`
+
+| Dockerfile | Purpose | Status |
+|---|---|---|
+| `Dockerfile.qwen38-ngc2609-ray259-candidate` | Adds the qualified Ray 2.59.0 control plane to the immutable Qwen3.8 NGC 26.09/e77 parent | Used by the validated Ray recipe; see its dedicated verifier and runbook |
+| `Dockerfile.qwen38-v033rc3-ngc2609` | Preserves the source-build shape used to compare vLLM v0.33.0rc3 with the established Qwen3.8 e77 runtime | Qualification record only; local image was not published or adopted. See `qwen38-v033rc3-PROVENANCE.md`. |
+
+Experimental Dockerfiles are not implied build recommendations. Follow their provenance record and
+the linked qualification decision before reproducing them.
 
 ---
 

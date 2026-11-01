@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "qualification_date_utc": "2026-11-01",
+  "classification": "BOUNDED_PASS_NOT_ADOPTED",
+  "model": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+  "model_revision": "8bebbc05cbe65099f37c520865463c1377d8050d",
+  "baseline": {
+    "vllm_commit": "e77daef89e18e08321ae7b8b24827eedd5fe8673",
+    "image_id": "sha256:518c1b8f9bdaca735d793ffef1c7d6e050bdb62e6ffc9730e9428052cbc59512",
+    "kv_tokens": 943718,
+    "nominal_262144_concurrency": 3.60,
+    "cold_start_seconds": 1663.7
+  },
+  "evaluated_runtime": {
+    "vllm_tag": "v0.33.0rc3",
+    "source_archive_sha256": "e2685461826c8cfb9542214cd7cf6024886ea75b15d8a88d45f911f22067228f",
+    "image_id": "sha256:d4c2ace4e497d89eee47671cd1aa92a8cedc0d3a5fa17f845781c0bfdfb1cf60",
+    "wheel_sha256": "b485ecf24d6f7f7dfc5e2f3e55d1452d157bcc6fd0893c56fb19996e194216bd",
+    "kv_tokens": 911141,
+    "nominal_262144_concurrency": 3.48,
+    "cold_start_seconds": 2239.3
+  },
+  "runtime_contract": {
+    "topology": "dual-DGX-Spark Ray TP2/EP2",
+    "eager": true,
+    "mtp_spec_tokens": 2,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 8589934592,
+    "max_model_len": 262144,
+    "deep_gemm": false
+  },
+  "short_performance": [
+    {"prompt_tokens": 512, "concurrency": 1, "rc3_decode_tps": 45.617, "baseline_decode_tps": 42.882, "decode_delta_percent": 6.38, "rc3_ttfr_ms": 342.3, "baseline_ttfr_ms": 357.0},
+    {"prompt_tokens": 512, "concurrency": 2, "rc3_decode_tps": 61.204, "baseline_decode_tps": 67.155, "decode_delta_percent": -8.86, "rc3_ttfr_ms": 481.3, "baseline_ttfr_ms": 479.5},
+    {"prompt_tokens": 2048, "concurrency": 1, "rc3_decode_tps": 42.517, "baseline_decode_tps": 40.688, "decode_delta_percent": 4.50, "rc3_ttfr_ms": 752.5, "baseline_ttfr_ms": 781.8},
+    {"prompt_tokens": 2048, "concurrency": 2, "rc3_decode_tps": 55.154, "baseline_decode_tps": 63.995, "decode_delta_percent": -13.81, "rc3_ttfr_ms": 1107.6, "baseline_ttfr_ms": 1264.4}
+  ],
+  "long_context": {
+    "retrieval_30083": "PASS",
+    "retrieval_120195": "PASS",
+    "exact_262112_c2": "PASS",
+    "rc3_c2_latency_seconds": [90.49711923697032, 186.47577508515678],
+    "baseline_c2_latency_seconds": [95.64849273697473, 175.3278195988387],
+    "peak_running": 2,
+    "expected_answer": "KESTREL-74291"
+  },
+  "correctness": {
+    "canonical": "PASS",
+    "semantic_suite": "PASS",
+    "forced_tool_call": "PASS",
+    "json_schema": "PASS",
+    "errors": 0,
+    "oom_killed": false,
+    "restart_count": 0
+  },
+  "decision": "Keep the immutable NGC 26.09/e77 recipe. Preserve v0.33.0rc3 only as a bounded evaluation record; do not activate or publish it as the repository recipe."
+}

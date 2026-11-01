@@ -52,6 +52,10 @@ time.
 | `qwen3.8-flash-next-c1-c2` | Qwen3.8 Flash Next official; manual profile, manual activation, not auto-started | dual-RDMA, `mp` | [Preset catalog](presets/README.md) · [model guide](docs/qwen3.8-flash-next-tp2.md) |
 | `qwen3.8-uncensored-k2-c2` | Qwen3.8 Flash Next Uncensored FP8 | dual-RDMA, Ray | [`presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) · [`compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml`](compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml) · [model runbook](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) |
 
+The 2026-11-01 [v0.33.0rc3 evaluation](docs/qwen3.8-flash-next-v033rc3-qualification-20261101.md)
+passed bounded correctness and 262K/C2 retrieval but did not replace the e77 runtime. The existing
+immutable recipe remains the documented path.
+
 Exact image identities, stack lineage, and registry/local-image distinctions are maintained in
 [`docs/images.md`](docs/images.md) and [`docs/software-stack.md`](docs/software-stack.md). Detailed
 performance results and qualification history belong in model runbooks and retained evidence, not in

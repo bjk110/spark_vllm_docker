@@ -136,6 +136,7 @@ Preserved for evidence and reproducibility. Superseded ≠ incorrect; do not tre
 | Document | Subject | Status | Use |
 |---|---|---|---|
 | [deepseek-v4-external-runtime-qualification-2026-08-28.md](deepseek-v4-external-runtime-qualification-2026-08-28.md) | eugr, MiaAI/Anemll, and Aiden/Tony replacement-candidate closure | `Qualification record` (no candidate validated) | Immutable identities, lossless-gate results, benchmark fail-closed decision |
+| [qwen3.8-flash-next-v033rc3-qualification-20261101.md](qwen3.8-flash-next-v033rc3-qualification-20261101.md) | Qwen3.8 Uncensored FP8 comparison of the established NGC 26.09/e77 runtime with a locally built vLLM v0.33.0rc3 runtime | `Qualification record` (bounded pass; RC3 not adopted) | Correctness, short performance, 262,112-token C2, build provenance, and retain-e77 decision |
 | [model-serving-validation-history.md](model-serving-validation-history.md) | Historical stack validation notes and benchmarks (Gemma 4, Qwen3.5 122B/397B, PrismaQuant, Qwen3.6-35B, TurboQuant) | `Historical` | Historical benchmark/validation archive |
 | [stack-v021.md](stack-v021.md) | Software stack v021-ngc2603 (previous main, NGC 26.03) | `Superseded` | Prior main stack reference |
 | [stack-v019.md](stack-v019.md) | Software stack v019-ngc2603 (archived) | `Historical` (archived) | Archived stack reference |

@@ -1,0 +1,47 @@
+# syntax=docker/dockerfile:1.7
+# Reproduction record for the bounded 2026-11-01 evaluation; not an active build target.
+# Build context must provide vllm-v0.33.0rc3.tar.gz with the SHA-256 pinned in
+# qwen38-v033rc3-PROVENANCE.md. The default base tag is local-only; verify its image ID first.
+ARG BASE_IMAGE=local/vllm-spark:qwen38-ngc2609-e77-base
+FROM ${BASE_IMAGE}
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libdw-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/vllm-rc3-src
+COPY vllm-v0.33.0rc3.tar.gz /tmp/vllm-v0.33.0rc3.tar.gz
+RUN tar -xzf /tmp/vllm-v0.33.0rc3.tar.gz -C /opt/vllm-rc3-src \
+    && rm -f /tmp/vllm-v0.33.0rc3.tar.gz \
+    && python tools/use_existing_torch.py --prefix
+
+ENV VLLM_TARGET_DEVICE=cuda \
+    TORCH_CUDA_ARCH_LIST=12.1 \
+    MAX_JOBS=4 \
+    NVCC_THREADS=2 \
+    VLLM_REQUIRE_RUST_FRONTEND=0 \
+    SETUPTOOLS_SCM_PRETEND_VERSION=0.33.0rc3
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install -r requirements/build/cuda.txt \
+    && python -m pip install -r requirements/cuda.txt
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/opt/vllm-rc3-src/build \
+    --mount=type=cache,target=/opt/vllm-rc3-src/.deps \
+    python csrc/quantization/marlin/generate_kernels.py 12.0 \
+    && python csrc/quantization/marlin/generate_kernels.py 12.0 csrc/moe/marlin_moe_wna16 \
+    && python -m pip wheel --no-build-isolation --no-deps . -w /tmp/vllm-wheel \
+    && python -m pip uninstall -y vllm \
+    && python -m pip install --no-deps /tmp/vllm-wheel/vllm-0.33.0rc3*.whl \
+    && python - <<'PY'
+import torch, vllm
+print('torch', torch.__version__, 'cuda', torch.version.cuda)
+print('vllm', vllm.__version__)
+PY
+
+LABEL org.opencontainers.image.title="vLLM v0.33.0rc3 NGC 26.09 GB10 evaluation" \
+      org.opencontainers.image.version="0.33.0rc3" \
+      local.vllm.base="qwen38-ngc2609-e77" \
+      local.vllm.cuda_arch="12.1"
+WORKDIR /workspace

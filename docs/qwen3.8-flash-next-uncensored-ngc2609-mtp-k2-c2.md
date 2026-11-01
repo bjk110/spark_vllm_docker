@@ -18,6 +18,10 @@ This is the validated configuration for the measured profile. It preserves multi
 do **not** add `--language-model-only`. The recipe publishes exact configuration and source bytes,
 and pins the runtime image by a pullable immutable GHCR manifest digest.
 
+The later bounded [v0.33.0rc3 evaluation](qwen3.8-flash-next-v033rc3-qualification-20261101.md)
+passed correctness and exact 262,112-token C2 retrieval but was not adopted. It does not supersede
+this image, source overlay, preset, or runtime contract.
+
 ## 1. What was qualified
 
 ### Ray canonical arm — 2026-10-18
