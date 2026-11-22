@@ -27,6 +27,7 @@ A model runbook should use this stable outline when it is next revised:
 
 ## Qwen3.8 Flash Next
 
+- [`qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md`](../qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md) — active local-only NGC 26.11 eager MTP 4/3 recipe and NGC 26.10 rollback.
 - [`qwen3.8-flash-next-tp2.md`](../qwen3.8-flash-next-tp2.md) — official checkpoint MP recipe.
 - [`qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md`](../qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) — local-only MTP1 recipe evidence.
 - [`qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md`](../qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) — canonical Ray recipe and dedicated MP rollback.

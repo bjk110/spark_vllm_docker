@@ -1,0 +1,116 @@
+# Exact overlay for the qualified NGC 26.11/vLLM 0.34 MTP 4/3 recommended profile.
+# Use with docker-compose.yml and the matching preset. No automatic restart is added.
+services:
+  head:
+    environment: !override
+      - ROLE=head
+      - VLLM_HOST_IP=${HEAD_ROCE_IP}
+      - MODEL_CONTAINER_PATH=${MODEL_CONTAINER_PATH}
+      - SERVED_MODEL_NAME=${SERVED_MODEL_NAME}
+      - MODEL_REVISION=${MODEL_REVISION}
+      - HOST_PORT=${HOST_PORT}
+      - TP_SIZE=${TP_SIZE}
+      - NNODES=${NNODES}
+      - HEAD_ROCE_IP=${HEAD_ROCE_IP}
+      - WORKER_ROCE_IP=${WORKER_ROCE_IP}
+      - RAY_PORT=${RAY_PORT}
+      - RAY_JOIN_TIMEOUT_SEC=${RAY_JOIN_TIMEOUT_SEC}
+      - RAY_INCLUDE_DASHBOARD=${RAY_INCLUDE_DASHBOARD}
+      - RAY_OBJECT_STORE_MEMORY_BYTES=${RAY_OBJECT_STORE_MEMORY_BYTES}
+      - RAY_memory_monitor_refresh_ms=${RAY_memory_monitor_refresh_ms}
+      - VLLM_USE_RAY_V2_EXECUTOR_BACKEND=${VLLM_USE_RAY_V2_EXECUTOR_BACKEND}
+      - VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE=${VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE}
+      - MAX_MODEL_LEN=${MAX_MODEL_LEN}
+      - MAX_NUM_SEQS=${MAX_NUM_SEQS}
+      - MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS}
+      - GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION}
+      - KV_CACHE_MEMORY_BYTES=${KV_CACHE_MEMORY_BYTES}
+      - KV_CACHE_DTYPE=${KV_CACHE_DTYPE}
+      - SPECULATIVE_CONFIG=${SPECULATIVE_CONFIG}
+      - ENFORCE_EAGER=${ENFORCE_EAGER}
+      - NCCL_DEBUG=${NCCL_DEBUG}
+      - NCCL_IB_DISABLE=${NCCL_IB_DISABLE}
+      - NCCL_IB_HCA=${IB_HCA_NAME}
+      - NCCL_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - GLOO_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - UCX_NET_DEVICES=${ROCE_IF_NAME}
+      - NCCL_NVLS_ENABLE=${NCCL_NVLS_ENABLE}
+      - TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=${TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC}
+      - VLLM_ALL2ALL_BACKEND=${VLLM_ALL2ALL_BACKEND}
+      - VLLM_USE_DEEP_GEMM=${VLLM_USE_DEEP_GEMM}
+      - VLLM_MOE_USE_DEEP_GEMM=${VLLM_MOE_USE_DEEP_GEMM}
+      - VLLM_USE_DEEP_GEMM_E8M0=${VLLM_USE_DEEP_GEMM_E8M0}
+      - HF_HOME=/cache/huggingface
+      - XDG_CACHE_HOME=/cache/xdg
+      - VLLM_CACHE_ROOT=/cache/vllm
+      - TRITON_CACHE_DIR=/cache/triton
+      - TORCHINDUCTOR_CACHE_DIR=/cache/torchinductor
+      - TOKENIZERS_PARALLELISM=false
+    volumes:
+      - ./cache/qwen38-ngc2611-v034-mtp43:/cache:rw
+    cap_add: [SYS_PTRACE, IPC_LOCK, SYS_NICE]
+    security_opt: [label=disable]
+    oom_score_adj: 1000
+    shm_size: 32gb
+    ulimits:
+      stack: 67108864
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 160
+      start_period: 600s
+
+  worker:
+    environment: !override
+      - ROLE=worker
+      - VLLM_HOST_IP=${WORKER_ROCE_IP}
+      - MODEL_CONTAINER_PATH=${MODEL_CONTAINER_PATH}
+      - SERVED_MODEL_NAME=${SERVED_MODEL_NAME}
+      - MODEL_REVISION=${MODEL_REVISION}
+      - HOST_PORT=${HOST_PORT}
+      - TP_SIZE=${TP_SIZE}
+      - NNODES=${NNODES}
+      - HEAD_ROCE_IP=${HEAD_ROCE_IP}
+      - WORKER_ROCE_IP=${WORKER_ROCE_IP}
+      - RAY_PORT=${RAY_PORT}
+      - RAY_JOIN_TIMEOUT_SEC=${RAY_JOIN_TIMEOUT_SEC}
+      - RAY_INCLUDE_DASHBOARD=${RAY_INCLUDE_DASHBOARD}
+      - RAY_OBJECT_STORE_MEMORY_BYTES=${RAY_OBJECT_STORE_MEMORY_BYTES}
+      - RAY_memory_monitor_refresh_ms=${RAY_memory_monitor_refresh_ms}
+      - VLLM_USE_RAY_V2_EXECUTOR_BACKEND=${VLLM_USE_RAY_V2_EXECUTOR_BACKEND}
+      - VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE=${VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE}
+      - MAX_MODEL_LEN=${MAX_MODEL_LEN}
+      - MAX_NUM_SEQS=${MAX_NUM_SEQS}
+      - MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS}
+      - GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION}
+      - KV_CACHE_MEMORY_BYTES=${KV_CACHE_MEMORY_BYTES}
+      - KV_CACHE_DTYPE=${KV_CACHE_DTYPE}
+      - SPECULATIVE_CONFIG=${SPECULATIVE_CONFIG}
+      - ENFORCE_EAGER=${ENFORCE_EAGER}
+      - NCCL_DEBUG=${NCCL_DEBUG}
+      - NCCL_IB_DISABLE=${NCCL_IB_DISABLE}
+      - NCCL_IB_HCA=${IB_HCA_NAME}
+      - NCCL_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - GLOO_SOCKET_IFNAME=${ROCE_IF_NAME}
+      - UCX_NET_DEVICES=${ROCE_IF_NAME}
+      - NCCL_NVLS_ENABLE=${NCCL_NVLS_ENABLE}
+      - TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=${TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC}
+      - VLLM_ALL2ALL_BACKEND=${VLLM_ALL2ALL_BACKEND}
+      - VLLM_USE_DEEP_GEMM=${VLLM_USE_DEEP_GEMM}
+      - VLLM_MOE_USE_DEEP_GEMM=${VLLM_MOE_USE_DEEP_GEMM}
+      - VLLM_USE_DEEP_GEMM_E8M0=${VLLM_USE_DEEP_GEMM_E8M0}
+      - HF_HOME=/cache/huggingface
+      - XDG_CACHE_HOME=/cache/xdg
+      - VLLM_CACHE_ROOT=/cache/vllm
+      - TRITON_CACHE_DIR=/cache/triton
+      - TORCHINDUCTOR_CACHE_DIR=/cache/torchinductor
+      - TOKENIZERS_PARALLELISM=false
+    volumes:
+      - ./cache/qwen38-ngc2611-v034-mtp43:/cache:rw
+    cap_add: [SYS_PTRACE, IPC_LOCK, SYS_NICE]
+    security_opt: [label=disable]
+    oom_score_adj: 1000
+    shm_size: 32gb
+    ulimits:
+      stack: 67108864

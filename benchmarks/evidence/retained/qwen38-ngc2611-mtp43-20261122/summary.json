@@ -1,0 +1,138 @@
+{
+  "schema": "qwen38-ngc2611-mtp43-llama-benchy.v1",
+  "runtime": {
+    "image_id": "sha256:491a7ae4cec7c706a5325d249ecae20d2ed41734d5b137d997ce3c77efaccb21",
+    "base": "NGC 26.11",
+    "vllm_commit": "62d4bc3c7e33b1b6c906e233e6af2d3506c482ca",
+    "model": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+    "model_revision": "8bebbc05cbe65099f37c520865463c1377d8050d",
+    "topology": "dual DGX Spark, Ray TP=2/EP=2 over RoCE",
+    "driver": "615.71.10",
+    "profile": "eager, FP8 KV, fixed 8 GiB/rank, default MoE, MTP batch schedule C1=4/C2=3, engine MAX_NUM_SEQS=2"
+  },
+  "benchmark": {
+    "version": "0.4.0",
+    "timestamp": "2026-11-22 15:39:33Z",
+    "benchmark_objects": 12,
+    "derived_pp_tg_rows": 24,
+    "requests": 135,
+    "errors": 0,
+    "latency_ms": 333.11110199429095,
+    "mtp_drafted_delta": 29725.0,
+    "mtp_accepted_delta": 12977.0,
+    "mtp_acceptance": 0.4365685449957948,
+    "rows": [
+      {
+        "pp": 512,
+        "c": 1,
+        "prefill_tps": 18381.49400800584,
+        "agg_decode_tps": 37.77192287733548,
+        "per_request_decode_tps": 37.77192287733548,
+        "ttft_ms": 367.3266210244037
+      },
+      {
+        "pp": 512,
+        "c": 2,
+        "prefill_tps": 1439.7857170479765,
+        "agg_decode_tps": 59.97193340241552,
+        "per_request_decode_tps": 32.77549726172572,
+        "ttft_ms": 532.4838948242055
+      },
+      {
+        "pp": 512,
+        "c": 4,
+        "prefill_tps": 367.3182305257249,
+        "agg_decode_tps": 59.12485866299579,
+        "per_request_decode_tps": 32.47006283726553,
+        "ttft_ms": 2515.776830414931
+      },
+      {
+        "pp": 512,
+        "c": 8,
+        "prefill_tps": 268.54754968624684,
+        "agg_decode_tps": 56.234920179609276,
+        "per_request_decode_tps": 31.95170339747124,
+        "ttft_ms": 7108.781676426588
+      },
+      {
+        "pp": 2048,
+        "c": 1,
+        "prefill_tps": 4309.804428719185,
+        "agg_decode_tps": 34.69643953441619,
+        "per_request_decode_tps": 34.69643953441619,
+        "ttft_ms": 800.4695556592196
+      },
+      {
+        "pp": 2048,
+        "c": 2,
+        "prefill_tps": 2792.5676369267107,
+        "agg_decode_tps": 60.07050251030926,
+        "per_request_decode_tps": 32.41064852265048,
+        "ttft_ms": 1308.816884838355
+      },
+      {
+        "pp": 2048,
+        "c": 4,
+        "prefill_tps": 1154.3628687852313,
+        "agg_decode_tps": 52.30742198115734,
+        "per_request_decode_tps": 32.66392926378803,
+        "ttft_ms": 3799.9266045808326
+      },
+      {
+        "pp": 2048,
+        "c": 8,
+        "prefill_tps": 910.7734423286296,
+        "agg_decode_tps": 49.24171737294382,
+        "per_request_decode_tps": 29.305614482186474,
+        "ttft_ms": 8998.60303599174
+      },
+      {
+        "pp": 8192,
+        "c": 1,
+        "prefill_tps": 3657.6298103212557,
+        "agg_decode_tps": 37.96407280173736,
+        "per_request_decode_tps": 37.96407280173736,
+        "ttft_ms": 2562.8067773068324
+      },
+      {
+        "pp": 8192,
+        "c": 2,
+        "prefill_tps": 3099.499264189782,
+        "agg_decode_tps": 32.77421192483658,
+        "per_request_decode_tps": 26.564272208845498,
+        "ttft_ms": 3898.0472771800123
+      },
+      {
+        "pp": 8192,
+        "c": 4,
+        "prefill_tps": 2314.79400006888,
+        "agg_decode_tps": 31.665708358199183,
+        "per_request_decode_tps": 24.45915381557153,
+        "ttft_ms": 8127.0959061609265
+      },
+      {
+        "pp": 8192,
+        "c": 8,
+        "prefill_tps": 1997.9461739905119,
+        "agg_decode_tps": 29.796321020391158,
+        "per_request_decode_tps": 23.271983632666785,
+        "ttft_ms": 17460.005259461468
+      }
+    ]
+  },
+  "post_state": {
+    "health": 200,
+    "canonical": "POST_BENCH_OK",
+    "head_running": true,
+    "worker_running": true,
+    "oomkilled": false,
+    "restart_count": 0,
+    "xid": 0,
+    "api_mismatch": 0,
+    "linux_oom_kill": 0,
+    "nccl_fatal": 0,
+    "engine_fatal": 0,
+    "nv_err_no_memory_during_benchmark": 0
+  },
+  "raw_evidence": "maintainer-local raw logs; intentionally not tracked in Git"
+}

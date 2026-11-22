@@ -35,6 +35,7 @@ PROCESS_DOCS = {
 OVERLAYS = {
     'compose/deepseek-v4/docker-compose.v027-b43s-candidate.yml',
     'compose/qwen3.8-flash-next/docker-compose.candidate.yml',
+    'compose/qwen3.8-flash-next/docker-compose.ngc2611-v034-mtp43.yml',
     'compose/solar-open2/docker-compose.b12x-cache.yml',
     'compose/solar-open2/docker-compose.r4-production.yml',
 }
@@ -78,6 +79,17 @@ def test_public_surfaces_have_neutral_prose(path):
     if path.endswith(('.env', '.yml', '.yaml')):
         text = '\n'.join(line for line in text.splitlines() if line.lstrip().startswith('#'))
     assert not MATURITY.search(prose(path, text)), path
+
+
+def test_ngc2611_overlay_uses_exact_nccl_heartbeat_timeout_key():
+    overlay = (
+        ROOT / 'compose/qwen3.8-flash-next/docker-compose.ngc2611-v034-mtp43.yml'
+    ).read_text()
+    assert 'TORCH_NCCL_HEARTBE_TIMEOUT_SEC' not in overlay
+    assert sum(
+        line.strip().startswith('- TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=')
+        for line in overlay.splitlines()
+    ) == 2
 
 
 @pytest.mark.parametrize('text', [

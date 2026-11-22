@@ -8,6 +8,7 @@ This directory contains the container entrypoint scripts used by `docker-compose
 |---|---|---|
 | `entrypoint.sh` | Standard path (`dsv4-d568` and general) | CLUSTER_MODE-aware; handles single / dual-rdma / Ray / mp dispatch |
 | `entrypoint-tokenizer-overlay.sh` | Tokenizer-overlay recipes | Builds and validates the configured non-mutating tokenizer overlay before delegating to the standard entrypoint |
+| `qwen38-ngc2611-v034-mtp43-ray.sh` | Uncensored Qwen3.8 NGC 26.11/vLLM 0.34 Ray recipe | Ray head/worker dispatch with eager, FP8 KV, fixed 8 GiB/rank, and batch-aware MTP C1=4/C2=3 |
 | `qwen38-ngc2609-mtp-k2-c2-ray.sh` | Uncensored Qwen3.8 NGC 26.09/e77 Ray recipe | Ray head/worker dispatch with the exact qualified serving contract |
 | `qwen38-ngc2609-mtp-k2-c2.sh` | Uncensored Qwen3.8 NGC 26.09/e77 MP rollback | Exact eager TP=2/EP=2, MTP k=2, C2, BT8K, fixed 8 GiB KV/rank, 262,144-context argv; preserves multimodal/tool support |
 

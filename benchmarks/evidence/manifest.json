@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "catalog-sections-1-and-2",
-  "recipe_count": 16,
+  "recipe_count": 17,
   "recipes": [
     {
       "preset": "presets/deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2.env",
@@ -102,6 +102,19 @@
       ]
     },
     {
+      "preset": "presets/qwen3.8-flash-next-uncensored-fp8-ngc2611-mtp43-recommended.env",
+      "status_class": "production",
+      "evidence": [
+        "docs/qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md",
+        "benchmarks/evidence/retained/qwen38-ngc2611-mtp43-20261122/report.md",
+        "benchmarks/evidence/retained/qwen38-ngc2611-mtp43-20261122/summary.json",
+        "benchmarks/evidence/retained/qwen38-ngc2611-mtp43-20261122/qualification.json"
+      ],
+      "known_limits": [
+        "Local-only immutable image; manual activation; retain NGC 26.10 containers and the portable NGC 26.09 recipe until the exact NGC 26.11 image is published."
+      ]
+    },
+    {
       "preset": "presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env",
       "status_class": "validated-non-production",
       "evidence": [
@@ -198,6 +211,9 @@
     "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx32k-20260624-lc1/stage_summary.json": "ab4ff9d0b75ecbce8ca0fc7309595991c609deae59cdbaf6a315243d91da210f",
     "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longctx64k-20260624-lc2/stage_summary.json": "9cde8f8e9d9a5ad3cb69b319fcf344065a309a0456257ce95e4b2307a543e4bf",
     "benchmarks/evidence/retained/dsv4-mtp1-fullgraph-longsoak-20260623-133120/soak_out/soak_summary.json": "016e1859ee7e7eede6cde57e245ce28fa13620b81169126f40de06b4c28aa455",
+    "benchmarks/evidence/retained/qwen38-ngc2611-mtp43-20261122/qualification.json": "7ce3fbb15fb331655f20b51c246f9266d722f5494b47d8abe578fa3a034b1619",
+    "benchmarks/evidence/retained/qwen38-ngc2611-mtp43-20261122/report.md": "3a5c01324442a6b22120894f1648c128d422b4b677dbedee7ebb51ed2500326b",
+    "benchmarks/evidence/retained/qwen38-ngc2611-mtp43-20261122/summary.json": "ddc7931acc3cb8ff0bc5a73b546dd4b26a1094efc5474734b66dac3003237136",
     "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md": "f9bc5d2057552d96af566c61e91c7c2f06d5abe82065060c4946d82c94724d44",
     "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/comparison.json": "15221d1ffb3532a82bf77a00800548704b0ae0c9c0e87dd16f7595719c2372ed",
     "benchmarks/evidence/retained/qwen38-uncensored-k2-c2-ray-matched-20261018/report.md": "9496cb012844b4030bed253084e6f67b36135acc02116460a5f66d2c6a90c6c3",

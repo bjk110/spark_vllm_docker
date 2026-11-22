@@ -50,11 +50,13 @@ time.
 | `dsv4-flash-0731-v027` | DeepSeek-V4 Flash | dual-RDMA, `mp` | [Preset catalog](presets/README.md) · [model runbook](docs/deepseek-v4-production.md) |
 | `solar-open2-r4-bf16` | Solar-Open2-250B; local-only reference | dual-RDMA, Ray | [`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`](presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env) · [model runbook](docs/solar-open2-production.md) |
 | `qwen3.8-flash-next-c1-c2` | Qwen3.8 Flash Next official; manual profile, manual activation, not auto-started | dual-RDMA, `mp` | [Preset catalog](presets/README.md) · [model guide](docs/qwen3.8-flash-next-tp2.md) |
-| `qwen3.8-uncensored-k2-c2` | Qwen3.8 Flash Next Uncensored FP8 | dual-RDMA, Ray | [`presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) · [`compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml`](compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml) · [model runbook](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) |
+| `qwen3.8-uncensored-ngc2611-mtp43` | Qwen3.8 Flash Next Uncensored FP8; active local-only recommended path | dual-RDMA, Ray | [`presets/qwen3.8-flash-next-uncensored-fp8-ngc2611-mtp43-recommended.env`](presets/qwen3.8-flash-next-uncensored-fp8-ngc2611-mtp43-recommended.env) · [`compose/qwen3.8-flash-next/docker-compose.ngc2611-v034-mtp43.yml`](compose/qwen3.8-flash-next/docker-compose.ngc2611-v034-mtp43.yml) · [recommended runbook](docs/qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md) |
+| `qwen3.8-uncensored-k2-c2` | Qwen3.8 Flash Next Uncensored FP8; prior portable validated path | dual-RDMA, Ray | [`presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env`](presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env) · [`compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml`](compose/qwen3.8-flash-next/docker-compose.ngc2609-mtp-k2-c2.yml) · [model runbook](docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) |
 
-The 2026-11-01 [v0.33.0rc3 evaluation](docs/qwen3.8-flash-next-v033rc3-qualification-20261101.md)
-passed bounded correctness and 262K/C2 retrieval but did not replace the e77 runtime. The existing
-immutable recipe remains the documented path.
+The NGC 26.11/vLLM 0.34 MTP 4/3 profile was adopted on 2026-11-22 after strict tool,
+262K-context, C1/C2, final soak, and full llama-benchy gates. Its image is local-only; retain the
+portable NGC 26.09 recipe and NGC 26.10 live containers as rollback paths until the exact NGC 26.11
+artifact is published.
 
 Exact image identities, stack lineage, and registry/local-image distinctions are maintained in
 [`docs/images.md`](docs/images.md) and [`docs/software-stack.md`](docs/software-stack.md). Detailed

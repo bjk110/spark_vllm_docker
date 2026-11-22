@@ -47,7 +47,7 @@ def anchors(text):
     result.update(re.findall(r'(?:id|name)=["\']([^"\']+)', text))
     return result
 
-EXPECTED_PRESET_COUNT = 45
+EXPECTED_PRESET_COUNT = 46
 
 
 def verify(root, skip_compose=False, expected_count=EXPECTED_PRESET_COUNT):

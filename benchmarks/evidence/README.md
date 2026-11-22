@@ -1,7 +1,7 @@
 # Canonical recipe evidence
 
-This directory is the evidence authority for the **16 presets in catalog sections 1–2**:
-9 recommended/rollback/manual presets and 7 validated presets.
+This directory is the evidence authority for the **17 presets in catalog sections 1–2**:
+10 recommended/rollback/manual presets and 7 validated presets.
 The machine-readable contract is [`manifest.json`](manifest.json).
 
 ## Retention rule
@@ -23,7 +23,7 @@ kept in the external archive and represented here by [`archive-manifest.sha256`]
 |---|---|---|
 | DeepSeek-V4 | v0.27 Recommended, optional attended MS4, v0.25 primary rollback, MTP1 legacy rollback | [`docs/deepseek-v4-production.md`](../../docs/deepseek-v4-production.md), [`docs/deepseek-v4-v027-b43s-promotion-candidate.md`](../../docs/deepseek-v4-v027-b43s-promotion-candidate.md), retained MTP1 cold/soak/long-context summaries |
 | Solar-Open2 | v0.25.1 r4 Recommended and v0.22.1 rollback | [`docs/solar-open2-production.md`](../../docs/solar-open2-production.md), tracked r3/r4 source provenance, retained validation/readiness/build/cache/performance summaries |
-| Qwen3.8 | Manual c1/c2 baseline, PR55122 MTP1 c1 opt-in, validated uncensored NGC 26.09 eager MTP k=2/actual-C2/BT8K/262K multimodal-tool recipe, and the retain-e77 v0.33.0rc3 decision | [`docs/qwen3.8-flash-next-tp2.md`](../../docs/qwen3.8-flash-next-tp2.md), [`docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md`](../../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md), [`docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md`](../../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md), [retained full-benchmark summary](retained/qwen38-uncensored-k2-c2-fullbench-20261016/report.md), [retained v0.33.0rc3 comparison](retained/qwen38-v033rc3-20261101/report.md) |
+| Qwen3.8 | Active local-only NGC 26.11 eager MTP 4/3 recommended profile; manual c1/c2 baseline; PR55122 MTP1 c1 opt-in; portable uncensored NGC 26.09 eager MTP k=2/C2; rollback and v0.33.0rc3 decision | [`docs/qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md`](../../docs/qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md), [NGC 26.11 retained full benchmark](retained/qwen38-ngc2611-mtp43-20261122/report.md), [`docs/qwen3.8-flash-next-tp2.md`](../../docs/qwen3.8-flash-next-tp2.md), [`docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md`](../../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md), [`docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md`](../../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md) |
 | Step-3.7 | NVFP4 v0.23 latency, FP8 v0.23 tokenizer-overlay, FP8 v0.22 bounded paths | tracked benchmark and model guides under [`docs/`](../../docs/README.md) |
 | Gemma 4 / Qwen3.6 | bounded validated presets | [`docs/model-serving-validation-history.md`](../../docs/model-serving-validation-history.md), [`docs/flashinfer-aot-prebake.md`](../../docs/flashinfer-aot-prebake.md) |
 
@@ -48,7 +48,7 @@ python scripts/diag/verify_recipe_evidence.py \
   --archive-root /home/bjk110/benchmark-archive/vllm-spark/2026-10-03-final-recipe-curation
 ```
 
-Without `--archive-root`, CI validates the 15-recipe scope, all tracked evidence links, retained-file
+Without `--archive-root`, CI validates the 17-recipe scope, all tracked evidence links, retained-file
 hashes, and archive-ledger format/count without requiring machine-local benchmark data.
 
 ## Status boundaries

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope": "evidence-backed-executable-recipes",
-  "recipe_count": 16,
+  "recipe_count": 17,
   "recipes": [
     {
       "id": "deepseek-v4-flash-0731-dspark-k7-256k-v027-candidate-tp2",
@@ -302,7 +302,7 @@
     {
       "id": "qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate",
       "preset": "presets/qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env",
-      "status": "MAIN_MERGE_APPROVED_OPT_IN — opt-in interactive c1 only; NOT the operational default; no auto-start",
+      "status": "MAIN_MERGE_APPROVED_OPT_IN \u2014 opt-in interactive c1 only; NOT the operational default; no auto-start",
       "model": {
         "served_name": "Qwen/Qwen3.8-Flash-Next-FP8",
         "source": "Qwen/Qwen3.8-Flash-Next-FP8",
@@ -337,6 +337,48 @@
       },
       "known_limits": [
         "Opt-in c1 only; MTP1 c2/c8, prefix-cache ON and MAX_NUM_SEQS=8 excluded; no auto-start or default change."
+      ]
+    },
+    {
+      "id": "qwen3.8-flash-next-uncensored-fp8-ngc2611-mtp43-recommended",
+      "preset": "presets/qwen3.8-flash-next-uncensored-fp8-ngc2611-mtp43-recommended.env",
+      "status": "Recommended (active 2026-11-22; manual activation)",
+      "model": {
+        "served_name": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+        "source": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8",
+        "revision": "8bebbc05cbe65099f37c520865463c1377d8050d"
+      },
+      "image": {
+        "reference": "sha256:491a7ae4cec7c706a5325d249ecae20d2ed41734d5b137d997ce3c77efaccb21",
+        "distribution": "local-only",
+        "pullable": false
+      },
+      "runtime": {
+        "nodes": 2,
+        "topology": "dual-rdma",
+        "backend": "ray",
+        "compose": [
+          "docker-compose.yml",
+          "compose/qwen3.8-flash-next/docker-compose.ngc2611-v034-mtp43.yml"
+        ],
+        "start_order": [
+          "head",
+          "worker"
+        ],
+        "compose_min_version": "2.24.4",
+        "entrypoint": "entrypoints/qwen38-ngc2611-v034-mtp43-ray.sh"
+      },
+      "documentation": {
+        "runbook": "docs/qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md",
+        "evidence": [
+          "docs/qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md",
+          "benchmarks/evidence/retained/qwen38-ngc2611-mtp43-20261122/report.md",
+          "benchmarks/evidence/retained/qwen38-ngc2611-mtp43-20261122/summary.json",
+          "benchmarks/evidence/retained/qwen38-ngc2611-mtp43-20261122/qualification.json"
+        ]
+      },
+      "known_limits": [
+        "Local-only immutable image; manual activation; retain NGC 26.10 containers and the portable NGC 26.09 recipe until the exact NGC 26.11 image is published."
       ]
     },
     {

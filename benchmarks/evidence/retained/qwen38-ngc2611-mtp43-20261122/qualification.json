@@ -1,0 +1,84 @@
+{
+  "schema": "qwen38-ngc2611-mtp43-qualification.v1",
+  "date": "2026-11-22",
+  "runtime": {
+    "image_id": "sha256:491a7ae4cec7c706a5325d249ecae20d2ed41734d5b137d997ce3c77efaccb21",
+    "base": "NGC 26.11",
+    "vllm_commit": "62d4bc3c7e33b1b6c906e233e6af2d3506c482ca",
+    "model_revision": "8bebbc05cbe65099f37c520865463c1377d8050d",
+    "speculative_config": {
+      "method": "mtp",
+      "num_speculative_tokens": 4,
+      "num_speculative_tokens_per_batch_size": [
+        [
+          1,
+          1,
+          4
+        ],
+        [
+          2,
+          2,
+          3
+        ]
+      ]
+    },
+    "enforce_eager": true,
+    "kv_cache_dtype": "fp8",
+    "moe_config": "runtime default",
+    "driver": "615.71.10"
+  },
+  "gates": {
+    "runtime_matrix": {
+      "status": "PASS",
+      "engine_max_num_seqs": 2,
+      "speculative_acceptance_rate": 0.9454545454545454
+    },
+    "strict_tool_schema": {
+      "status": "PASS",
+      "passed": 8,
+      "total": 8
+    },
+    "long_context": {
+      "32768": true,
+      "131072": true,
+      "262112": true,
+      "near_prompt_tokens": 262112
+    },
+    "performance": {
+      "c1_median_output_tps": 75.41451201410564,
+      "c2_median_aggregate_output_tps": 121.65321942821765,
+      "vs_ngc2611_r2_c1_pct": 33.29167328792535,
+      "vs_ngc2611_r2_c2_pct": 17.300501403989532
+    },
+    "soak": {
+      "cycles": 20,
+      "requests": 40,
+      "failures": 0,
+      "status": "PASS"
+    },
+    "roce": {
+      "pass": true,
+      "forward_gbps": 108.84,
+      "reverse_gbps": 109.01,
+      "direction_ratio": 1.0015619257625874,
+      "device": "rocep1s0f0",
+      "size": 8388608,
+      "iterations": 1000
+    }
+  },
+  "excluded": [
+    "CUDA graph: matched performance regression; enforce-eager retained",
+    "private b12x GDN overlay: incompatible with pinned tree and redundant with upstream GB10 path",
+    "generated GB10 MoE config: representative M2 latency regression; runtime default retained"
+  ],
+  "source_artifact_sha256": {
+    "runtime_matrix": "1fd775afc1598093539bcf8f39ea0ab9c0ea96cd04fea8a507488406c4fabc13",
+    "strict_tool_schema": "95f14dccec5e42a4b76ef43e23a4d093721596e4215b343cbbf154efa76da49f",
+    "performance_and_long_context": "902b70604a983020262a3390266570853a9f96d6ae5307fa770056888cdc7ac9",
+    "final_soak": "48fdf6e6580050cd1373c4661f3092d4ad73446a7aaf3a1e8f02d5d85e384415",
+    "bidirectional_roce_gate": "225b98813af8144c7b1c2fdfd3517b89e3d2887ac890da66efa99f5dcbb0766d",
+    "performance_deltas": "400036d8f2db7b73fc2622d2c28595214e8bb4831b541b73c3721751a4dc0a06"
+  },
+  "raw_evidence": "maintainer-local raw qualification artifacts; intentionally not tracked in Git",
+  "status": "PASS"
+}

@@ -6,7 +6,8 @@ filename. A filename does not by itself make a document current — always check
 
 Start with the [model runbook index](models/README.md) when selecting an evidence-backed recipe.
 The generated executable recipe table is [`../recipes/README.md`](../recipes/README.md); the root
-README owns the common download, render, launch, readiness, and shutdown workflow.
+README owns the common download, render, launch, readiness, and shutdown workflow. This index covers
+**17 recommended/rollback/manual and validated presets** in the canonical evidence scope.
 
 The DeepSeek-V4-Flash recommended baseline is the **vLLM 0.27 native DSpark k=7 256K** path
 with `MAX_NUM_SEQS=1`. Deploy with
@@ -20,9 +21,10 @@ deployments use the **local-image-ID-pinned** operational preset
 (`presets/solar-open2-250b-nota-nvfp4-v0251-r4-production-tp2.env`); the v0.22.1 KV4G matched preset
 (`presets/solar-open2-250b-nota-nvfp4-v022-kv4g-di-matched-tp2.env`) is the authoritative rollback.
 
-DeepSeek-V4 and Solar are recommended; Qwen3.8 has a validated manual profile. All three families share the same physical serving
-slot (spark01 head + spark02 worker, port 8000) rather than running simultaneously — this index
-does not track which one is deployed at this instant; check live container/health state for that.
+DeepSeek-V4 and Solar have recommended tracks. Qwen3.8 Uncensored NGC 26.11 MTP 4/3 is the
+active local-only recommended profile as of 2026-11-22; the older Qwen profiles remain manual or
+rollback paths. All families share the same physical serving slot (spark01 head + spark02 worker,
+port 8000) rather than running simultaneously — check live container/health state before launch.
 
 Groups: [Recommended](#recommended) · [Manual activation](#manual-activation)
 · [Rollback and operations](#rollback-and-operations)
@@ -48,6 +50,7 @@ to a registry). Deploy via the local-ID-pinned preset.
 | [deepseek-v4-production.md](deepseek-v4-production.md) | Canonical DeepSeek-V4 operations — active v0.27 native DSpark k=7 256K/MS1 route, v0.25.0/64K primary rollback, MTP1 legacy rollback, startup/prewarm and qualification provenance | `Recommended` | Authoritative operations, runtime contracts, rollback |
 | [deepseek-v4-v027-runtime-build-base.md](deepseek-v4-v027-runtime-build-base.md) | Frozen DSV4-specific NGC 26.07/vLLM 0.27 build base, GHCR identities, thin-derivative recipe | `Build/release reference` | Avoid rebuilding the validated common runtime closure |
 | [solar-open2-production.md](solar-open2-production.md) | Canonical Solar-Open2-250B operations — active r4 BF16 (vLLM 0.25.1) route and v0.22.1 rollback, runtime contracts, activation/rollback with empirical reboot procedure, validation provenance (6-gate operational fast-track 2026-08-08/09) | `Recommended` | Authoritative operations, runtime contracts, rollback |
+| [qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md](qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md) | Active Qwen3.8 Uncensored NGC 26.11/vLLM 0.34 eager MTP 4/3 profile, 262K/C2 contract, full llama-benchy result, and NGC 26.10 rollback | `Recommended` (local-only image; manual activation) | Current Qwen operations, benchmark, and rollback authority |
 
 ## Manual activation
 

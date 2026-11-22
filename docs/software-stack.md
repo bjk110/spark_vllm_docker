@@ -16,6 +16,7 @@ Current image roles:
 - `v021-tq`: TurboQuant preset base (required for `*-tq.env` presets)
 - `v022-d568`: stable general base (NGC 26.04 + vLLM 0.21.0) for Qwen3.6/Gemma/abliterix presets
 - `v022-d568-ngc2605-tx5102-vllm022`: active forward-stack (NGC 26.05 + vLLM 0.22.1 + FlashInfer v0.6.12 + Transformers 5.10.2)
+- `qwen38-ngc2611-v034-mtp43`: recommended Qwen3.8 Uncensored route (NGC 26.11 + pinned vLLM 0.34 source); local-only image, Ray TP2/EP2, eager MTP C1=4/C2=3
 - `dsv4-v027-0731`: recommended DeepSeek-V4-Flash native-DSpark route (NGC 26.07 + vLLM 0.27)
 - `dsv4-d568`: frozen historical DeepSeek-V4-Flash baseline — **not rebased onto NGC 26.05**
 - `unholy-fusion`: experimental high-prefill DeepSeek-V4-Flash path
@@ -28,6 +29,25 @@ detail, operational limits, and benchmark comparison live in
 [`docs/unholy-fusion-benchmark.md`](unholy-fusion-benchmark.md) rather than in
 this document — see [Relationship to images and presets](#relationship-to-images-and-presets)
 below.
+
+## qwen38-ngc2611-v034-mtp43 — recommended Qwen3.8 Uncensored path
+
+This local-only image is the recommended two-Spark path for the Uncensored FP8 checkpoint. It is
+manually activated and is not a fresh-clone download until the exact image is published.
+
+| Component | Version / contract |
+|---|---|
+| Base | NVIDIA NGC PyTorch **26.11** |
+| vLLM | commit `62d4bc3c7e33b1b6c906e233e6af2d3506c482ca` plus upstream PR #66202 runtime diff |
+| Image | local image ID `sha256:491a7ae4cec7c706a5325d249ecae20d2ed41734d5b137d997ce3c77efaccb21`, identical on spark01/spark02; not published to a registry |
+| Driver | `615.71.10` on both nodes |
+| Serving | Ray TP=2/EP=2 over RoCE; eager; FP8 KV fixed 8 GiB/rank; engine C2; BT8K; 262,144 context |
+| Speculation | MTP C1 depth 4 / C2 depth 3 via the batch-aware schedule |
+| Excluded deltas | CUDA graph, private b12x GDN overlay, and generated GB10 MoE config |
+| Preset | `presets/qwen3.8-flash-next-uncensored-fp8-ngc2611-mtp43-recommended.env` |
+
+Full contract, qualification hashes, benchmark, and rollback:
+[`qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md`](qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md).
 
 ## dsv4-d568 — Frozen historical DeepSeek-V4-Flash baseline
 

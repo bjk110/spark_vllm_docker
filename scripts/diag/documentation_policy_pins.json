@@ -329,6 +329,10 @@
     "identifiers": [],
     "runtime_sha256": "f5df564ad97e972912d189ac382180fbf44d1c60f32c60b1937cf94da9226787"
   },
+  "presets/qwen3.8-flash-next-uncensored-fp8-ngc2611-mtp43-recommended.env": {
+    "identifiers": [],
+    "runtime_sha256": "7c86b272b7b147614ecedbf509c58aa07763941cd4edf8fd853e09f1694ea805"
+  },
   "presets/qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2.env": {
     "identifiers": [],
     "runtime_sha256": "f93c25961b693ccef9342815abb76e2f99e8a141039a519cfafdc7b5afe52341"
@@ -425,6 +429,10 @@
   "compose/qwen3.8-flash-next/docker-compose.candidate.yml": {
     "identifiers": [],
     "runtime_sha256": "3976ab0f46bc466df58b7d6268bf2ab8545629250cf8d7b6685098cc195aab36"
+  },
+  "compose/qwen3.8-flash-next/docker-compose.ngc2611-v034-mtp43.yml": {
+    "identifiers": [],
+    "runtime_sha256": "5f9ff24502840b472edecc60d824ed26a928df6dbd1e95753b371b6d9c04f10c"
   },
   "compose/solar-open2/docker-compose.b12x-cache.yml": {
     "identifiers": [

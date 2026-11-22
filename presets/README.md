@@ -101,19 +101,20 @@ remain local-only. This is an incremental reproducibility limitation — both op
 and both `compose/solar-open2/` overlays have latest introducing/consolidating commit `357929a`
 (see `docs/solar-open2-production.md` sections 1-2).
 
-### 1c. Qwen3.8-Flash-Next manual and opt-in presets
+### 1c. Qwen3.8-Flash-Next recommended, manual, and rollback presets
 
-Qwen3.8-Flash-Next has four indexed presets: the official manual c1/c2 baseline,
-the PR55122 MTP1 interactive-c1 profile, the uncensored NGC 26.09 Ray MTP k=2/C2 profile, and its
-explicit MP rollback. All are manual activation only and are not wired into auto-start. The profiles
-use different model revisions, images, graph modes, source overlays, and qualification contracts;
-do not mix their files or flags. Reboot after teardown before the next fresh launch.
+Qwen3.8-Flash-Next now has five indexed presets. The local-only NGC 26.11/vLLM 0.34 eager MTP 4/3
+profile is the active recommended path as of 2026-11-22. The official manual c1/c2 baseline, PR55122
+MTP1 interactive-c1 profile, portable uncensored NGC 26.09 Ray MTP k=2/C2 profile, and explicit MP
+rollback remain available. These profiles use different model revisions, images, graph modes, source
+overlays, and qualification contracts; do not mix their files or flags.
 The MTP status label `MAIN_MERGE_APPROVED_OPT_IN` is historical; repository integration
 is complete on main and does not confer runtime validation.
 Full gate ledger: [`docs/qwen3.8-flash-next-tp2.md`](../docs/qwen3.8-flash-next-tp2.md).
 
 | Preset | Model | Status | Notes | Launch / docs |
 |---|---|---|---|---|
+| [`qwen3.8-flash-next-uncensored-fp8-ngc2611-mtp43-recommended.env`](qwen3.8-flash-next-uncensored-fp8-ngc2611-mtp43-recommended.env) | orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8 | **Recommended** | NGC 26.11/vLLM 0.34, dual-RDMA Ray TP2/EP2, eager, FP8 KV 8 GiB/rank, MTP C1=4/C2=3, BT8K, 262K context. Full llama-benchy 12 objects/135 requests/errors 0. Local-only image; manually activated 2026-11-22. Requires `compose/qwen3.8-flash-next/docker-compose.ngc2611-v034-mtp43.yml`; retain NGC 26.10 containers for rollback. | [Recommended runbook](../docs/qwen3.8-flash-next-uncensored-ngc2611-mtp43-recommended.md) · [benchmark](../benchmarks/evidence/retained/qwen38-ngc2611-mtp43-20261122/report.md) |
 | [`qwen3.8-flash-next-fp8-tp2-candidate.env`](qwen3.8-flash-next-fp8-tp2-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | **Manual profile** (manual activation only, not auto-start) | dual-rdma TP2 (mp), validated at c1/c2, `MAX_NUM_SEQS=2`, `FULL_DECODE_ONLY` capture sizes `[1,2]`, `MAX_MODEL_LEN=262144`, `GPU_MEMORY_UTILIZATION=0.83`. Requires `compose/qwen3.8-flash-next/docker-compose.candidate.yml` overlay. Reboot before next fresh launch after teardown. `MAX_NUM_SEQS=4` remains BLOCKED (content diverges across identical repeats at c2/c4) and must not be raised. MTP and PLE-offloaded NVFP4 excluded from the default; MTP untested/off. | [Manual activation runbook](../docs/qwen3.8-flash-next-tp2.md) |
 | [`qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env`](qwen3.8-flash-next-fp8-tp2-pr55122-mtp1-c1-candidate.env) | Qwen/Qwen3.8-Flash-Next-FP8 | `MAIN_MERGE_APPROVED_OPT_IN` — opt-in interactive c1 only; NOT the operational default; no auto-start | dual-rdma TP2 (mp), MTP depth 1, `MAX_NUM_SEQS=2`, prefix cache OFF, FULL_DECODE_ONLY `[1,2]`, exact local image ID `sha256:5c957f7cc93f1944a310d9b4858a6fd33718fc2beb7bedfa7eb7da499d8b2610`; requires `compose/qwen3.8-flash-next/docker-compose.pr55122-mtp1-c1-candidate.yml`. MTP1 c2/c8, prefix-cache ON exact, and `MAX_NUM_SEQS=8` performance excluded. Repository integration is complete on main. Image tag/publication, build, launch, service activation, auto-start, and default change remain out of scope. | [Manual opt-in runbook](../docs/qwen3.8-flash-next-pr55122-mtp1-c1-candidate.md) |
 | [`qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env`](qwen3.8-flash-next-uncensored-fp8-ngc2609-mtp-k2-c2-mp-rollback.env) | orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8 | **Primary rollback** (stopped) | Manual activation only; not auto-started. Preserves the former direct MP/RoCE path with the same TP2/EP2, MTP k=2, C2, BT8K, 8 GiB KV/rank, and 262K envelope. Start worker first after clean teardown/reboot. | [Rollback procedure](../docs/qwen3.8-flash-next-uncensored-ngc2609-mtp-k2-c2.md#7-stop-and-rollback) |
